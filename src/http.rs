@@ -5,7 +5,7 @@ use reqwest::{Client, IntoUrl, Method, Request, Url};
 use crate::Error::HttpError;
 use crate::{AsyncBackend, Error};
 
-struct HttpBackend {
+pub struct HttpBackend {
     client: Client,
     pmtiles_url: Url,
 }

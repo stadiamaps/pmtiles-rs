@@ -10,20 +10,25 @@ description = "Implementation of the PMTiles v3 spec with multiple sync and asyn
 
 [features]
 # WIP: default features will be none, eventually
-default = ["http"]
-http = ["reqwest"]
+default = ["http-async"]
+http-async = ["reqwest"]
+mmap-async-tokio = ["fmmap", "fmmap/tokio-async"]
+
+# TODO: support other async libraries
 
 [dependencies]
+# TODO: determine how we want to handle compression in async & sync environments
 async-compression = { version = "0.3.15", features = ["all-algorithms", "tokio"] }
 async-recursion = "1.0.0"
 async-trait = "0.1.57"
 bytes = "1.2.1"
-fmmap = { version = "0.3.2", features = ["tokio-async"] }
 hilbert_2d = "1.0.0"
-tokio = "1.21.2"
 varint-rs = "2.2.0"
+tokio = { version = "1.21.2", default-features = false, features = ["io-util"] }
+fmmap = { version = "0.3.2", default-features = false, optional = true }
 reqwest = { version = "0.11.12", default-features = false, optional = true }
 
 [dev-dependencies]
+fmmap = { version = "0.3.2", features = ["tokio-async"] }
 tokio = { version = "1.21.2", features = ["test-util", "macros", "rt"] }
 reqwest = { version = "0.11.12", features = ["rustls-tls-webpki-roots"] }

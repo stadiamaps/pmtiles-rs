@@ -10,8 +10,12 @@ use crate::header::{Compression, Header, TileType};
 mod directory;
 mod error;
 mod header;
-mod http;
-mod mmap;
+
+#[cfg(feature = "http-async")]
+pub mod http;
+
+#[cfg(any(feature = "mmap-async-tokio", test))]
+pub mod mmap;
 
 // TODO
 struct Metadata {}
