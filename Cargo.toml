@@ -1,0 +1,23 @@
+[package]
+name = "pmtiles"
+version = "0.1.0"
+edition = "2021"
+authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
+license = "BSD-3-Clause"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-compression = { version = "0.3.15", features = ["all-algorithms", "tokio"] }
+async-recursion = "1.0.0"
+async-trait = "0.1.57"
+bytes = "1.2.1"
+fmmap = { version = "0.3.2", features = ["tokio-async"] }
+hilbert_2d = "1.0.0"
+tokio = "1.21.2"
+varint-rs = "2.2.0"
+reqwest = { version = "0.11.12", default-features = false }
+
+[dev-dependencies]
+tokio = { version = "1.21.2", features = ["test-util", "macros", "rt"] }
+reqwest = { version = "0.11.12", features = ["rustls-tls-webpki-roots"] }
