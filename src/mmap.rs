@@ -11,7 +11,7 @@ pub struct MmapBackend {
 }
 
 impl MmapBackend {
-    pub async fn try_from_path(p: &Path) -> Result<Self, Error> {
+    pub async fn try_from(p: &Path) -> Result<Self, Error> {
         Ok(Self {
             file: AsyncMmapFile::open_with_options(p, AsyncOptions::new().read(true))
                 .await

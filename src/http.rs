@@ -53,23 +53,23 @@ impl From<reqwest::Error> for Error {
 }
 
 #[cfg(test)]
-mod http_tests {
+mod tests {
     use crate::http::HttpBackend;
     use crate::AsyncPmTiles;
 
     static TEST_URL: &str = "https://protomaps-static.sfo3.digitaloceanspaces.com/cb_2018_us_zcta510_500k_nolimit.pmtiles";
-    //static TEST_URL: &str = "http://localhost:8001/test.pmtiles";
 
-    #[tokio::test]
-    async fn basic_http_test() {
-        let client = reqwest::Client::builder()
-            .use_rustls_tls()
-            .build()
-            .expect("Unable to create HTTP client.");
-        let backend = HttpBackend::new(client, TEST_URL).expect("Unable to build HTTP backend.");
+    // TODO: broken until we have a good valid v3 PMTiles file hosted somewhere.
+    //#[tokio::test]
+    //async fn basic_http_test() {
+    //    let client = reqwest::Client::builder()
+    //        .use_rustls_tls()
+    //        .build()
+    //        .expect("Unable to create HTTP client.");
+    //    let backend = HttpBackend::new(client, TEST_URL).expect("Unable to build HTTP backend.");
 
-        let tiles = AsyncPmTiles::try_from_source(backend)
-            .await
-            .expect("Unable to init PMTiles archive");
-    }
+    //    let tiles = AsyncPmTiles::try_from_source(backend)
+    //        .await
+    //        .expect("Unable to init PMTiles archive");
+    //}
 }
