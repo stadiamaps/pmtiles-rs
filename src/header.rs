@@ -53,7 +53,7 @@ impl TryInto<Compression> for u8 {
             2 => Ok(Compression::Gzip),
             3 => Ok(Compression::Brotli),
             4 => Ok(Compression::Zstd),
-            _ => Err(Error::InvalidCompression)
+            _ => Err(Error::InvalidCompression),
         }
     }
 }
@@ -77,7 +77,7 @@ impl TryInto<TileType> for u8 {
             2 => Ok(TileType::Png),
             3 => Ok(TileType::Jpeg),
             4 => Ok(TileType::Webp),
-            _ => Err(Error::InvalidTileType)
+            _ => Err(Error::InvalidTileType),
         }
     }
 }
@@ -99,7 +99,7 @@ impl Header {
                 Err(InvalidPmTilesVersion)
             } else {
                 Err(InvalidMagicNumber)
-            }
+            };
         }
 
         catch_unwind(move || {
@@ -115,15 +115,27 @@ impl Header {
                 data_length: bytes.get_u64_le(),
                 n_addressed_tiles: {
                     let val = bytes.get_u64_le();
-                    if val == 0 { None } else { Some(val) }
+                    if val == 0 {
+                        None
+                    } else {
+                        Some(val)
+                    }
                 },
                 n_tile_entries: {
                     let val = bytes.get_u64_le();
-                    if val == 0 { None } else { Some(val) }
+                    if val == 0 {
+                        None
+                    } else {
+                        Some(val)
+                    }
                 },
                 n_tile_contents: {
                     let val = bytes.get_u64_le();
-                    if val == 0 { None } else { Some(val) }
+                    if val == 0 {
+                        None
+                    } else {
+                        Some(val)
+                    }
                 },
                 clustered: bytes.get_u8() == 1,
                 internal_compression: bytes.get_u8().try_into()?,
@@ -138,11 +150,9 @@ impl Header {
                 center_zoom: bytes.get_u8(),
                 center_longitude: Self::read_coordinate_part(&mut bytes),
                 center_latitude: Self::read_coordinate_part(&mut bytes),
-
             })
-        }).map_err(|_| {
-            Error::InvalidHeader
-        })?
+        })
+        .map_err(|_| Error::InvalidHeader)?
     }
 }
 
@@ -155,9 +165,11 @@ mod test {
 
     #[test]
     fn read_header() {
-        let mut test = File::open("fixtures/stamen_toner_z3.pmtiles").expect("Unable to open test file.");
+        let mut test =
+            File::open("fixtures/stamen_toner_z3.pmtiles").expect("Unable to open test file.");
         let mut header_bytes = [0; 127];
-        test.read_exact(header_bytes.as_mut_slice()).expect("Unable to read header.");
+        test.read_exact(header_bytes.as_mut_slice())
+            .expect("Unable to read header.");
 
         let header = Header::try_from_bytes(&header_bytes).expect("Unable to decode header");
 

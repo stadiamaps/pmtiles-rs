@@ -8,7 +8,7 @@ pub enum Error {
     ReadError,
     UnableToOpenMmapFile,
     InvalidEntry,
-    HttpError(String)
+    HttpError(String),
 }
 
 impl From<std::io::Error> for Error {

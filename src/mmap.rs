@@ -13,9 +13,9 @@ pub struct MmapBackend {
 impl MmapBackend {
     pub async fn try_from_path(p: &Path) -> Result<Self, Error> {
         Ok(Self {
-            file: AsyncMmapFile::open_with_options(p, AsyncOptions::new().read(true)).await.map_err(|_| {
-                Error::UnableToOpenMmapFile
-            })?
+            file: AsyncMmapFile::open_with_options(p, AsyncOptions::new().read(true))
+                .await
+                .map_err(|_| Error::UnableToOpenMmapFile)?,
         })
     }
 }
@@ -23,9 +23,12 @@ impl MmapBackend {
 #[async_trait]
 impl AsyncBackend for MmapBackend {
     async fn read_bytes(&self, dst: &mut [u8], offset: usize) -> Result<(), Error> {
-        self.file.reader(offset).unwrap().read_exact(dst).await.map_err(|_| {
-            Error::ReadError
-        })?;
+        self.file
+            .reader(offset)
+            .unwrap()
+            .read_exact(dst)
+            .await
+            .map_err(|_| Error::ReadError)?;
 
         Ok(())
     }
