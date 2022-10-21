@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::fmt::{Debug, Formatter, Write};
+use std::fmt::{Debug, Formatter};
 
 use async_recursion::async_recursion;
 use async_trait::async_trait;
@@ -89,8 +88,6 @@ struct Entry {
     length: u32,
     run_length: u32,
 }
-
-struct TileData {}
 
 pub struct Tile {
     data: Vec<u8>,

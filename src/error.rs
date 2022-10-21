@@ -1,7 +1,7 @@
 #[derive(Debug)]
 pub enum Error {
     InvalidMagicNumber,
-    InvalidPmTilesVersion,
+    UnsupportedPmTilesVersion,
     InvalidHeader,
     InvalidCompression,
     InvalidTileType,

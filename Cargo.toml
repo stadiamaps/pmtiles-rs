@@ -8,6 +8,11 @@ description = "Implementation of the PMTiles v3 spec with multiple sync and asyn
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+# WIP: default features will be none, eventually
+default = ["http"]
+http = ["reqwest"]
+
 [dependencies]
 async-compression = { version = "0.3.15", features = ["all-algorithms", "tokio"] }
 async-recursion = "1.0.0"
@@ -17,7 +22,7 @@ fmmap = { version = "0.3.2", features = ["tokio-async"] }
 hilbert_2d = "1.0.0"
 tokio = "1.21.2"
 varint-rs = "2.2.0"
-reqwest = { version = "0.11.12", default-features = false }
+reqwest = { version = "0.11.12", default-features = false, optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.21.2", features = ["test-util", "macros", "rt"] }

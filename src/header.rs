@@ -4,7 +4,7 @@ use std::panic::catch_unwind;
 use bytes::Buf;
 
 use crate::error::Error;
-use crate::Error::{InvalidMagicNumber, InvalidPmTilesVersion};
+use crate::Error::{InvalidMagicNumber, UnsupportedPmTilesVersion};
 
 pub(crate) struct Header {
     pub(crate) version: u8,
@@ -36,11 +36,11 @@ pub(crate) struct Header {
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum Compression {
-    Unknown = 0,
-    None = 1,
-    Gzip = 2,
-    Brotli = 3,
-    Zstd = 4,
+    Unknown,
+    None,
+    Gzip,
+    Brotli,
+    Zstd,
 }
 
 impl TryInto<Compression> for u8 {
@@ -60,11 +60,11 @@ impl TryInto<Compression> for u8 {
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum TileType {
-    Unknown = 0,
-    Mvt = 1,
-    Png = 2,
-    Jpeg = 3,
-    Webp = 4,
+    Unknown,
+    Mvt,
+    Png,
+    Jpeg,
+    Webp,
 }
 
 impl TryInto<TileType> for u8 {
@@ -96,7 +96,7 @@ impl Header {
         // Assert magic
         if &raw_bytes[0..V3_MAGIC.len()] != V3_MAGIC.as_bytes() {
             return if &raw_bytes[0..V2_MAGIC.len()] == V2_MAGIC.as_bytes() {
-                Err(InvalidPmTilesVersion)
+                Err(UnsupportedPmTilesVersion)
             } else {
                 Err(InvalidMagicNumber)
             };
