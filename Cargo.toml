@@ -18,7 +18,7 @@ mmap-async-tokio = ["fmmap", "fmmap/tokio-async"]
 
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
-async-compression = { version = "0.3", features = ["all-algorithms", "tokio"] }
+async-compression = { version = "0.3", features = ["gzip", "zstd", "brotli", "tokio"] }
 async-recursion = "1"
 async-trait = "0.1"
 bytes = "1"
