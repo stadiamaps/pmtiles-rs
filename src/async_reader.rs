@@ -5,6 +5,7 @@ use async_recursion::async_recursion;
 use async_trait::async_trait;
 #[cfg(feature = "http-async")]
 use reqwest::{Client, IntoUrl};
+#[cfg(any(feature = "tokio", test))]
 use tokio::io::AsyncReadExt;
 
 #[cfg(feature = "http-async")]
@@ -12,9 +13,10 @@ use crate::http::HttpBackend;
 #[cfg(feature = "mmap-async-tokio")]
 use crate::mmap::MmapBackend;
 use crate::{
+    directory::{Directory, Entry},
     error::Error,
     tile::{tile_id, Tile},
-    Compression, Directory, Entry, Header,
+    Compression, Header,
 };
 
 pub struct AsyncPmTilesReader<B: AsyncBackend> {

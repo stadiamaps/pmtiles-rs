@@ -3,8 +3,6 @@
 // TODO: delete this!!!
 #![allow(dead_code)]
 
-use directory::{Directory, Entry};
-
 pub use crate::header::{Compression, Header, TileType};
 
 mod directory;
@@ -17,6 +15,6 @@ pub mod http;
 #[cfg(any(feature = "mmap-async-tokio", test))]
 pub mod mmap;
 
-// TODO: make an optional feature
+#[cfg(any(feature = "tokio", test))]
 pub mod async_reader;
 pub mod tile;

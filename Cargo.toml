@@ -1,6 +1,6 @@
 [package]
 name = "pmtiles"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
 license = "MIT OR Apache-2.0"
@@ -9,10 +9,9 @@ description = "Implementation of the PMTiles v3 spec with multiple sync and asyn
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-# WIP: default features will be none, eventually
-default = ["http-async"]
-http-async = ["reqwest"]
-mmap-async-tokio = ["fmmap", "fmmap/tokio-async"]
+default = []
+http-async = ["reqwest", "tokio"]
+mmap-async-tokio = ["fmmap", "fmmap/tokio-async", "tokio"]
 
 # TODO: support other async libraries
 
@@ -25,7 +24,7 @@ bytes = "1"
 fmmap = { version = "0.3", default-features = false, optional = true }
 hilbert_2d = "1"
 reqwest = { version = "0.11", default-features = false, optional = true }
-tokio = { version = "1", default-features = false, features = ["io-util"] }
+tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
 varint-rs = "2"
 
 [dev-dependencies]
