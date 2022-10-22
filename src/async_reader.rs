@@ -1,3 +1,12 @@
+#[cfg(feature = "mmap-async-tokio")]
+use std::path::Path;
+
+use async_recursion::async_recursion;
+use async_trait::async_trait;
+#[cfg(feature = "http-async")]
+use reqwest::{Client, IntoUrl};
+use tokio::io::AsyncReadExt;
+
 #[cfg(feature = "http-async")]
 use crate::http::HttpBackend;
 #[cfg(feature = "mmap-async-tokio")]
@@ -7,13 +16,6 @@ use crate::{
     tile::{tile_id, Tile},
     Compression, Directory, Entry, Header,
 };
-use async_recursion::async_recursion;
-use async_trait::async_trait;
-#[cfg(feature = "http-async")]
-use reqwest::{Client, IntoUrl};
-#[cfg(feature = "mmap-async-tokio")]
-use std::path::Path;
-use tokio::io::AsyncReadExt;
 
 pub struct AsyncPmTilesReader<B: AsyncBackend> {
     pub header: Header,
@@ -22,6 +24,9 @@ pub struct AsyncPmTilesReader<B: AsyncBackend> {
 }
 
 impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
+    /// Creates a new reader from a specified source and validates the provided PMTiles archive is valid.
+    ///
+    /// Note: Prefer using new_with_* methods.
     pub async fn try_from_source(backend: B) -> Result<Self, Error> {
         let mut header_bytes = [0; 127];
         backend.read_bytes(&mut header_bytes, 0).await?;
@@ -40,6 +45,43 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
             backend,
             root_directory,
         })
+    }
+
+    /// Fetches a [Tile] from the archive.
+    pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> Option<Tile> {
+        let tile_id = tile_id(z, x, y);
+        let entry = self.find_tile_entry(tile_id, None, 0).await?;
+
+        let mut data = vec![0; entry.length as _];
+        self.backend
+            .read_bytes(
+                data.as_mut_slice(),
+                (self.header.data_offset + entry.offset) as _,
+            )
+            .await
+            .ok()?;
+
+        Some(Tile {
+            data,
+            tile_type: self.header.tile_type,
+            tile_compression: self.header.tile_compression,
+        })
+    }
+
+    /// Gets metadata from the archive.
+    ///
+    /// Note: by spec, this should be valid JSON. This method currently returns a [String].
+    /// This may change in the future.
+    pub async fn get_metadata(&self) -> Result<String, Error> {
+        let mut metadata = vec![0; self.header.metadata_length as _];
+        self.backend
+            .read_bytes(metadata.as_mut_slice(), self.header.metadata_offset as _)
+            .await?;
+
+        let decompressed_metadata =
+            Self::decompress(self.header.internal_compression, metadata.as_slice()).await?;
+
+        Ok(String::from_utf8(decompressed_metadata)?)
     }
 
     #[async_recursion]
@@ -63,8 +105,8 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
                     // Leaf directory
                     let next_dir = self
                         .read_directory(
-                            (self.header.leaf_offset + needle.offset) as usize,
-                            needle.length as usize,
+                            (self.header.leaf_offset + needle.offset) as _,
+                            needle.length as _,
                         )
                         .await
                         .ok()?;
@@ -75,26 +117,6 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
                 }
             }
         }
-    }
-
-    pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> Option<Tile> {
-        let tile_id = tile_id(z, x, y);
-        let entry = self.find_tile_entry(tile_id, None, 0).await?;
-
-        let mut data = vec![0; entry.length as usize];
-        self.backend
-            .read_bytes(
-                data.as_mut_slice(),
-                (self.header.data_offset + entry.offset) as usize,
-            )
-            .await
-            .ok()?;
-
-        Some(Tile {
-            data,
-            tile_type: self.header.tile_type,
-            tile_compression: self.header.tile_compression,
-        })
     }
 
     async fn read_directory(&self, offset: usize, length: usize) -> Result<Directory, Error> {
@@ -121,21 +143,6 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
         let decompressed_bytes = Self::decompress(compression, &directory_bytes[..]).await?;
 
         Directory::try_from(decompressed_bytes.as_slice())
-    }
-
-    async fn get_metadata(&self) -> Result<String, Error> {
-        let mut metadata = vec![0; self.header.metadata_length as usize];
-        self.backend
-            .read_bytes(
-                metadata.as_mut_slice(),
-                self.header.metadata_offset as usize,
-            )
-            .await?;
-
-        let decompressed_metadata =
-            Self::decompress(self.header.internal_compression, metadata.as_slice()).await?;
-
-        Ok(String::from_utf8(decompressed_metadata)?)
     }
 
     async fn decompress(compression: Compression, bytes: &[u8]) -> Result<Vec<u8>, Error> {
@@ -191,9 +198,11 @@ pub trait AsyncBackend {
 
 #[cfg(test)]
 mod tests {
-    use super::AsyncPmTilesReader;
-    use crate::mmap::MmapBackend;
     use std::path::Path;
+
+    use crate::mmap::MmapBackend;
+
+    use super::AsyncPmTilesReader;
 
     async fn create_backend() -> MmapBackend {
         MmapBackend::try_from(Path::new(
