@@ -1,5 +1,7 @@
 # PMTiles (for Rust)
 
+![Crates.io](https://img.shields.io/crates/v/pmtiles) ![GitHub branch checks state](https://img.shields.io/github/checks-status/stadiamaps/pmtiles-rs/main)
+
 This crate implements the [PMTiles v3 spec](https://github.com/protomaps/PMTiles/blob/master/spec/v3/spec.md),
 originally created by Brandon Liu for Protomaps.
 
