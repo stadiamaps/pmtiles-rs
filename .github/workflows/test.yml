@@ -36,7 +36,7 @@ jobs:
           command: fmt
           args: --all -- --check
 
-      - name: Run cargo clippy (ignored)
+      - name: Run cargo clippy
         uses: actions-rs/cargo@v1
         with:
           command: clippy
