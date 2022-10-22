@@ -2,7 +2,7 @@ use std::fmt::{Debug, Formatter};
 
 use varint_rs::VarintReader;
 
-use crate::Error;
+use crate::error::Error;
 
 pub(crate) struct Directory {
     entries: Vec<Entry>,

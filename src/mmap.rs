@@ -4,8 +4,7 @@ use async_trait::async_trait;
 use fmmap::tokio::{AsyncMmapFile, AsyncMmapFileExt, AsyncOptions};
 use tokio::io::AsyncReadExt;
 
-use crate::async_reader::AsyncBackend;
-use crate::Error;
+use crate::{async_reader::AsyncBackend, error::Error};
 
 pub struct MmapBackend {
     file: AsyncMmapFile,

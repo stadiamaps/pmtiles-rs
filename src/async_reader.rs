@@ -1,6 +1,18 @@
-use crate::{tile_id, Compression, Directory, Entry, Error, Header, Tile};
+#[cfg(feature = "http-async")]
+use crate::http::HttpBackend;
+#[cfg(feature = "mmap-async-tokio")]
+use crate::mmap::MmapBackend;
+use crate::{
+    error::Error,
+    tile::{tile_id, Tile},
+    Compression, Directory, Entry, Header,
+};
 use async_recursion::async_recursion;
 use async_trait::async_trait;
+#[cfg(feature = "http-async")]
+use reqwest::{Client, IntoUrl};
+#[cfg(feature = "mmap-async-tokio")]
+use std::path::Path;
 use tokio::io::AsyncReadExt;
 
 pub struct AsyncPmTilesReader<B: AsyncBackend> {
@@ -138,6 +150,30 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
         }
 
         Ok(decompressed_bytes)
+    }
+}
+
+#[cfg(feature = "http-async")]
+impl AsyncPmTilesReader<HttpBackend> {
+    /// Creates a new PMTiles reader from a URL using the Reqwest backend.
+    ///
+    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> Result<Self, Error> {
+        let backend = HttpBackend::try_from(client, url)?;
+
+        Self::try_from_source(backend).await
+    }
+}
+
+#[cfg(feature = "mmap-async-tokio")]
+impl AsyncPmTilesReader<MmapBackend> {
+    /// Creates a new PMTiles reader from a file path using the async mmap backend.
+    ///
+    /// Fails if [p] does not exist or is an invalid archive.
+    pub async fn new_with_path(p: &Path) -> Result<Self, Error> {
+        let backend = MmapBackend::try_from(p).await?;
+
+        Self::try_from_source(backend).await
     }
 }
 

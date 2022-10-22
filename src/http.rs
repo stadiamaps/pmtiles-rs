@@ -2,8 +2,7 @@ use async_trait::async_trait;
 use reqwest::header::{HeaderValue, ACCEPT_RANGES, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, Url};
 
-use crate::async_reader::AsyncBackend;
-use crate::Error;
+use crate::{async_reader::AsyncBackend, error::Error};
 
 pub struct HttpBackend {
     client: Client,
@@ -11,7 +10,7 @@ pub struct HttpBackend {
 }
 
 impl HttpBackend {
-    pub fn new<U: IntoUrl>(client: Client, url: U) -> Result<Self, Error> {
+    pub fn try_from<U: IntoUrl>(client: Client, url: U) -> Result<Self, Error> {
         Ok(HttpBackend {
             client,
             pmtiles_url: url.into_url()?,
@@ -66,7 +65,8 @@ mod tests {
             .use_rustls_tls()
             .build()
             .expect("Unable to create HTTP client.");
-        let backend = HttpBackend::new(client, TEST_URL).expect("Unable to build HTTP backend.");
+        let backend =
+            HttpBackend::try_from(client, TEST_URL).expect("Unable to build HTTP backend.");
 
         let _tiles = AsyncPmTilesReader::try_from_source(backend)
             .await
