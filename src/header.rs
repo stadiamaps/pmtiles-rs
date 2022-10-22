@@ -171,6 +171,6 @@ mod tests {
         assert_eq!(header.max_latitude, 85.0);
         assert_eq!(header.min_longitude, -180.0);
         assert_eq!(header.max_longitude, 180.0);
-        assert_eq!(header.clustered, true);
+        assert!(header.clustered);
     }
 }
