@@ -86,6 +86,7 @@ pub(crate) struct Entry {
 #[cfg(test)]
 mod tests {
     use bytes::BytesMut;
+    use std::io::Write;
     use std::{
         io::{BufReader, Read},
         path::Path,
@@ -96,6 +97,7 @@ mod tests {
 
     use super::Directory;
 
+    #[test]
     fn read_root_directory() {
         let test_file = std::fs::File::open(Path::new(
             "fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles",
@@ -114,8 +116,17 @@ mod tests {
         reader
             .read_exact(directory_bytes.as_mut())
             .expect("Unable to read root directory bytes.");
+
+        let mut decompressed = BytesMut::zeroed(directory_bytes.len() * 2);
+        {
+            let mut gunzip = flate2::write::GzDecoder::new(decompressed.as_mut());
+            gunzip
+                .write_all(&directory_bytes)
+                .expect("Unable to decompress");
+        }
+
         let directory =
-            Directory::try_from(directory_bytes.freeze()).expect("Unable to read directory");
+            Directory::try_from(decompressed.freeze()).expect("Unable to read directory");
 
         assert_eq!(directory.entries.len(), 84);
         // Note: this is not true for all tiles, just the first few...
