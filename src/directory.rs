@@ -1,6 +1,8 @@
-use crate::Error;
 use std::fmt::{Debug, Formatter};
+
 use varint_rs::VarintReader;
+
+use crate::Error;
 
 pub(crate) struct Directory {
     entries: Vec<Entry>,
@@ -81,35 +83,32 @@ pub(crate) struct Entry {
 
 #[cfg(test)]
 mod tests {
-    use crate::{mmap::MmapBackend, AsyncBackend, AsyncPmTilesReader, Header};
+    use std::io::{BufReader, Read};
     use std::path::Path;
 
-    async fn create_backend() -> MmapBackend {
-        MmapBackend::try_from(Path::new(
+    use crate::Header;
+
+    use super::Directory;
+
+    fn read_root_directory() {
+        let test_file = std::fs::File::open(Path::new(
             "fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles",
         ))
-        .await
-        .expect("Unable to open test file.")
-    }
+        .expect("Unable to open fixture.");
+        let mut reader = BufReader::new(test_file);
 
-    #[tokio::test]
-    async fn read_root_directory() {
-        let backend = create_backend().await;
-        let header = Header::try_from_bytes(
-            &backend
-                .read_header_bytes()
-                .await
-                .expect("Unable to read header bytes"),
-        )
-        .expect("Unable to parse header.");
+        let mut header_bytes = [0; 127];
+        reader
+            .read_exact(header_bytes.as_mut_slice())
+            .expect("Unable to read header");
 
-        let directory = AsyncPmTilesReader::read_directory_with_backend(
-            &backend,
-            header.root_offset as usize,
-            header.root_length as usize,
-        )
-        .await
-        .expect("Unable to read directory");
+        let header = Header::try_from_bytes(&header_bytes).expect("Unable to parse header.");
+        let mut directory_bytes = vec![0; header.root_length as usize];
+        reader
+            .read_exact(directory_bytes.as_mut_slice())
+            .expect("Unable to read root directory bytes.");
+        let directory =
+            Directory::try_from(&directory_bytes[..]).expect("Unable to read directory");
 
         assert_eq!(directory.entries.len(), 84);
         // Note: this is not true for all tiles, just the first few...

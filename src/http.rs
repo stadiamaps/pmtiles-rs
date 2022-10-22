@@ -2,7 +2,8 @@ use async_trait::async_trait;
 use reqwest::header::{HeaderValue, ACCEPT_RANGES, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, Url};
 
-use crate::{AsyncBackend, Error};
+use crate::async_reader::AsyncBackend;
+use crate::Error;
 
 pub struct HttpBackend {
     client: Client,
@@ -53,8 +54,8 @@ impl From<reqwest::Error> for Error {
 
 #[cfg(test)]
 mod tests {
+    use crate::async_reader::AsyncPmTilesReader;
     use crate::http::HttpBackend;
-    use crate::AsyncPmTilesReader;
 
     static TEST_URL: &str =
         "https://protomaps.github.io/PMTiles/protomaps(vector)ODbL_firenze.pmtiles";
