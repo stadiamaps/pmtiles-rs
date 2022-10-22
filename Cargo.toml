@@ -1,10 +1,12 @@
 [package]
 name = "pmtiles"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
 license = "MIT OR Apache-2.0"
 description = "Implementation of the PMTiles v3 spec with multiple sync and async backends. WORK IN PROGRESS."
+repository = "https://github.com/stadiamaps/pmtiles-rs"
+keywords = ["pmtiles", "gis", "geo"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -31,3 +33,6 @@ varint-rs = "2"
 fmmap = { version = "0.3", features = ["tokio-async"] }
 reqwest = { version = "0.11", features = ["rustls-tls-webpki-roots"] }
 tokio = { version = "1", features = ["test-util", "macros", "rt"] }
+
+[package.metadata.docs.rs]
+all-features = true
