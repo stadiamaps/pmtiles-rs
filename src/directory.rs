@@ -83,8 +83,10 @@ pub(crate) struct Entry {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{BufReader, Read};
-    use std::path::Path;
+    use std::{
+        io::{BufReader, Read},
+        path::Path,
+    };
 
     use crate::Header;
 

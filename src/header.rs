@@ -5,7 +5,6 @@ use std::panic::catch_unwind;
 use bytes::Buf;
 
 use crate::error::Error;
-use crate::Error::{InvalidMagicNumber, UnsupportedPmTilesVersion};
 
 pub(crate) struct Header {
     pub(crate) version: u8,
@@ -44,6 +43,16 @@ pub enum Compression {
     Zstd,
 }
 
+impl Compression {
+    pub fn content_encoding(&self) -> Option<&'static str> {
+        Some(match self {
+            Compression::Gzip => "gzip",
+            Compression::Brotli => "br",
+            _ => None?,
+        })
+    }
+}
+
 impl TryInto<Compression> for u8 {
     type Error = Error;
 
@@ -66,6 +75,18 @@ pub enum TileType {
     Png,
     Jpeg,
     Webp,
+}
+
+impl TileType {
+    pub fn content_type(&self) -> &'static str {
+        match self {
+            TileType::Mvt => "application/vnd.mapbox-vector-tile",
+            TileType::Png => "image/png",
+            TileType::Webp => "image/webp",
+            TileType::Jpeg => "image/jpeg",
+            TileType::Unknown => "application/octet-stream",
+        }
+    }
 }
 
 impl TryInto<TileType> for u8 {
@@ -96,11 +117,11 @@ impl Header {
 
         // Assert magic
         if &raw_bytes[0..V3_MAGIC.len()] != V3_MAGIC.as_bytes() {
-            return if &raw_bytes[0..V2_MAGIC.len()] == V2_MAGIC.as_bytes() {
-                Err(UnsupportedPmTilesVersion)
+            return Err(if &raw_bytes[0..V2_MAGIC.len()] == V2_MAGIC.as_bytes() {
+                Error::UnsupportedPmTilesVersion
             } else {
-                Err(InvalidMagicNumber)
-            };
+                Error::InvalidMagicNumber
+            });
         }
 
         // Wrap the panics that are possible in `get_u*_le` calls. (Panic occurs if the buffer is exhausted.)
