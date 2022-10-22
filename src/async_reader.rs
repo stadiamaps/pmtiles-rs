@@ -106,17 +106,38 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
             .read_bytes(directory_bytes.as_mut_slice(), offset)
             .await?;
 
-        let mut decompressed_bytes = Vec::with_capacity(length * 2);
+        let decompressed_bytes = Self::decompress(compression, &directory_bytes[..]).await?;
+
+        Directory::try_from(decompressed_bytes.as_slice())
+    }
+
+    async fn get_metadata(&self) -> Result<String, Error> {
+        let mut metadata = vec![0; self.header.metadata_length as usize];
+        self.backend
+            .read_bytes(
+                metadata.as_mut_slice(),
+                self.header.metadata_offset as usize,
+            )
+            .await?;
+
+        let decompressed_metadata =
+            Self::decompress(self.header.internal_compression, metadata.as_slice()).await?;
+
+        Ok(String::from_utf8(decompressed_metadata)?)
+    }
+
+    async fn decompress(compression: Compression, bytes: &[u8]) -> Result<Vec<u8>, Error> {
+        let mut decompressed_bytes = Vec::with_capacity(bytes.len() * 2);
         match compression {
             Compression::Gzip => {
-                async_compression::tokio::bufread::GzipDecoder::new(directory_bytes.as_slice())
+                async_compression::tokio::bufread::GzipDecoder::new(bytes)
                     .read_to_end(&mut decompressed_bytes)
                     .await?;
             }
-            _ => todo!("Support other forms of metadata compression."),
+            _ => todo!("Support other forms of internal compression."),
         }
 
-        Directory::try_from(decompressed_bytes.as_slice())
+        Ok(decompressed_bytes)
     }
 }
 
@@ -217,5 +238,20 @@ mod tests {
 
         let tile = tiles.get_tile(12, 2174, 1492).await;
         assert!(tile.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_metadata() {
+        let backend =
+            MmapBackend::try_from(Path::new("fixtures/protomaps(vector)ODbL_firenze.pmtiles"))
+                .await
+                .expect("Unable to open test file.");
+        let tiles = AsyncPmTilesReader::try_from_source(backend)
+            .await
+            .expect("Unable to open PMTiles");
+
+        let metadata = tiles.get_metadata().await.expect("Unable to read metadata");
+
+        assert!(!metadata.is_empty());
     }
 }
