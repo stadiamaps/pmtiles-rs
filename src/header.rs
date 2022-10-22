@@ -103,9 +103,12 @@ impl Header {
             };
         }
 
+        // TODO: why would this panic?
         catch_unwind(move || {
             Ok(Self {
-                version: (bytes.get_u8() as char).to_digit(10).unwrap() as u8,
+                version: (bytes.get_u8() as char)
+                    .to_digit(10)
+                    .ok_or(Error::InvalidHeader)? as u8,
                 root_offset: bytes.get_u64_le(),
                 root_length: bytes.get_u64_le(),
                 metadata_offset: bytes.get_u64_le(),
