@@ -1,4 +1,4 @@
-use crate::{tile_id, Directory, Entry, Error, Header, Tile};
+use crate::{tile_id, Compression, Directory, Entry, Error, Header, Tile};
 use async_recursion::async_recursion;
 use async_trait::async_trait;
 use tokio::io::AsyncReadExt;
@@ -17,6 +17,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
 
         let root_directory = Self::read_directory_with_backend(
             &backend,
+            header.internal_compression,
             header.root_offset as usize,
             header.root_length as usize,
         )
@@ -85,11 +86,18 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     }
 
     async fn read_directory(&self, offset: usize, length: usize) -> Result<Directory, Error> {
-        Self::read_directory_with_backend(&self.backend, offset, length).await
+        Self::read_directory_with_backend(
+            &self.backend,
+            self.header.internal_compression,
+            offset,
+            length,
+        )
+        .await
     }
 
     async fn read_directory_with_backend(
         backend: &B,
+        compression: Compression,
         offset: usize,
         length: usize,
     ) -> Result<Directory, Error> {
@@ -99,9 +107,14 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
             .await?;
 
         let mut decompressed_bytes = Vec::with_capacity(length * 2);
-        async_compression::tokio::bufread::GzipDecoder::new(directory_bytes.as_slice())
-            .read_to_end(&mut decompressed_bytes)
-            .await?;
+        match compression {
+            Compression::Gzip => {
+                async_compression::tokio::bufread::GzipDecoder::new(directory_bytes.as_slice())
+                    .read_to_end(&mut decompressed_bytes)
+                    .await?;
+            }
+            _ => todo!("Support other forms of metadata compression."),
+        }
 
         Directory::try_from(decompressed_bytes.as_slice())
     }

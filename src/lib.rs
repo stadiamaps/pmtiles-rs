@@ -20,6 +20,7 @@ pub mod http;
 #[cfg(any(feature = "mmap-async-tokio", test))]
 pub mod mmap;
 
+// TODO: make an optional feature
 pub mod async_reader;
 
 // TODO
