@@ -218,7 +218,7 @@ pub trait AsyncBackend {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(feature = "mmap-async-tokio", test))]
 mod tests {
     use std::path::Path;
 
