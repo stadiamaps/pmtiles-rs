@@ -18,17 +18,17 @@ mmap-async-tokio = ["fmmap", "fmmap/tokio-async"]
 
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
-async-compression = { version = "0.3.15", features = ["all-algorithms", "tokio"] }
-async-recursion = "1.0.0"
-async-trait = "0.1.57"
-bytes = "1.2.1"
-hilbert_2d = "1.0.0"
-varint-rs = "2.2.0"
-tokio = { version = "1.21.2", default-features = false, features = ["io-util"] }
-fmmap = { version = "0.3.2", default-features = false, optional = true }
-reqwest = { version = "0.11.12", default-features = false, optional = true }
+async-compression = { version = "0.3", features = ["all-algorithms", "tokio"] }
+async-recursion = "1"
+async-trait = "0.1"
+bytes = "1"
+fmmap = { version = "0.3", default-features = false, optional = true }
+hilbert_2d = "1"
+reqwest = { version = "0.11", default-features = false, optional = true }
+tokio = { version = "1", default-features = false, features = ["io-util"] }
+varint-rs = "2"
 
 [dev-dependencies]
-fmmap = { version = "0.3.2", features = ["tokio-async"] }
-tokio = { version = "1.21.2", features = ["test-util", "macros", "rt"] }
-reqwest = { version = "0.11.12", features = ["rustls-tls-webpki-roots"] }
+fmmap = { version = "0.3", features = ["tokio-async"] }
+reqwest = { version = "0.11", features = ["rustls-tls-webpki-roots"] }
+tokio = { version = "1", features = ["test-util", "macros", "rt"] }
