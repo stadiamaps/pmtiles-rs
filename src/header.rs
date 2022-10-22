@@ -1,4 +1,5 @@
 use std::io::Cursor;
+use std::num::NonZeroU64;
 use std::panic::catch_unwind;
 
 use bytes::Buf;
@@ -16,9 +17,9 @@ pub(crate) struct Header {
     pub(crate) leaf_length: u64,
     pub(crate) data_offset: u64,
     pub(crate) data_length: u64,
-    pub(crate) n_addressed_tiles: Option<u64>,
-    pub(crate) n_tile_entries: Option<u64>,
-    pub(crate) n_tile_contents: Option<u64>,
+    pub(crate) n_addressed_tiles: Option<NonZeroU64>,
+    pub(crate) n_tile_entries: Option<NonZeroU64>,
+    pub(crate) n_tile_contents: Option<NonZeroU64>,
     pub(crate) clustered: bool,
     pub(crate) internal_compression: Compression,
     pub(crate) tile_compression: Compression,
@@ -102,9 +103,12 @@ impl Header {
             };
         }
 
+        // TODO: why would this panic?
         catch_unwind(move || {
             Ok(Self {
-                version: (bytes.get_u8() as char).to_digit(10).unwrap() as u8,
+                version: (bytes.get_u8() as char)
+                    .to_digit(10)
+                    .ok_or(Error::InvalidHeader)? as u8,
                 root_offset: bytes.get_u64_le(),
                 root_length: bytes.get_u64_le(),
                 metadata_offset: bytes.get_u64_le(),
@@ -113,30 +117,9 @@ impl Header {
                 leaf_length: bytes.get_u64_le(),
                 data_offset: bytes.get_u64_le(),
                 data_length: bytes.get_u64_le(),
-                n_addressed_tiles: {
-                    let val = bytes.get_u64_le();
-                    if val == 0 {
-                        None
-                    } else {
-                        Some(val)
-                    }
-                },
-                n_tile_entries: {
-                    let val = bytes.get_u64_le();
-                    if val == 0 {
-                        None
-                    } else {
-                        Some(val)
-                    }
-                },
-                n_tile_contents: {
-                    let val = bytes.get_u64_le();
-                    if val == 0 {
-                        None
-                    } else {
-                        Some(val)
-                    }
-                },
+                n_addressed_tiles: NonZeroU64::new(bytes.get_u64_le()),
+                n_tile_entries: NonZeroU64::new(bytes.get_u64_le()),
+                n_tile_contents: NonZeroU64::new(bytes.get_u64_le()),
                 clustered: bytes.get_u8() == 1,
                 internal_compression: bytes.get_u8().try_into()?,
                 tile_compression: bytes.get_u8().try_into()?,
@@ -160,6 +143,7 @@ impl Header {
 mod tests {
     use std::fs::File;
     use std::io::Read;
+    use std::num::NonZeroU64;
 
     use crate::header::{Header, TileType};
 
@@ -175,9 +159,9 @@ mod tests {
 
         assert_eq!(header.version, 3);
         assert_eq!(header.tile_type, TileType::Png);
-        assert_eq!(header.n_addressed_tiles, Some(85));
-        assert_eq!(header.n_tile_entries, Some(84));
-        assert_eq!(header.n_tile_contents, Some(80));
+        assert_eq!(header.n_addressed_tiles, NonZeroU64::new(85));
+        assert_eq!(header.n_tile_entries, NonZeroU64::new(84));
+        assert_eq!(header.n_tile_contents, NonZeroU64::new(80));
         assert_eq!(header.min_zoom, 0);
         assert_eq!(header.max_zoom, 3);
         assert_eq!(header.center_zoom, 0);
@@ -187,6 +171,6 @@ mod tests {
         assert_eq!(header.max_latitude, 85.0);
         assert_eq!(header.min_longitude, -180.0);
         assert_eq!(header.max_longitude, 180.0);
-        assert_eq!(header.clustered, true);
+        assert!(header.clustered);
     }
 }

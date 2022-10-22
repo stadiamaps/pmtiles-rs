@@ -1,17 +1,49 @@
-on: [push]
-
 name: Cargo Test
+
+on:
+  push: {}
+  pull_request:
+    branches:
+      - main
+  release:
+    branches:
+      - main
 
 jobs:
   build_and_test:
     name: Run unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-      - uses: actions-rs/cargo@v1
+
+      - name: Run cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+
+      - name: Install fmt and clippy
+        run: rustup component add clippy rustfmt
+
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+      - name: Run cargo clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release --all-features
+          args: --all-targets --all-features

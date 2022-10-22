@@ -28,7 +28,7 @@ impl AsyncBackend for MmapBackend {
             .unwrap()
             .read_exact(dst)
             .await
-            .map_err(|_| Error::ReadError)?;
+            .map_err(|_| Error::Reading)?;
 
         Ok(())
     }
