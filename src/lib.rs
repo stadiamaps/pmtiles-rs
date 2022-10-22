@@ -7,11 +7,10 @@ use hilbert_2d::Variant;
 
 use directory::{Directory, Entry};
 
-use crate::error::Error;
-use crate::header::{Compression, Header, TileType};
+pub use crate::header::{Compression, Header, TileType};
 
 mod directory;
-mod error;
+pub mod error;
 mod header;
 
 #[cfg(feature = "http-async")]
@@ -22,9 +21,6 @@ pub mod mmap;
 
 // TODO: make an optional feature
 pub mod async_reader;
-
-// TODO
-struct Metadata {}
 
 fn tile_id(z: u8, x: u64, y: u64) -> u64 {
     if z == 0 {

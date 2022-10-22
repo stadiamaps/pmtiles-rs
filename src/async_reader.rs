@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tokio::io::AsyncReadExt;
 
 pub struct AsyncPmTilesReader<B: AsyncBackend> {
-    header: Header,
+    pub header: Header,
     backend: B,
     root_directory: Directory,
 }

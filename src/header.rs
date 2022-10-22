@@ -6,7 +6,7 @@ use bytes::Buf;
 
 use crate::error::Error;
 
-pub(crate) struct Header {
+pub struct Header {
     pub(crate) version: u8,
     pub(crate) root_offset: u64,
     pub(crate) root_length: u64,
@@ -23,15 +23,15 @@ pub(crate) struct Header {
     pub(crate) internal_compression: Compression,
     pub(crate) tile_compression: Compression,
     pub(crate) tile_type: TileType,
-    pub(crate) min_zoom: u8,
-    pub(crate) max_zoom: u8,
-    pub(crate) min_longitude: f32,
-    pub(crate) min_latitude: f32,
-    pub(crate) max_longitude: f32,
-    pub(crate) max_latitude: f32,
-    pub(crate) center_zoom: u8,
-    pub(crate) center_longitude: f32,
-    pub(crate) center_latitude: f32,
+    pub min_zoom: u8,
+    pub max_zoom: u8,
+    pub min_longitude: f32,
+    pub min_latitude: f32,
+    pub max_longitude: f32,
+    pub max_latitude: f32,
+    pub center_zoom: u8,
+    pub center_longitude: f32,
+    pub center_latitude: f32,
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
