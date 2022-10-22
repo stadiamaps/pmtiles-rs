@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use reqwest::header::{HeaderValue, ACCEPT_RANGES, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, Url};
 
-use crate::Error::HttpError;
 use crate::{AsyncBackend, Error};
 
 pub struct HttpBackend {
@@ -31,12 +30,12 @@ impl AsyncBackend for HttpBackend {
             .or_insert(HeaderValue::from_static(""));
         let end = offset + dst.len() - 1;
         *range_header = HeaderValue::from_str(format!("bytes={offset}-{end}").as_str())
-            .map_err(|_| Error::ReadError)?;
+            .map_err(|_| Error::Reading)?;
 
         let response = self.client.execute(req).await?.error_for_status()?;
 
         if response.headers().get(ACCEPT_RANGES) != Some(&VALID_ACCEPT_RANGES) {
-            return Err(HttpError("Range requests unsupported".to_string()));
+            return Err(Error::Http("Range requests unsupported".to_string()));
         }
 
         let response_bytes = response.bytes().await?;
@@ -48,7 +47,7 @@ impl AsyncBackend for HttpBackend {
 
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
-        Self::HttpError(e.to_string())
+        Error::Http(e.to_string())
     }
 }
 
@@ -60,16 +59,16 @@ mod tests {
     static TEST_URL: &str = "https://protomaps-static.sfo3.digitaloceanspaces.com/cb_2018_us_zcta510_500k_nolimit.pmtiles";
 
     // TODO: broken until we have a good valid v3 PMTiles file hosted somewhere.
-    //#[tokio::test]
-    //async fn basic_http_test() {
-    //    let client = reqwest::Client::builder()
-    //        .use_rustls_tls()
-    //        .build()
-    //        .expect("Unable to create HTTP client.");
-    //    let backend = HttpBackend::new(client, TEST_URL).expect("Unable to build HTTP backend.");
+    // #[tokio::test]
+    async fn basic_http_test() {
+        let client = reqwest::Client::builder()
+            .use_rustls_tls()
+            .build()
+            .expect("Unable to create HTTP client.");
+        let backend = HttpBackend::new(client, TEST_URL).expect("Unable to build HTTP backend.");
 
-    //    let tiles = AsyncPmTiles::try_from_source(backend)
-    //        .await
-    //        .expect("Unable to init PMTiles archive");
-    //}
+        let _tiles = AsyncPmTiles::try_from_source(backend)
+            .await
+            .expect("Unable to init PMTiles archive");
+    }
 }

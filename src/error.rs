@@ -5,14 +5,14 @@ pub enum Error {
     InvalidHeader,
     InvalidCompression,
     InvalidTileType,
-    ReadError,
+    Reading,
     UnableToOpenMmapFile,
     InvalidEntry,
-    HttpError(String),
+    Http(String),
 }
 
 impl From<std::io::Error> for Error {
     fn from(_: std::io::Error) -> Self {
-        Self::ReadError
+        Self::Reading
     }
 }

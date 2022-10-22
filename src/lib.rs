@@ -1,3 +1,8 @@
+// TODO: delete this!!!
+// TODO: delete this!!!
+// TODO: delete this!!!
+#![allow(dead_code)]
+
 use async_recursion::async_recursion;
 use async_trait::async_trait;
 use directory::{Directory, Entry};
@@ -73,33 +78,28 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTiles<B> {
         depth: u8,
     ) -> Option<Entry> {
         // Max recursion...
-        if !(depth < 4) {
+        if depth >= 4 {
             return None;
         }
 
         let next_dir = next_dir.as_ref().unwrap_or(&self.root_directory);
 
         match next_dir.find_tile_id(tile_id) {
-            None => return None,
+            None => None,
             Some(needle) => {
                 if needle.run_length == 0 {
                     // Leaf directory
-                    let next_dir = if let Some(next_dir) = self
+                    let next_dir = self
                         .read_directory(
                             (self.header.leaf_offset + needle.offset) as usize,
                             needle.length as usize,
                         )
                         .await
-                        .ok()
-                    {
-                        next_dir
-                    } else {
-                        return None;
-                    };
+                        .ok()?;
                     self.find_tile_entry(tile_id, Some(next_dir), depth + 1)
                         .await
                 } else {
-                    return Some(needle.clone());
+                    Some(needle.clone())
                 }
             }
         }
@@ -229,15 +229,15 @@ mod test {
 
     // TODO: broken until we have a good fixture for leaf directories
     //#[tokio::test]
-    //async fn test_leaf_directories() {
-    //    let backend = MmapBackend::try_from(Path::new("fixtures/test.pmtiles"))
-    //        .await
-    //        .expect("Unable to open test file.");
-    //    let tiles = AsyncPmTiles::try_from_source(backend)
-    //        .await
-    //        .expect("Unable to open PMTiles");
+    async fn test_leaf_directories() {
+        let backend = MmapBackend::try_from(Path::new("fixtures/test.pmtiles"))
+            .await
+            .expect("Unable to open test file.");
+        let tiles = AsyncPmTiles::try_from_source(backend)
+            .await
+            .expect("Unable to open PMTiles");
 
-    //    let tile = tiles.get_tile(6, 31, 23).await;
-    //    assert!(tile.is_some());
-    //}
+        let tile = tiles.get_tile(6, 31, 23).await;
+        assert!(tile.is_some());
+    }
 }

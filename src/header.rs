@@ -1,4 +1,5 @@
 use std::io::Cursor;
+use std::num::NonZeroU64;
 use std::panic::catch_unwind;
 
 use bytes::Buf;
@@ -16,9 +17,9 @@ pub(crate) struct Header {
     pub(crate) leaf_length: u64,
     pub(crate) data_offset: u64,
     pub(crate) data_length: u64,
-    pub(crate) n_addressed_tiles: Option<u64>,
-    pub(crate) n_tile_entries: Option<u64>,
-    pub(crate) n_tile_contents: Option<u64>,
+    pub(crate) n_addressed_tiles: Option<NonZeroU64>,
+    pub(crate) n_tile_entries: Option<NonZeroU64>,
+    pub(crate) n_tile_contents: Option<NonZeroU64>,
     pub(crate) clustered: bool,
     pub(crate) internal_compression: Compression,
     pub(crate) tile_compression: Compression,
@@ -113,30 +114,9 @@ impl Header {
                 leaf_length: bytes.get_u64_le(),
                 data_offset: bytes.get_u64_le(),
                 data_length: bytes.get_u64_le(),
-                n_addressed_tiles: {
-                    let val = bytes.get_u64_le();
-                    if val == 0 {
-                        None
-                    } else {
-                        Some(val)
-                    }
-                },
-                n_tile_entries: {
-                    let val = bytes.get_u64_le();
-                    if val == 0 {
-                        None
-                    } else {
-                        Some(val)
-                    }
-                },
-                n_tile_contents: {
-                    let val = bytes.get_u64_le();
-                    if val == 0 {
-                        None
-                    } else {
-                        Some(val)
-                    }
-                },
+                n_addressed_tiles: NonZeroU64::new(bytes.get_u64_le()),
+                n_tile_entries: NonZeroU64::new(bytes.get_u64_le()),
+                n_tile_contents: NonZeroU64::new(bytes.get_u64_le()),
                 clustered: bytes.get_u8() == 1,
                 internal_compression: bytes.get_u8().try_into()?,
                 tile_compression: bytes.get_u8().try_into()?,
