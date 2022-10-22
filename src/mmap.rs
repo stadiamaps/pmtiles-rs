@@ -20,11 +20,26 @@ impl MmapBackend {
     }
 }
 
+impl From<fmmap::error::Error> for Error {
+    fn from(_: fmmap::error::Error) -> Self {
+        Self::Reading(std::io::Error::from(std::io::ErrorKind::UnexpectedEof))
+    }
+}
+
 #[async_trait]
 impl AsyncBackend for MmapBackend {
-    async fn read_bytes(&self, dst: &mut [u8], offset: usize) -> Result<(), Error> {
-        self.file.reader(offset).unwrap().read_exact(dst).await?;
+    async fn read_exact(&self, dst: &mut [u8], offset: usize) -> Result<(), Error> {
+        self.file.reader(offset)?.read_exact(dst).await?;
 
         Ok(())
+    }
+
+    async fn read(&self, dst: &mut [u8], offset: usize) -> Result<usize, Error> {
+        let mut reader = self.file.reader(offset)?;
+
+        let read_length = dst.len().min(reader.len());
+        reader.read_exact(&mut dst[..read_length]).await?;
+
+        Ok(read_length)
     }
 }

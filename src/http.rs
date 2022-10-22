@@ -22,7 +22,21 @@ static VALID_ACCEPT_RANGES: HeaderValue = HeaderValue::from_static("bytes");
 
 #[async_trait]
 impl AsyncBackend for HttpBackend {
-    async fn read_bytes(&self, dst: &mut [u8], offset: usize) -> Result<(), Error> {
+    async fn read_exact(&self, dst: &mut [u8], offset: usize) -> Result<(), Error> {
+        let n_bytes_read = self.read(dst, offset).await?;
+
+        if n_bytes_read == dst.len() {
+            Ok(())
+        } else {
+            Err(Error::Http(format!(
+                "Unexpected number of bytes returned [expected: {}, received: {}].",
+                dst.len(),
+                n_bytes_read
+            )))
+        }
+    }
+
+    async fn read(&self, dst: &mut [u8], offset: usize) -> Result<usize, Error> {
         let mut req = Request::new(Method::GET, self.pmtiles_url.clone());
         let range_header = req
             .headers_mut()
@@ -39,9 +53,15 @@ impl AsyncBackend for HttpBackend {
         }
 
         let response_bytes = response.bytes().await?;
-        dst.copy_from_slice(&response_bytes[..]);
 
-        Ok(())
+        if response_bytes.len() <= dst.len() {
+            // Read as many bytes as possible from response_bytes
+            dst[..response_bytes.len()].copy_from_slice(&response_bytes[..]);
+
+            Ok(response_bytes.len())
+        } else {
+            Err(Error::Http("HTTP response body is too long".to_string()))
+        }
     }
 }
 

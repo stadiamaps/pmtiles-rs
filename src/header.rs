@@ -1,10 +1,11 @@
-use std::io::Cursor;
-use std::num::NonZeroU64;
-use std::panic::catch_unwind;
+use std::{io::Cursor, num::NonZeroU64, panic::catch_unwind};
 
 use bytes::Buf;
 
 use crate::error::Error;
+
+pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
+pub(crate) const HEADER_SIZE: usize = 127;
 
 pub struct Header {
     pub(crate) version: u8,
@@ -112,8 +113,8 @@ impl Header {
         buf.get_i32_le() as f32 / 10_000_000.
     }
 
-    pub fn try_from_bytes(raw_bytes: &[u8; 127]) -> Result<Self, Error> {
-        let mut bytes = Cursor::new(&raw_bytes[V3_MAGIC.len()..]);
+    pub fn try_from_bytes(raw_bytes: &[u8]) -> Result<Self, Error> {
+        let mut bytes = Cursor::new(&raw_bytes[V3_MAGIC.len()..HEADER_SIZE]);
 
         // Assert magic
         if &raw_bytes[0..V3_MAGIC.len()] != V3_MAGIC.as_bytes() {
@@ -154,11 +155,7 @@ impl Header {
                 center_latitude: Self::read_coordinate_part(&mut bytes),
             })
         })
-        .map_err(|e| {
-            println!("PANIC ON HEADER");
-            dbg!(e);
-            Error::InvalidHeader
-        })?
+        .map_err(|_| Error::InvalidHeader)?
     }
 }
 
@@ -168,13 +165,13 @@ mod tests {
     use std::io::Read;
     use std::num::NonZeroU64;
 
-    use crate::header::{Header, TileType};
+    use crate::header::{Header, TileType, HEADER_SIZE};
 
     #[test]
     fn read_header() {
         let mut test = File::open("fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles")
             .expect("Unable to open test file.");
-        let mut header_bytes = [0; 127];
+        let mut header_bytes = [0; HEADER_SIZE];
         test.read_exact(header_bytes.as_mut_slice())
             .expect("Unable to read header.");
 
@@ -201,7 +198,7 @@ mod tests {
     fn read_valid_mvt_header() {
         let mut test = File::open("fixtures/protomaps(vector)ODbL_firenze.pmtiles")
             .expect("Unable to open test file.");
-        let mut header_bytes = [0; 127];
+        let mut header_bytes = [0; HEADER_SIZE];
         test.read_exact(header_bytes.as_mut_slice())
             .expect("Unable to read header.");
 

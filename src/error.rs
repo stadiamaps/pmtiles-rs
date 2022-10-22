@@ -10,7 +10,7 @@ pub enum Error {
     InvalidMetadata,
     InvalidTileType,
     Reading(std::io::Error),
-    #[cfg(any(feature = "fmmap", test))]
+    #[cfg(feature = "fmmap")]
     UnableToOpenMmapFile,
     Http(String),
 }

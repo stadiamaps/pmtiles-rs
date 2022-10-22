@@ -12,9 +12,9 @@ mod header;
 #[cfg(feature = "http-async")]
 pub mod http;
 
-#[cfg(any(feature = "mmap-async-tokio", test))]
+#[cfg(feature = "mmap-async-tokio")]
 pub mod mmap;
 
-#[cfg(any(feature = "tokio", test))]
+#[cfg(feature = "tokio")]
 pub mod async_reader;
 pub mod tile;

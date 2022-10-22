@@ -5,9 +5,10 @@ use async_recursion::async_recursion;
 use async_trait::async_trait;
 #[cfg(feature = "http-async")]
 use reqwest::{Client, IntoUrl};
-#[cfg(any(feature = "tokio", test))]
+#[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
 
+use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 #[cfg(feature = "http-async")]
 use crate::http::HttpBackend;
 #[cfg(feature = "mmap-async-tokio")]
@@ -30,17 +31,14 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     ///
     /// Note: Prefer using new_with_* methods.
     pub async fn try_from_source(backend: B) -> Result<Self, Error> {
-        let mut header_bytes = [0; 127];
-        backend.read_bytes(&mut header_bytes, 0).await?;
-        let header = Header::try_from_bytes(&header_bytes)?;
+        let initial_bytes = backend.read_initial_bytes().await?;
 
-        let root_directory = Self::read_directory_with_backend(
-            &backend,
-            header.internal_compression,
-            header.root_offset as usize,
-            header.root_length as usize,
-        )
-        .await?;
+        let header = Header::try_from_bytes(&initial_bytes[..HEADER_SIZE])?;
+
+        let directory_bytes = &initial_bytes
+            [(header.root_offset as _)..(header.root_offset + header.root_length) as _];
+        let root_directory =
+            Self::read_compressed_directory(header.internal_compression, directory_bytes).await?;
 
         Ok(Self {
             header,
@@ -56,7 +54,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
 
         let mut data = vec![0; entry.length as _];
         self.backend
-            .read_bytes(
+            .read_exact(
                 data.as_mut_slice(),
                 (self.header.data_offset + entry.offset) as _,
             )
@@ -77,7 +75,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     pub async fn get_metadata(&self) -> Result<String, Error> {
         let mut metadata = vec![0; self.header.metadata_length as _];
         self.backend
-            .read_bytes(metadata.as_mut_slice(), self.header.metadata_offset as _)
+            .read_exact(metadata.as_mut_slice(), self.header.metadata_offset as _)
             .await?;
 
         let decompressed_metadata =
@@ -131,6 +129,15 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
         .await
     }
 
+    async fn read_compressed_directory(
+        compression: Compression,
+        bytes: &[u8],
+    ) -> Result<Directory, Error> {
+        let decompressed_bytes = Self::decompress(compression, bytes).await?;
+
+        Directory::try_from(decompressed_bytes.as_slice())
+    }
+
     async fn read_directory_with_backend(
         backend: &B,
         compression: Compression,
@@ -139,12 +146,10 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     ) -> Result<Directory, Error> {
         let mut directory_bytes = vec![0u8; length];
         backend
-            .read_bytes(directory_bytes.as_mut_slice(), offset)
+            .read_exact(directory_bytes.as_mut_slice(), offset)
             .await?;
 
-        let decompressed_bytes = Self::decompress(compression, &directory_bytes[..]).await?;
-
-        Directory::try_from(decompressed_bytes.as_slice())
+        Self::read_compressed_directory(compression, &directory_bytes[..]).await
     }
 
     async fn decompress(compression: Compression, bytes: &[u8]) -> Result<Vec<u8>, Error> {
@@ -188,17 +193,32 @@ impl AsyncPmTilesReader<MmapBackend> {
 
 #[async_trait]
 pub trait AsyncBackend {
-    async fn read_bytes(&self, dst: &mut [u8], offset: usize) -> Result<(), Error>;
+    /// Reads exactly `dst.len()` starting at [offset]
+    async fn read_exact(&self, dst: &mut [u8], offset: usize) -> Result<(), Error>;
+
+    /// Reads up to `dst.len()` bytes into [dst].
+    async fn read(&self, dst: &mut [u8], offset: usize) -> Result<usize, Error>;
+
+    /// Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
+    async fn read_initial_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut bytes = vec![0; MAX_INITIAL_BYTES];
+        let n_read_bytes = self.read(bytes.as_mut_slice(), 0).await?;
+        if n_read_bytes < HEADER_SIZE {
+            return Err(Error::InvalidHeader);
+        }
+
+        Ok(bytes)
+    }
 
     async fn read_header_bytes(&self) -> Result<[u8; 127], Error> {
         let mut header_bytes = [0; 127];
-        self.read_bytes(&mut header_bytes, 0).await?;
+        self.read_exact(&mut header_bytes, 0).await?;
 
         Ok(header_bytes)
     }
 }
 
-#[cfg(test)]
+#[cfg(all(feature = "mmap-async-tokio", test))]
 mod tests {
     use std::path::Path;
 
