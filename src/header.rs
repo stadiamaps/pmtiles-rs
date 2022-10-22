@@ -1,6 +1,6 @@
-use std::{io::Cursor, num::NonZeroU64, panic::catch_unwind};
+use std::{num::NonZeroU64, panic::catch_unwind};
 
-use bytes::Buf;
+use bytes::{Buf, Bytes};
 
 use crate::error::Error;
 
@@ -113,12 +113,12 @@ impl Header {
         buf.get_i32_le() as f32 / 10_000_000.
     }
 
-    pub fn try_from_bytes(raw_bytes: &[u8]) -> Result<Self, Error> {
-        let mut bytes = Cursor::new(&raw_bytes[V3_MAGIC.len()..HEADER_SIZE]);
+    pub fn try_from_bytes(mut bytes: Bytes) -> Result<Self, Error> {
+        let magic_bytes = bytes.split_to(V3_MAGIC.len());
 
         // Assert magic
-        if &raw_bytes[0..V3_MAGIC.len()] != V3_MAGIC.as_bytes() {
-            return Err(if &raw_bytes[0..V2_MAGIC.len()] == V2_MAGIC.as_bytes() {
+        if magic_bytes != V3_MAGIC {
+            return Err(if magic_bytes.starts_with(V2_MAGIC.as_bytes()) {
                 Error::UnsupportedPmTilesVersion
             } else {
                 Error::InvalidMagicNumber
@@ -161,6 +161,7 @@ impl Header {
 
 #[cfg(test)]
 mod tests {
+    use bytes::{Bytes, BytesMut};
     use std::fs::File;
     use std::io::Read;
     use std::num::NonZeroU64;
@@ -175,7 +176,8 @@ mod tests {
         test.read_exact(header_bytes.as_mut_slice())
             .expect("Unable to read header.");
 
-        let header = Header::try_from_bytes(&header_bytes).expect("Unable to decode header");
+        let header = Header::try_from_bytes(Bytes::copy_from_slice(&header_bytes))
+            .expect("Unable to decode header");
 
         // TODO: should be 3, but currently the ascii char 3, assert_eq!(header.version, 3);
         assert_eq!(header.tile_type, TileType::Png);
@@ -198,11 +200,12 @@ mod tests {
     fn read_valid_mvt_header() {
         let mut test = File::open("fixtures/protomaps(vector)ODbL_firenze.pmtiles")
             .expect("Unable to open test file.");
-        let mut header_bytes = [0; HEADER_SIZE];
-        test.read_exact(header_bytes.as_mut_slice())
+        let mut header_bytes = BytesMut::zeroed(HEADER_SIZE);
+        test.read_exact(header_bytes.as_mut())
             .expect("Unable to read header.");
 
-        let header = Header::try_from_bytes(&header_bytes).expect("Unable to decode header");
+        let header =
+            Header::try_from_bytes(header_bytes.freeze()).expect("Unable to decode header");
 
         assert_eq!(header.version, 3);
         assert_eq!(header.tile_type, TileType::Mvt);

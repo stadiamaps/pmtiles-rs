@@ -3,6 +3,7 @@ use std::path::Path;
 
 use async_recursion::async_recursion;
 use async_trait::async_trait;
+use bytes::Bytes;
 #[cfg(feature = "http-async")]
 use reqwest::{Client, IntoUrl};
 #[cfg(feature = "tokio")]
@@ -31,12 +32,16 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     ///
     /// Note: Prefer using new_with_* methods.
     pub async fn try_from_source(backend: B) -> Result<Self, Error> {
-        let initial_bytes = backend.read_initial_bytes().await?;
+        let mut initial_bytes = backend.read_initial_bytes().await?;
 
-        let header = Header::try_from_bytes(&initial_bytes[..HEADER_SIZE])?;
+        let header_bytes = initial_bytes.split_to(HEADER_SIZE);
 
-        let directory_bytes = &initial_bytes
-            [(header.root_offset as _)..(header.root_offset + header.root_length) as _];
+        let header = Header::try_from_bytes(header_bytes)?;
+
+        let directory_bytes = initial_bytes
+            .split_off((header.root_offset as usize) - HEADER_SIZE)
+            .split_to(header.root_length as _);
+
         let root_directory =
             Self::read_compressed_directory(header.internal_compression, directory_bytes).await?;
 
@@ -52,11 +57,11 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
         let tile_id = tile_id(z, x, y);
         let entry = self.find_tile_entry(tile_id, None, 0).await?;
 
-        let mut data = vec![0; entry.length as _];
-        self.backend
+        let data = self
+            .backend
             .read_exact(
-                data.as_mut_slice(),
                 (self.header.data_offset + entry.offset) as _,
+                entry.length as _,
             )
             .await
             .ok()?;
@@ -73,15 +78,18 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     /// Note: by spec, this should be valid JSON. This method currently returns a [String].
     /// This may change in the future.
     pub async fn get_metadata(&self) -> Result<String, Error> {
-        let mut metadata = vec![0; self.header.metadata_length as _];
-        self.backend
-            .read_exact(metadata.as_mut_slice(), self.header.metadata_offset as _)
+        let metadata = self
+            .backend
+            .read_exact(
+                self.header.metadata_offset as _,
+                self.header.metadata_length as _,
+            )
             .await?;
 
         let decompressed_metadata =
-            Self::decompress(self.header.internal_compression, metadata.as_slice()).await?;
+            Self::decompress(self.header.internal_compression, metadata).await?;
 
-        Ok(String::from_utf8(decompressed_metadata)?)
+        Ok(String::from_utf8(decompressed_metadata.to_vec())?)
     }
 
     #[async_recursion]
@@ -131,11 +139,11 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
 
     async fn read_compressed_directory(
         compression: Compression,
-        bytes: &[u8],
+        bytes: Bytes,
     ) -> Result<Directory, Error> {
         let decompressed_bytes = Self::decompress(compression, bytes).await?;
 
-        Directory::try_from(decompressed_bytes.as_slice())
+        Directory::try_from(decompressed_bytes)
     }
 
     async fn read_directory_with_backend(
@@ -144,26 +152,23 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
         offset: usize,
         length: usize,
     ) -> Result<Directory, Error> {
-        let mut directory_bytes = vec![0u8; length];
-        backend
-            .read_exact(directory_bytes.as_mut_slice(), offset)
-            .await?;
+        let directory_bytes = backend.read_exact(offset, length).await?;
 
-        Self::read_compressed_directory(compression, &directory_bytes[..]).await
+        Self::read_compressed_directory(compression, directory_bytes).await
     }
 
-    async fn decompress(compression: Compression, bytes: &[u8]) -> Result<Vec<u8>, Error> {
+    async fn decompress(compression: Compression, bytes: Bytes) -> Result<Bytes, Error> {
         let mut decompressed_bytes = Vec::with_capacity(bytes.len() * 2);
         match compression {
             Compression::Gzip => {
-                async_compression::tokio::bufread::GzipDecoder::new(bytes)
+                async_compression::tokio::bufread::GzipDecoder::new(&bytes[..])
                     .read_to_end(&mut decompressed_bytes)
                     .await?;
             }
             _ => todo!("Support other forms of internal compression."),
         }
 
-        Ok(decompressed_bytes)
+        Ok(Bytes::from(decompressed_bytes))
     }
 }
 
@@ -193,28 +198,20 @@ impl AsyncPmTilesReader<MmapBackend> {
 
 #[async_trait]
 pub trait AsyncBackend {
-    /// Reads exactly `dst.len()` starting at [offset]
-    async fn read_exact(&self, dst: &mut [u8], offset: usize) -> Result<(), Error>;
+    /// Reads exactly `length` bytes starting at `offset`
+    async fn read_exact(&self, offset: usize, length: usize) -> Result<Bytes, Error>;
 
-    /// Reads up to `dst.len()` bytes into [dst].
-    async fn read(&self, dst: &mut [u8], offset: usize) -> Result<usize, Error>;
+    /// Reads up to `length` bytes starting at `offset`.
+    async fn read(&self, offset: usize, length: usize) -> Result<Bytes, Error>;
 
     /// Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
-    async fn read_initial_bytes(&self) -> Result<Vec<u8>, Error> {
-        let mut bytes = vec![0; MAX_INITIAL_BYTES];
-        let n_read_bytes = self.read(bytes.as_mut_slice(), 0).await?;
-        if n_read_bytes < HEADER_SIZE {
+    async fn read_initial_bytes(&self) -> Result<Bytes, Error> {
+        let bytes = self.read(0, MAX_INITIAL_BYTES).await?;
+        if bytes.len() < HEADER_SIZE {
             return Err(Error::InvalidHeader);
         }
 
         Ok(bytes)
-    }
-
-    async fn read_header_bytes(&self) -> Result<[u8; 127], Error> {
-        let mut header_bytes = [0; 127];
-        self.read_exact(&mut header_bytes, 0).await?;
-
-        Ok(header_bytes)
     }
 }
 

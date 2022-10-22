@@ -1,4 +1,5 @@
 use crate::{Compression, TileType};
+use bytes::Bytes;
 use hilbert_2d::Variant;
 
 pub(crate) fn tile_id(z: u8, x: u64, y: u64) -> u64 {
@@ -15,7 +16,7 @@ pub(crate) fn tile_id(z: u8, x: u64, y: u64) -> u64 {
 }
 
 pub struct Tile {
-    pub data: Vec<u8>,
+    pub data: Bytes,
     pub tile_type: TileType,
     pub tile_compression: Compression,
 }
