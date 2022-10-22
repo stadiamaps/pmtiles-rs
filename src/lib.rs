@@ -5,9 +5,10 @@
 
 use async_recursion::async_recursion;
 use async_trait::async_trait;
-use directory::{Directory, Entry};
 use hilbert_2d::Variant;
 use tokio::io::AsyncReadExt;
+
+use directory::{Directory, Entry};
 
 use crate::error::Error;
 use crate::header::{Compression, Header, TileType};
@@ -31,13 +32,13 @@ pub struct Tile {
     tile_compression: Compression,
 }
 
-pub struct AsyncPmTiles<B: AsyncBackend> {
+pub struct AsyncPmTilesReader<B: AsyncBackend> {
     header: Header,
     backend: B,
     root_directory: Directory,
 }
 
-impl<B: AsyncBackend + Sync + Send> AsyncPmTiles<B> {
+impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     pub async fn try_from_source(backend: B) -> Result<Self, Error> {
         let mut header_bytes = [0; 127];
         backend.read_bytes(&mut header_bytes, 0).await?;
@@ -166,33 +167,35 @@ mod test {
 
     use crate::mmap::MmapBackend;
 
-    use super::AsyncPmTiles;
+    use super::AsyncPmTilesReader;
 
     #[test]
     fn test_tile_id() {
-        assert_eq!(AsyncPmTiles::<MmapBackend>::tile_id(0, 0, 0), 0);
-        assert_eq!(AsyncPmTiles::<MmapBackend>::tile_id(1, 1, 0), 4);
-        assert_eq!(AsyncPmTiles::<MmapBackend>::tile_id(2, 1, 3), 11);
-        assert_eq!(AsyncPmTiles::<MmapBackend>::tile_id(3, 3, 0), 26);
+        assert_eq!(AsyncPmTilesReader::<MmapBackend>::tile_id(0, 0, 0), 0);
+        assert_eq!(AsyncPmTilesReader::<MmapBackend>::tile_id(1, 1, 0), 4);
+        assert_eq!(AsyncPmTilesReader::<MmapBackend>::tile_id(2, 1, 3), 11);
+        assert_eq!(AsyncPmTilesReader::<MmapBackend>::tile_id(3, 3, 0), 26);
     }
 
     async fn create_backend() -> MmapBackend {
-        MmapBackend::try_from(Path::new("fixtures/stamen_toner_z3.pmtiles"))
-            .await
-            .expect("Unable to open test file.")
+        MmapBackend::try_from(Path::new(
+            "fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles",
+        ))
+        .await
+        .expect("Unable to open test file.")
     }
 
     #[tokio::test]
     async fn open_sanity_check() {
         let backend = create_backend().await;
-        AsyncPmTiles::try_from_source(backend)
+        AsyncPmTilesReader::try_from_source(backend)
             .await
             .expect("Unable to open PMTiles");
     }
 
     async fn compare_tiles(z: u8, x: u64, y: u64, fixture_bytes: &[u8]) {
         let backend = create_backend().await;
-        let tiles = AsyncPmTiles::try_from_source(backend)
+        let tiles = AsyncPmTilesReader::try_from_source(backend)
             .await
             .expect("Unable to open PMTiles");
 
@@ -227,17 +230,31 @@ mod test {
         compare_tiles(3, 4, 5, fixture_tile).await;
     }
 
-    // TODO: broken until we have a good fixture for leaf directories
-    //#[tokio::test]
-    async fn test_leaf_directories() {
-        let backend = MmapBackend::try_from(Path::new("fixtures/test.pmtiles"))
-            .await
-            .expect("Unable to open test file.");
-        let tiles = AsyncPmTiles::try_from_source(backend)
+    #[tokio::test]
+    async fn test_missing_tile() {
+        let backend =
+            MmapBackend::try_from(Path::new("fixtures/protomaps(vector)ODbL_firenze.pmtiles"))
+                .await
+                .expect("Unable to open test file.");
+        let tiles = AsyncPmTilesReader::try_from_source(backend)
             .await
             .expect("Unable to open PMTiles");
 
         let tile = tiles.get_tile(6, 31, 23).await;
+        assert!(tile.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_leaf_tile() {
+        let backend =
+            MmapBackend::try_from(Path::new("fixtures/protomaps(vector)ODbL_firenze.pmtiles"))
+                .await
+                .expect("Unable to open test file.");
+        let tiles = AsyncPmTilesReader::try_from_source(backend)
+            .await
+            .expect("Unable to open PMTiles");
+
+        let tile = tiles.get_tile(12, 2174, 1492).await;
         assert!(tile.is_some());
     }
 }

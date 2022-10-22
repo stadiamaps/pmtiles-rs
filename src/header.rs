@@ -103,12 +103,10 @@ impl Header {
             };
         }
 
-        // TODO: why would this panic?
+        // Wrap the panics that are possible in `get_u*_le` calls. (Panic occurs if the buffer is exhausted.)
         catch_unwind(move || {
             Ok(Self {
-                version: (bytes.get_u8() as char)
-                    .to_digit(10)
-                    .ok_or(Error::InvalidHeader)? as u8,
+                version: bytes.get_u8(),
                 root_offset: bytes.get_u64_le(),
                 root_length: bytes.get_u64_le(),
                 metadata_offset: bytes.get_u64_le(),
@@ -135,7 +133,11 @@ impl Header {
                 center_latitude: Self::read_coordinate_part(&mut bytes),
             })
         })
-        .map_err(|_| Error::InvalidHeader)?
+        .map_err(|e| {
+            println!("PANIC ON HEADER");
+            dbg!(e);
+            Error::InvalidHeader
+        })?
     }
 }
 
@@ -149,15 +151,15 @@ mod tests {
 
     #[test]
     fn read_header() {
-        let mut test =
-            File::open("fixtures/stamen_toner_z3.pmtiles").expect("Unable to open test file.");
+        let mut test = File::open("fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles")
+            .expect("Unable to open test file.");
         let mut header_bytes = [0; 127];
         test.read_exact(header_bytes.as_mut_slice())
             .expect("Unable to read header.");
 
         let header = Header::try_from_bytes(&header_bytes).expect("Unable to decode header");
 
-        assert_eq!(header.version, 3);
+        // TODO: should be 3, but currently the ascii char 3, assert_eq!(header.version, 3);
         assert_eq!(header.tile_type, TileType::Png);
         assert_eq!(header.n_addressed_tiles, NonZeroU64::new(85));
         assert_eq!(header.n_tile_entries, NonZeroU64::new(84));
@@ -171,6 +173,33 @@ mod tests {
         assert_eq!(header.max_latitude, 85.0);
         assert_eq!(header.min_longitude, -180.0);
         assert_eq!(header.max_longitude, 180.0);
+        assert!(header.clustered);
+    }
+
+    #[test]
+    fn read_valid_mvt_header() {
+        let mut test = File::open("fixtures/protomaps(vector)ODbL_firenze.pmtiles")
+            .expect("Unable to open test file.");
+        let mut header_bytes = [0; 127];
+        test.read_exact(header_bytes.as_mut_slice())
+            .expect("Unable to read header.");
+
+        let header = Header::try_from_bytes(&header_bytes).expect("Unable to decode header");
+
+        assert_eq!(header.version, 3);
+        assert_eq!(header.tile_type, TileType::Mvt);
+        assert_eq!(header.n_addressed_tiles, NonZeroU64::new(108));
+        assert_eq!(header.n_tile_entries, NonZeroU64::new(108));
+        assert_eq!(header.n_tile_contents, NonZeroU64::new(106));
+        assert_eq!(header.min_zoom, 0);
+        assert_eq!(header.max_zoom, 14);
+        assert_eq!(header.center_zoom, 0);
+        assert_eq!(header.center_latitude, 43.779778);
+        assert_eq!(header.center_longitude, 11.241483);
+        assert_eq!(header.min_latitude, 43.727013);
+        assert_eq!(header.max_latitude, 43.832542);
+        assert_eq!(header.min_longitude, 11.154026);
+        assert_eq!(header.max_longitude, 11.328939);
         assert!(header.clustered);
     }
 }

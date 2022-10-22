@@ -23,12 +23,7 @@ impl MmapBackend {
 #[async_trait]
 impl AsyncBackend for MmapBackend {
     async fn read_bytes(&self, dst: &mut [u8], offset: usize) -> Result<(), Error> {
-        self.file
-            .reader(offset)
-            .unwrap()
-            .read_exact(dst)
-            .await
-            .map_err(|_| Error::Reading)?;
+        self.file.reader(offset).unwrap().read_exact(dst).await?;
 
         Ok(())
     }

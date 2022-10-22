@@ -29,8 +29,8 @@ impl AsyncBackend for HttpBackend {
             .entry(RANGE)
             .or_insert(HeaderValue::from_static(""));
         let end = offset + dst.len() - 1;
-        *range_header = HeaderValue::from_str(format!("bytes={offset}-{end}").as_str())
-            .map_err(|_| Error::Reading)?;
+        // This .unwrap() should be safe, since `offset` and `end` will always be valid.
+        *range_header = HeaderValue::from_str(format!("bytes={offset}-{end}").as_str()).unwrap();
 
         let response = self.client.execute(req).await?.error_for_status()?;
 
@@ -54,12 +54,12 @@ impl From<reqwest::Error> for Error {
 #[cfg(test)]
 mod tests {
     use crate::http::HttpBackend;
-    use crate::AsyncPmTiles;
+    use crate::AsyncPmTilesReader;
 
-    static TEST_URL: &str = "https://protomaps-static.sfo3.digitaloceanspaces.com/cb_2018_us_zcta510_500k_nolimit.pmtiles";
+    static TEST_URL: &str =
+        "https://protomaps.github.io/PMTiles/protomaps(vector)ODbL_firenze.pmtiles";
 
-    // TODO: broken until we have a good valid v3 PMTiles file hosted somewhere.
-    // #[tokio::test]
+    #[tokio::test]
     async fn basic_http_test() {
         let client = reqwest::Client::builder()
             .use_rustls_tls()
@@ -67,7 +67,7 @@ mod tests {
             .expect("Unable to create HTTP client.");
         let backend = HttpBackend::new(client, TEST_URL).expect("Unable to build HTTP backend.");
 
-        let _tiles = AsyncPmTiles::try_from_source(backend)
+        let _tiles = AsyncPmTilesReader::try_from_source(backend)
             .await
             .expect("Unable to init PMTiles archive");
     }

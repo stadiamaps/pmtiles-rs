@@ -8,3 +8,7 @@ THIS CRATE IS WORK IN PROGRESS AND IS NOT READY FOR PRODUCTION USE!
 ## License
 
 This project is dual-licensed as MIT and Apache 2.0. You may select the license most appropriate for your project.
+
+## Test Data License
+
+Some PMTile fixtures copied from official [PMTiles repository](https://github.com/protomaps/PMTiles/commit/257b41dd0497e05d1d686aa92ce2f742b6251644).

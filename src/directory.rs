@@ -81,13 +81,15 @@ pub(crate) struct Entry {
 
 #[cfg(test)]
 mod tests {
-    use crate::{mmap::MmapBackend, AsyncBackend, AsyncPmTiles, Header};
+    use crate::{mmap::MmapBackend, AsyncBackend, AsyncPmTilesReader, Header};
     use std::path::Path;
 
     async fn create_backend() -> MmapBackend {
-        MmapBackend::try_from(Path::new("fixtures/stamen_toner_z3.pmtiles"))
-            .await
-            .expect("Unable to open test file.")
+        MmapBackend::try_from(Path::new(
+            "fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles",
+        ))
+        .await
+        .expect("Unable to open test file.")
     }
 
     #[tokio::test]
@@ -101,7 +103,7 @@ mod tests {
         )
         .expect("Unable to parse header.");
 
-        let directory = AsyncPmTiles::read_directory_with_backend(
+        let directory = AsyncPmTilesReader::read_directory_with_backend(
             &backend,
             header.root_offset as usize,
             header.root_length as usize,
