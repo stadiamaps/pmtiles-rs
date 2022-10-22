@@ -1,6 +1,9 @@
 use async_trait::async_trait;
-use reqwest::header::{HeaderValue, ACCEPT_RANGES, RANGE};
-use reqwest::{Client, IntoUrl, Method, Request, Url};
+use bytes::Bytes;
+use reqwest::{
+    header::{HeaderValue, ACCEPT_RANGES, RANGE},
+    Client, IntoUrl, Method, Request, Url,
+};
 
 use crate::{async_reader::AsyncBackend, error::Error};
 
@@ -22,27 +25,27 @@ static VALID_ACCEPT_RANGES: HeaderValue = HeaderValue::from_static("bytes");
 
 #[async_trait]
 impl AsyncBackend for HttpBackend {
-    async fn read_exact(&self, dst: &mut [u8], offset: usize) -> Result<(), Error> {
-        let n_bytes_read = self.read(dst, offset).await?;
+    async fn read_exact(&self, offset: usize, length: usize) -> Result<Bytes, Error> {
+        let data = self.read(offset, length).await?;
 
-        if n_bytes_read == dst.len() {
-            Ok(())
+        if data.len() == length {
+            Ok(data)
         } else {
             Err(Error::Http(format!(
                 "Unexpected number of bytes returned [expected: {}, received: {}].",
-                dst.len(),
-                n_bytes_read
+                length,
+                data.len()
             )))
         }
     }
 
-    async fn read(&self, dst: &mut [u8], offset: usize) -> Result<usize, Error> {
+    async fn read(&self, offset: usize, length: usize) -> Result<Bytes, Error> {
         let mut req = Request::new(Method::GET, self.pmtiles_url.clone());
         let range_header = req
             .headers_mut()
             .entry(RANGE)
             .or_insert(HeaderValue::from_static(""));
-        let end = offset + dst.len() - 1;
+        let end = offset + length - 1;
         // This .unwrap() should be safe, since `offset` and `end` will always be valid.
         *range_header = HeaderValue::from_str(format!("bytes={offset}-{end}").as_str()).unwrap();
 
@@ -54,13 +57,10 @@ impl AsyncBackend for HttpBackend {
 
         let response_bytes = response.bytes().await?;
 
-        if response_bytes.len() <= dst.len() {
-            // Read as many bytes as possible from response_bytes
-            dst[..response_bytes.len()].copy_from_slice(&response_bytes[..]);
-
-            Ok(response_bytes.len())
-        } else {
+        if response_bytes.len() > length {
             Err(Error::Http("HTTP response body is too long".to_string()))
+        } else {
+            Ok(response_bytes)
         }
     }
 }

@@ -1,8 +1,9 @@
+use std::io::ErrorKind;
 use std::path::Path;
 
 use async_trait::async_trait;
+use bytes::{Buf, Bytes};
 use fmmap::tokio::{AsyncMmapFile, AsyncMmapFileExt, AsyncOptions};
-use tokio::io::AsyncReadExt;
 
 use crate::{async_reader::AsyncBackend, error::Error};
 
@@ -28,18 +29,21 @@ impl From<fmmap::error::Error> for Error {
 
 #[async_trait]
 impl AsyncBackend for MmapBackend {
-    async fn read_exact(&self, dst: &mut [u8], offset: usize) -> Result<(), Error> {
-        self.file.reader(offset)?.read_exact(dst).await?;
-
-        Ok(())
+    async fn read_exact(&self, offset: usize, length: usize) -> Result<Bytes, Error> {
+        if self.file.len() >= offset + length {
+            Ok(self.file.reader(offset)?.copy_to_bytes(length))
+        } else {
+            Err(Error::Reading(std::io::Error::from(
+                ErrorKind::UnexpectedEof,
+            )))
+        }
     }
 
-    async fn read(&self, dst: &mut [u8], offset: usize) -> Result<usize, Error> {
-        let mut reader = self.file.reader(offset)?;
+    async fn read(&self, offset: usize, length: usize) -> Result<Bytes, Error> {
+        let reader = self.file.reader(offset)?;
 
-        let read_length = dst.len().min(reader.len());
-        reader.read_exact(&mut dst[..read_length]).await?;
+        let read_length = length.min(reader.len());
 
-        Ok(read_length)
+        Ok(self.file.reader(offset)?.copy_to_bytes(read_length))
     }
 }
