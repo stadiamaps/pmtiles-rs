@@ -92,6 +92,11 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
         Ok(String::from_utf8(decompressed_metadata.to_vec())?)
     }
 
+    pub async fn get_metadata_vector_layer(&self) -> Result<serde_json::Value, Error> {
+        let metadata = self.get_metadata().await?;
+        Ok(serde_json::from_str(&metadata)?)
+    }
+
     #[async_recursion]
     async fn find_tile_entry(
         &self,
@@ -317,5 +322,23 @@ mod tests {
         let metadata = tiles.get_metadata().await.expect("Unable to read metadata");
 
         assert!(!metadata.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_metadata_vec() {
+        let backend =
+            MmapBackend::try_from(Path::new("fixtures/protomaps(vector)ODbL_firenze.pmtiles"))
+                .await
+                .expect("Unable to open test file.");
+        let tiles = AsyncPmTilesReader::try_from_source(backend)
+            .await
+            .expect("Unable to open PMTiles");
+
+        let metadata = tiles
+            .get_metadata_vector_layer()
+            .await
+            .expect("Unable to parse metadata");
+
+        assert!(metadata.is_object());
     }
 }
