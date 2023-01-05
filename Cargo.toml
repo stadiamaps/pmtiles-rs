@@ -1,14 +1,12 @@
 [package]
 name = "pmtiles"
-version = "0.0.6"
+version = "0.1.0"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
 license = "MIT OR Apache-2.0"
-description = "Implementation of the PMTiles v3 spec with multiple sync and async backends. WORK IN PROGRESS."
+description = "Implementation of the PMTiles v3 spec with multiple sync and async backends."
 repository = "https://github.com/stadiamaps/pmtiles-rs"
 keywords = ["pmtiles", "gis", "geo"]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
 default = []
