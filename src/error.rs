@@ -8,7 +8,6 @@ pub enum Error {
     InvalidEntry,
     InvalidHeader,
     InvalidMetadata,
-    InvalidMetadataJson(serde_json::Error),
     InvalidTileType,
     Reading(std::io::Error),
     #[cfg(feature = "fmmap")]
@@ -25,11 +24,5 @@ impl From<std::io::Error> for Error {
 impl From<FromUtf8Error> for Error {
     fn from(_: FromUtf8Error) -> Self {
         Self::InvalidMetadata
-    }
-}
-
-impl From<serde_json::Error> for Error {
-    fn from(err: serde_json::Error) -> Self {
-        Self::InvalidMetadataJson(err)
     }
 }
