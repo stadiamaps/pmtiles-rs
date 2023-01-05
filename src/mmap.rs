@@ -1,4 +1,4 @@
-use std::io::ErrorKind;
+use std::io;
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -23,7 +23,7 @@ impl MmapBackend {
 
 impl From<fmmap::error::Error> for Error {
     fn from(_: fmmap::error::Error) -> Self {
-        Self::Reading(std::io::Error::from(std::io::ErrorKind::UnexpectedEof))
+        Self::Reading(io::Error::from(io::ErrorKind::UnexpectedEof))
     }
 }
 
@@ -33,8 +33,8 @@ impl AsyncBackend for MmapBackend {
         if self.file.len() >= offset + length {
             Ok(self.file.reader(offset)?.copy_to_bytes(length))
         } else {
-            Err(Error::Reading(std::io::Error::from(
-                ErrorKind::UnexpectedEof,
+            Err(Error::Reading(io::Error::from(
+                io::ErrorKind::UnexpectedEof,
             )))
         }
     }
