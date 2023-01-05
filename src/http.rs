@@ -1,11 +1,10 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use reqwest::{
-    header::{HeaderValue, ACCEPT_RANGES, RANGE},
-    Client, IntoUrl, Method, Request, Url,
-};
+use reqwest::header::{HeaderValue, ACCEPT_RANGES, RANGE};
+use reqwest::{Client, IntoUrl, Method, Request, Url};
 
-use crate::{async_reader::AsyncBackend, error::Error};
+use crate::async_reader::AsyncBackend;
+use crate::error::Error;
 
 pub struct HttpBackend {
     client: Client,
@@ -81,15 +80,9 @@ mod tests {
 
     #[tokio::test]
     async fn basic_http_test() {
-        let client = reqwest::Client::builder()
-            .use_rustls_tls()
-            .build()
-            .expect("Unable to create HTTP client.");
-        let backend =
-            HttpBackend::try_from(client, TEST_URL).expect("Unable to build HTTP backend.");
+        let client = reqwest::Client::builder().use_rustls_tls().build().unwrap();
+        let backend = HttpBackend::try_from(client, TEST_URL).unwrap();
 
-        let _tiles = AsyncPmTilesReader::try_from_source(backend)
-            .await
-            .expect("Unable to init PMTiles archive");
+        let _tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     }
 }

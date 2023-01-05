@@ -1,6 +1,6 @@
 [package]
 name = "pmtiles"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
 license = "MIT OR Apache-2.0"
@@ -12,6 +12,7 @@ keywords = ["pmtiles", "gis", "geo"]
 default = []
 http-async = ["reqwest", "tokio"]
 mmap-async-tokio = ["fmmap", "fmmap/tokio-async", "tokio"]
+tilejson = ["dep:tilejson", "serde", "serde_json"]
 
 # TODO: support other async libraries
 
@@ -24,9 +25,11 @@ bytes = "1"
 fmmap = { version = "0.3", default-features = false, optional = true }
 hilbert_2d = "1"
 reqwest = { version = "0.11", default-features = false, optional = true }
-tilejson = "0.3"
 tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
 varint-rs = "2"
+tilejson = { version = "0.3", optional = true }
+serde = { version = "1", optional = true }
+serde_json = { version = "1", optional = true }
 
 [dev-dependencies]
 fmmap = { version = "0.3", features = ["tokio-async"] }

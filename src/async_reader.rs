@@ -9,17 +9,15 @@ use reqwest::{Client, IntoUrl};
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
 
+use crate::directory::{Directory, Entry};
+use crate::error::Error;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 #[cfg(feature = "http-async")]
 use crate::http::HttpBackend;
 #[cfg(feature = "mmap-async-tokio")]
 use crate::mmap::MmapBackend;
-use crate::{
-    directory::{Directory, Entry},
-    error::Error,
-    tile::{tile_id, Tile},
-    Compression, Header,
-};
+use crate::tile::{tile_id, Tile};
+use crate::{Compression, Header};
 
 pub struct AsyncPmTilesReader<B: AsyncBackend> {
     pub header: Header,
@@ -90,6 +88,45 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
             Self::decompress(self.header.internal_compression, metadata).await?;
 
         Ok(String::from_utf8(decompressed_metadata.to_vec())?)
+    }
+
+    #[cfg(feature = "tilejson")]
+    pub async fn parse_tilejson(&self, sources: Vec<String>) -> Result<tilejson::TileJSON, Error> {
+        use serde_json::Value;
+
+        let meta = self.get_metadata().await?;
+        let meta: Value = serde_json::from_str(&meta).map_err(|_| Error::InvalidMetadata)?;
+        let Value::Object(meta) = meta else {
+            return Err(Error::InvalidMetadata);
+        };
+
+        let mut tj = self.header.get_tilejson(sources);
+        for (key, value) in meta {
+            if let Value::String(v) = value {
+                if key == "description" {
+                    tj.description = Some(v);
+                } else if key == "attribution" {
+                    tj.attribution = Some(v);
+                } else if key == "legend" {
+                    tj.legend = Some(v);
+                } else if key == "name" {
+                    tj.name = Some(v);
+                } else if key == "version" {
+                    tj.version = Some(v);
+                } else {
+                    tj.other.insert(key, Value::String(v));
+                }
+            } else if key == "vector_layers" {
+                if let Ok(v) = serde_json::from_value::<Vec<tilejson::VectorLayer>>(value) {
+                    tj.vector_layers = Some(v);
+                } else {
+                    return Err(Error::InvalidMetadata);
+                }
+            } else {
+                tj.other.insert(key, value);
+            }
+        }
+        Ok(tj)
     }
 
     #[async_recursion]
@@ -189,7 +226,7 @@ impl AsyncPmTilesReader<MmapBackend> {
     /// Creates a new PMTiles reader from a file path using the async mmap backend.
     ///
     /// Fails if [p] does not exist or is an invalid archive.
-    pub async fn new_with_path(p: &Path) -> Result<Self, Error> {
+    pub async fn new_with_path<P: AsRef<Path>>(p: P) -> Result<Self, Error> {
         let backend = MmapBackend::try_from(p).await?;
 
         Self::try_from_source(backend).await
@@ -216,39 +253,22 @@ pub trait AsyncBackend {
 }
 
 #[cfg(test)]
+#[cfg(feature = "mmap-async-tokio")]
 mod tests {
-    use std::path::Path;
-
-    use crate::mmap::MmapBackend;
-
     use super::AsyncPmTilesReader;
-
-    async fn create_backend() -> MmapBackend {
-        MmapBackend::try_from(Path::new(
-            "fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles",
-        ))
-        .await
-        .expect("Unable to open test file.")
-    }
+    use crate::mmap::MmapBackend;
+    use crate::tests::{RASTER_FILE, VECTOR_FILE};
 
     #[tokio::test]
     async fn open_sanity_check() {
-        let backend = create_backend().await;
-        AsyncPmTilesReader::try_from_source(backend)
-            .await
-            .expect("Unable to open PMTiles");
+        let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
+        AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     }
 
     async fn compare_tiles(z: u8, x: u64, y: u64, fixture_bytes: &[u8]) {
-        let backend = create_backend().await;
-        let tiles = AsyncPmTilesReader::try_from_source(backend)
-            .await
-            .expect("Unable to open PMTiles");
-
-        let tile = tiles
-            .get_tile(z, x, y)
-            .await
-            .expect("Expected to get a tile.");
+        let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+        let tile = tiles.get_tile(z, x, y).await.unwrap();
 
         assert_eq!(
             tile.data.len(),
@@ -278,13 +298,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_missing_tile() {
-        let backend =
-            MmapBackend::try_from(Path::new("fixtures/protomaps(vector)ODbL_firenze.pmtiles"))
-                .await
-                .expect("Unable to open test file.");
-        let tiles = AsyncPmTilesReader::try_from_source(backend)
-            .await
-            .expect("Unable to open PMTiles");
+        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let tile = tiles.get_tile(6, 31, 23).await;
         assert!(tile.is_none());
@@ -292,13 +307,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_leaf_tile() {
-        let backend =
-            MmapBackend::try_from(Path::new("fixtures/protomaps(vector)ODbL_firenze.pmtiles"))
-                .await
-                .expect("Unable to open test file.");
-        let tiles = AsyncPmTilesReader::try_from_source(backend)
-            .await
-            .expect("Unable to open PMTiles");
+        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let tile = tiles.get_tile(12, 2174, 1492).await;
         assert!(tile.is_some());
@@ -306,16 +316,30 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_metadata() {
-        let backend =
-            MmapBackend::try_from(Path::new("fixtures/protomaps(vector)ODbL_firenze.pmtiles"))
-                .await
-                .expect("Unable to open test file.");
-        let tiles = AsyncPmTilesReader::try_from_source(backend)
-            .await
-            .expect("Unable to open PMTiles");
+        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
-        let metadata = tiles.get_metadata().await.expect("Unable to read metadata");
-
+        let metadata = tiles.get_metadata().await.unwrap();
         assert!(!metadata.is_empty());
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "tilejson")]
+    async fn test_parse_tilejson() {
+        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+
+        let tj = tiles.parse_tilejson(Vec::new()).await.unwrap();
+        assert!(tj.attribution.is_some());
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "tilejson")]
+    async fn test_parse_tilejson2() {
+        let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+
+        let tj = tiles.parse_tilejson(Vec::new()).await.unwrap();
+        assert!(tj.other.is_empty());
     }
 }
