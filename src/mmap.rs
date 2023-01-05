@@ -5,14 +5,15 @@ use async_trait::async_trait;
 use bytes::{Buf, Bytes};
 use fmmap::tokio::{AsyncMmapFile, AsyncMmapFileExt, AsyncOptions};
 
-use crate::{async_reader::AsyncBackend, error::Error};
+use crate::async_reader::AsyncBackend;
+use crate::error::Error;
 
 pub struct MmapBackend {
     file: AsyncMmapFile,
 }
 
 impl MmapBackend {
-    pub async fn try_from(p: &Path) -> Result<Self, Error> {
+    pub async fn try_from<P: AsRef<Path>>(p: P) -> Result<Self, Error> {
         Ok(Self {
             file: AsyncMmapFile::open_with_options(p, AsyncOptions::new().read(true))
                 .await

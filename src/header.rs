@@ -1,13 +1,16 @@
-use std::{num::NonZeroU64, panic::catch_unwind};
+use std::num::NonZeroU64;
+use std::panic::catch_unwind;
 
 use bytes::{Buf, Bytes};
-use tilejson::{Bounds, Center};
 
 use crate::error::Error;
 
+#[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
+#[cfg(any(feature = "http-async", feature = "mmap-async-tokio", test))]
 pub(crate) const HEADER_SIZE: usize = 127;
 
+#[allow(dead_code)]
 pub struct Header {
     pub(crate) version: u8,
     pub(crate) root_offset: u64,
@@ -27,8 +30,13 @@ pub struct Header {
     pub tile_type: TileType,
     pub min_zoom: u8,
     pub max_zoom: u8,
-    pub bounds: Bounds,
-    pub center: Center,
+    pub min_longitude: f32,
+    pub min_latitude: f32,
+    pub max_longitude: f32,
+    pub max_latitude: f32,
+    pub center_zoom: u8,
+    pub center_longitude: f32,
+    pub center_latitude: f32,
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -61,6 +69,28 @@ impl TryInto<Compression> for u8 {
             3 => Ok(Compression::Brotli),
             4 => Ok(Compression::Zstd),
             _ => Err(Error::InvalidCompression),
+        }
+    }
+}
+
+#[cfg(feature = "tilejson")]
+impl Header {
+    pub fn get_tilejson(&self, sources: Vec<String>) -> tilejson::TileJSON {
+        tilejson::tilejson! {
+            tiles: sources,
+            minzoom: self.min_zoom,
+            maxzoom: self.max_zoom,
+            bounds: tilejson::Bounds::new(
+                self.min_longitude as f64,
+                self.min_latitude as f64,
+                self.max_longitude as f64,
+                self.max_latitude as f64,
+            ),
+            center: tilejson::Center::new(
+                self.center_longitude as f64,
+                self.center_latitude as f64,
+                self.center_zoom,
+            ),
         }
     }
 }
@@ -142,17 +172,13 @@ impl Header {
                 tile_type: bytes.get_u8().try_into()?,
                 min_zoom: bytes.get_u8(),
                 max_zoom: bytes.get_u8(),
-                bounds: Bounds::new(
-                    Self::read_coordinate_part(&mut bytes) as f64,
-                    Self::read_coordinate_part(&mut bytes) as f64,
-                    Self::read_coordinate_part(&mut bytes) as f64,
-                    Self::read_coordinate_part(&mut bytes) as f64,
-                ),
-                center: Center {
-                    zoom: bytes.get_u8(),
-                    longitude: Self::read_coordinate_part(&mut bytes) as f64,
-                    latitude: Self::read_coordinate_part(&mut bytes) as f64,
-                },
+                min_longitude: Self::read_coordinate_part(&mut bytes),
+                min_latitude: Self::read_coordinate_part(&mut bytes),
+                max_longitude: Self::read_coordinate_part(&mut bytes),
+                max_latitude: Self::read_coordinate_part(&mut bytes),
+                center_zoom: bytes.get_u8(),
+                center_longitude: Self::read_coordinate_part(&mut bytes),
+                center_latitude: Self::read_coordinate_part(&mut bytes),
             })
         })
         .map_err(|_| Error::InvalidHeader)?
@@ -161,24 +187,22 @@ impl Header {
 
 #[cfg(test)]
 mod tests {
-    use bytes::{Bytes, BytesMut};
     use std::fs::File;
     use std::io::Read;
     use std::num::NonZeroU64;
-    use tilejson::{Bounds, Center};
+
+    use bytes::{Bytes, BytesMut};
 
     use crate::header::{Header, TileType, HEADER_SIZE};
+    use crate::tests::{RASTER_FILE, VECTOR_FILE};
 
     #[test]
     fn read_header() {
-        let mut test = File::open("fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles")
-            .expect("Unable to open test file.");
+        let mut test = File::open(RASTER_FILE).unwrap();
         let mut header_bytes = [0; HEADER_SIZE];
-        test.read_exact(header_bytes.as_mut_slice())
-            .expect("Unable to read header.");
+        test.read_exact(header_bytes.as_mut_slice()).unwrap();
 
-        let header = Header::try_from_bytes(Bytes::copy_from_slice(&header_bytes))
-            .expect("Unable to decode header");
+        let header = Header::try_from_bytes(Bytes::copy_from_slice(&header_bytes)).unwrap();
 
         // TODO: should be 3, but currently the ascii char 3, assert_eq!(header.version, 3);
         assert_eq!(header.tile_type, TileType::Png);
@@ -187,21 +211,23 @@ mod tests {
         assert_eq!(header.n_tile_contents, NonZeroU64::new(80));
         assert_eq!(header.min_zoom, 0);
         assert_eq!(header.max_zoom, 3);
-        assert_eq!(header.center, Center::default());
-        assert_eq!(header.bounds, Bounds::new(-180.0, -85.0, 180.0, 85.0));
+        assert_eq!(header.center_zoom, 0);
+        assert_eq!(header.center_latitude, 0.0);
+        assert_eq!(header.center_longitude, 0.0);
+        assert_eq!(header.min_latitude, -85.0);
+        assert_eq!(header.max_latitude, 85.0);
+        assert_eq!(header.min_longitude, -180.0);
+        assert_eq!(header.max_longitude, 180.0);
         assert!(header.clustered);
     }
 
     #[test]
     fn read_valid_mvt_header() {
-        let mut test = File::open("fixtures/protomaps(vector)ODbL_firenze.pmtiles")
-            .expect("Unable to open test file.");
+        let mut test = File::open(VECTOR_FILE).unwrap();
         let mut header_bytes = BytesMut::zeroed(HEADER_SIZE);
-        test.read_exact(header_bytes.as_mut())
-            .expect("Unable to read header.");
+        test.read_exact(header_bytes.as_mut()).unwrap();
 
-        let header =
-            Header::try_from_bytes(header_bytes.freeze()).expect("Unable to decode header");
+        let header = Header::try_from_bytes(header_bytes.freeze()).unwrap();
 
         assert_eq!(header.version, 3);
         assert_eq!(header.tile_type, TileType::Mvt);
@@ -210,19 +236,55 @@ mod tests {
         assert_eq!(header.n_tile_contents, NonZeroU64::new(106));
         assert_eq!(header.min_zoom, 0);
         assert_eq!(header.max_zoom, 14);
+        assert_eq!(header.center_zoom, 0);
+        assert_eq!(header.center_latitude, 43.779778);
+        assert_eq!(header.center_longitude, 11.241483);
+        assert_eq!(header.min_latitude, 43.727013);
+        assert_eq!(header.max_latitude, 43.832542);
+        assert_eq!(header.min_longitude, 11.154026);
+        assert_eq!(header.max_longitude, 11.328939);
+        assert!(header.clustered);
+    }
+
+    #[test]
+    #[cfg(feature = "tilejson")]
+    fn get_tilejson_raster() {
+        use tilejson::{Bounds, Center};
+
+        let mut test = File::open(RASTER_FILE).unwrap();
+        let mut header_bytes = BytesMut::zeroed(HEADER_SIZE);
+        test.read_exact(header_bytes.as_mut()).unwrap();
+        let header = Header::try_from_bytes(header_bytes.freeze()).unwrap();
+        let tj = header.get_tilejson(Vec::new());
+
+        assert_eq!(tj.center, Some(Center::default()));
+        assert_eq!(tj.bounds, Some(Bounds::new(-180.0, -85.0, 180.0, 85.0)));
+    }
+
+    #[test]
+    #[cfg(feature = "tilejson")]
+    fn get_tilejson_vector() {
+        use tilejson::{Bounds, Center};
+
+        let mut test = File::open(VECTOR_FILE).unwrap();
+        let mut header_bytes = BytesMut::zeroed(HEADER_SIZE);
+        test.read_exact(header_bytes.as_mut()).unwrap();
+        let header = Header::try_from_bytes(header_bytes.freeze()).unwrap();
+        let tj = header.get_tilejson(Vec::new());
+
         assert_eq!(
-            header.center,
-            Center::new(11.241482734680176, 43.77977752685547, 0)
+            tj.center,
+            Some(Center::new(11.241482734680176, 43.77977752685547, 0))
         );
+
         assert_eq!(
-            header.bounds,
-            Bounds::new(
+            tj.bounds,
+            Some(Bounds::new(
                 11.15402603149414,
                 43.727012634277344,
                 11.328939437866211,
                 43.832542419433594
-            )
+            ))
         );
-        assert!(header.clustered);
     }
 }

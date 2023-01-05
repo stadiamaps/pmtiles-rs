@@ -1,6 +1,6 @@
-use bytes::{Buf, Bytes};
 use std::fmt::{Debug, Formatter};
 
+use bytes::{Buf, Bytes};
 use varint_rs::VarintReader;
 
 use crate::error::Error;
@@ -16,6 +16,7 @@ impl Debug for Directory {
 }
 
 impl Directory {
+    #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
     pub fn find_tile_id(&self, tile_id: u64) -> Option<&Entry> {
         match self.entries.binary_search_by(|e| e.tile_id.cmp(&tile_id)) {
             Ok(idx) => self.entries.get(idx),
@@ -85,48 +86,34 @@ pub(crate) struct Entry {
 
 #[cfg(test)]
 mod tests {
-    use bytes::BytesMut;
-    use std::io::Write;
-    use std::{
-        io::{BufReader, Read},
-        path::Path,
-    };
+    use std::io::{BufReader, Read, Write};
 
-    use crate::header::HEADER_SIZE;
-    use crate::Header;
+    use bytes::BytesMut;
 
     use super::Directory;
+    use crate::header::HEADER_SIZE;
+    use crate::tests::RASTER_FILE;
+    use crate::Header;
 
     #[test]
     fn read_root_directory() {
-        let test_file = std::fs::File::open(Path::new(
-            "fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles",
-        ))
-        .expect("Unable to open fixture.");
+        let test_file = std::fs::File::open(RASTER_FILE).unwrap();
         let mut reader = BufReader::new(test_file);
 
         let mut header_bytes = BytesMut::zeroed(HEADER_SIZE);
-        reader
-            .read_exact(header_bytes.as_mut())
-            .expect("Unable to read header");
+        reader.read_exact(header_bytes.as_mut()).unwrap();
 
-        let header =
-            Header::try_from_bytes(header_bytes.freeze()).expect("Unable to parse header.");
+        let header = Header::try_from_bytes(header_bytes.freeze()).unwrap();
         let mut directory_bytes = BytesMut::zeroed(header.root_length as usize);
-        reader
-            .read_exact(directory_bytes.as_mut())
-            .expect("Unable to read root directory bytes.");
+        reader.read_exact(directory_bytes.as_mut()).unwrap();
 
         let mut decompressed = BytesMut::zeroed(directory_bytes.len() * 2);
         {
             let mut gunzip = flate2::write::GzDecoder::new(decompressed.as_mut());
-            gunzip
-                .write_all(&directory_bytes)
-                .expect("Unable to decompress");
+            gunzip.write_all(&directory_bytes).unwrap();
         }
 
-        let directory =
-            Directory::try_from(decompressed.freeze()).expect("Unable to read directory");
+        let directory = Directory::try_from(decompressed.freeze()).unwrap();
 
         assert_eq!(directory.entries.len(), 84);
         // Note: this is not true for all tiles, just the first few...
