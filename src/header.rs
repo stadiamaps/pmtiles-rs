@@ -1,6 +1,7 @@
 use std::{num::NonZeroU64, panic::catch_unwind};
 
 use bytes::{Buf, Bytes};
+use tilejson::{Bounds, Center};
 
 use crate::error::Error;
 
@@ -26,13 +27,8 @@ pub struct Header {
     pub tile_type: TileType,
     pub min_zoom: u8,
     pub max_zoom: u8,
-    pub min_longitude: f32,
-    pub min_latitude: f32,
-    pub max_longitude: f32,
-    pub max_latitude: f32,
-    pub center_zoom: u8,
-    pub center_longitude: f32,
-    pub center_latitude: f32,
+    pub bounds: Bounds,
+    pub center: Center,
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -146,13 +142,17 @@ impl Header {
                 tile_type: bytes.get_u8().try_into()?,
                 min_zoom: bytes.get_u8(),
                 max_zoom: bytes.get_u8(),
-                min_longitude: Self::read_coordinate_part(&mut bytes),
-                min_latitude: Self::read_coordinate_part(&mut bytes),
-                max_longitude: Self::read_coordinate_part(&mut bytes),
-                max_latitude: Self::read_coordinate_part(&mut bytes),
-                center_zoom: bytes.get_u8(),
-                center_longitude: Self::read_coordinate_part(&mut bytes),
-                center_latitude: Self::read_coordinate_part(&mut bytes),
+                bounds: Bounds::new(
+                    Self::read_coordinate_part(&mut bytes) as f64,
+                    Self::read_coordinate_part(&mut bytes) as f64,
+                    Self::read_coordinate_part(&mut bytes) as f64,
+                    Self::read_coordinate_part(&mut bytes) as f64,
+                ),
+                center: Center {
+                    zoom: bytes.get_u8(),
+                    longitude: Self::read_coordinate_part(&mut bytes) as f64,
+                    latitude: Self::read_coordinate_part(&mut bytes) as f64,
+                },
             })
         })
         .map_err(|_| Error::InvalidHeader)?
@@ -165,6 +165,7 @@ mod tests {
     use std::fs::File;
     use std::io::Read;
     use std::num::NonZeroU64;
+    use tilejson::{Bounds, Center};
 
     use crate::header::{Header, TileType, HEADER_SIZE};
 
@@ -186,13 +187,8 @@ mod tests {
         assert_eq!(header.n_tile_contents, NonZeroU64::new(80));
         assert_eq!(header.min_zoom, 0);
         assert_eq!(header.max_zoom, 3);
-        assert_eq!(header.center_zoom, 0);
-        assert_eq!(header.center_latitude, 0.0);
-        assert_eq!(header.center_longitude, 0.0);
-        assert_eq!(header.min_latitude, -85.0);
-        assert_eq!(header.max_latitude, 85.0);
-        assert_eq!(header.min_longitude, -180.0);
-        assert_eq!(header.max_longitude, 180.0);
+        assert_eq!(header.center, Center::default());
+        assert_eq!(header.bounds, Bounds::new(-180.0, -85.0, 180.0, 85.0));
         assert!(header.clustered);
     }
 
@@ -214,13 +210,19 @@ mod tests {
         assert_eq!(header.n_tile_contents, NonZeroU64::new(106));
         assert_eq!(header.min_zoom, 0);
         assert_eq!(header.max_zoom, 14);
-        assert_eq!(header.center_zoom, 0);
-        assert_eq!(header.center_latitude, 43.779778);
-        assert_eq!(header.center_longitude, 11.241483);
-        assert_eq!(header.min_latitude, 43.727013);
-        assert_eq!(header.max_latitude, 43.832542);
-        assert_eq!(header.min_longitude, 11.154026);
-        assert_eq!(header.max_longitude, 11.328939);
+        assert_eq!(
+            header.center,
+            Center::new(11.241482734680176, 43.77977752685547, 0)
+        );
+        assert_eq!(
+            header.bounds,
+            Bounds::new(
+                11.15402603149414,
+                43.727012634277344,
+                11.328939437866211,
+                43.832542419433594
+            )
+        );
         assert!(header.clustered);
     }
 }

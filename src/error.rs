@@ -21,7 +21,7 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<std::string::FromUtf8Error> for Error {
+impl From<FromUtf8Error> for Error {
     fn from(_: FromUtf8Error) -> Self {
         Self::InvalidMetadata
     }
