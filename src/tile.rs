@@ -10,12 +10,7 @@ pub(crate) fn tile_id(z: u8, x: u64, y: u64) -> u64 {
 
     let base_id: u64 = 1 + (1..z).map(|i| 4u64.pow(i as u32)).sum::<u64>();
 
-    let tile_id = hilbert_2d::xy2h_discrete(
-        x as usize,
-        y as usize,
-        z as usize,
-        hilbert_2d::Variant::Hilbert,
-    ) as u64;
+    let tile_id = hilbert_2d::u64::xy2h_discrete(x, y, z.into(), hilbert_2d::Variant::Hilbert);
 
     base_id + tile_id
 }
