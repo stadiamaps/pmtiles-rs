@@ -1,6 +1,9 @@
 # PMTiles (for Rust)
 
-![Crates.io](https://img.shields.io/crates/v/pmtiles) ![GitHub branch checks state](https://img.shields.io/github/checks-status/stadiamaps/pmtiles-rs/main)
+[![GitHub](https://img.shields.io/badge/github-stadiamaps/pmtiles--rs-8da0cb?logo=github)](https://github.com/stadiamaps/pmtiles-rs)
+[![crates.io version](https://img.shields.io/crates/v/pmtiles.svg)](https://crates.io/crates/pmtiles)
+[![docs.rs docs](https://docs.rs/pmtiles/badge.svg)](https://docs.rs/pmtiles)
+[![CI build](https://github.com/stadiamaps/pmtiles-rs/workflows/Cargo%20Test/badge.svg)](https://github.com/stadiamaps/pmtiles-rs/actions)
 
 This crate implements the [PMTiles v3 spec](https://github.com/protomaps/PMTiles/blob/master/spec/v3/spec.md),
 originally created by Brandon Liu for Protomaps.
