@@ -342,4 +342,17 @@ mod tests {
         let tj = tiles.parse_tilejson(Vec::new()).await.unwrap();
         assert!(tj.other.is_empty());
     }
+
+    #[tokio::test]
+    #[ignore = "This test requires a 200mb file to be downloaded. See https://github.com/maplibre/martin/issues/675"]
+    async fn test_martin_675() {
+        // the file was manually placed here from the test because it is 200mb
+        // see also https://github.com/protomaps/PMTiles/issues/182 - once the file is shrunk somehow?
+        let backend = MmapBackend::try_from("fixtures/tiles.pmtiles")
+            .await
+            .unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+        let tile = tiles.get_tile(7, 35, 50).await;
+        assert!(tile.is_some());
+    }
 }
