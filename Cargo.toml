@@ -44,6 +44,5 @@ flate2 = "1"
 all-features = true
 
 [patch.crates-io]
-# TODO: remove this once fmmap is updated
-# https://github.com/al8n/fmmap/pull/5
-fmmap = { git = "https://github.com/nyurik/fmmap", branch = "upgrade-deps" }
+# TODO: remove this once fmmap is released
+fmmap = { git = "https://github.com/al8n/fmmap", branch = "main" }
