@@ -4,7 +4,7 @@ use reqwest::header::{HeaderValue, ACCEPT_RANGES, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, Url};
 
 use crate::async_reader::AsyncBackend;
-use crate::error::Error;
+use crate::error::{Error, HttpError};
 
 pub struct HttpBackend {
     client: Client,
@@ -30,11 +30,7 @@ impl AsyncBackend for HttpBackend {
         if data.len() == length {
             Ok(data)
         } else {
-            Err(Error::Http(format!(
-                "Unexpected number of bytes returned [expected: {}, received: {}].",
-                length,
-                data.len()
-            )))
+            Err(HttpError::UnexpectedNumberOfBytesReturned(length, data.len()).into())
         }
     }
 
@@ -51,22 +47,16 @@ impl AsyncBackend for HttpBackend {
         let response = self.client.execute(req).await?.error_for_status()?;
 
         if response.headers().get(ACCEPT_RANGES) != Some(&VALID_ACCEPT_RANGES) {
-            return Err(Error::Http("Range requests unsupported".to_string()));
+            return Err(HttpError::RangeRequestsUnsupported.into());
         }
 
         let response_bytes = response.bytes().await?;
 
         if response_bytes.len() > length {
-            Err(Error::Http("HTTP response body is too long".to_string()))
+            Err(HttpError::ResponseBodyTooLong(response_bytes.len(), length).into())
         } else {
             Ok(response_bytes)
         }
-    }
-}
-
-impl From<reqwest::Error> for Error {
-    fn from(e: reqwest::Error) -> Self {
-        Error::Http(e.to_string())
     }
 }
 
