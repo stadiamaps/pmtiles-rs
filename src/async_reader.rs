@@ -113,6 +113,9 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
                     tj.name = Some(v);
                 } else if key == "version" {
                     tj.version = Some(v);
+                } else if key == "minzoom" || key == "maxzoom" {
+                    // We already have the correct values from the header, so just drop these
+                    // attributes from the metadata silently, don't overwrite known-good values.
                 } else {
                     tj.other.insert(key, Value::String(v));
                 }
