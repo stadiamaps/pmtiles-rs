@@ -42,7 +42,3 @@ flate2 = "1"
 
 [package.metadata.docs.rs]
 all-features = true
-
-[patch.crates-io]
-# TODO: remove this once fmmap is released
-fmmap = { git = "https://github.com/al8n/fmmap", branch = "main" }
