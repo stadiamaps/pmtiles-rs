@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 #[cfg(feature = "http-async")]
 use reqwest::{Client, IntoUrl};
-#[cfg(feature = "tokio")]
+#[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 use tokio::io::AsyncReadExt;
 
 use crate::directory::{Directory, Entry};

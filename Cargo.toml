@@ -7,35 +7,38 @@ license = "MIT OR Apache-2.0"
 description = "Implementation of the PMTiles v3 spec with multiple sync and async backends."
 repository = "https://github.com/stadiamaps/pmtiles-rs"
 keywords = ["pmtiles", "gis", "geo"]
+rust-version = "1.61.0"
 
 [features]
 default = []
-http-async = ["reqwest", "tokio"]
-mmap-async-tokio = ["fmmap", "fmmap/tokio-async", "tokio"]
-tilejson = ["dep:tilejson", "serde", "serde_json"]
+http-async = ["dep:tokio", "dep:reqwest"]
+mmap-async-tokio = ["dep:tokio", "dep:fmmap", "fmmap?/tokio-async"]
+tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
 
 # TODO: support other async libraries
 
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
-async-compression = { version = "0.3", features = ["gzip", "zstd", "brotli", "tokio"] }
+# TODO: tokio is always requested here, but the tokio dependency is optional below - maybe make it required?
+async-compression = { version = "0.4", features = ["gzip", "zstd", "brotli", "tokio"] }
 async-recursion = "1"
 async-trait = "0.1"
 bytes = "1"
 fmmap = { version = "0.3", default-features = false, optional = true }
-hilbert_2d = "1.1"
+hilbert_2d = "1"
 reqwest = { version = "0.11", default-features = false, optional = true }
-tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
-varint-rs = "2"
-tilejson = { version = "0.3", optional = true }
 serde = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
+thiserror = "1"
+tilejson = { version = "0.3", optional = true }
+tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
+varint-rs = "2"
 
 [dev-dependencies]
 fmmap = { version = "0.3", features = ["tokio-async"] }
 reqwest = { version = "0.11", features = ["rustls-tls-webpki-roots"] }
 tokio = { version = "1", features = ["test-util", "macros", "rt"] }
-flate2 = "1.0.24"
+flate2 = "1"
 
 [package.metadata.docs.rs]
 all-features = true

@@ -1,13 +1,13 @@
-name: Cargo Test
+name: CI
 
 on:
-  push: {}
+  push:
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
   release:
-    branches:
-      - main
+    types: [published]
+  workflow_dispatch:
 
 jobs:
   build_and_test:
@@ -17,51 +17,15 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-
-      - name: Install fmt and clippy
-        run: rustup component add clippy rustfmt
-
-      - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
-
-      - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-targets --all-features -- -D warnings
-
-      - name: Run tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --all-targets --all-features
-
-      - name: Test http-async
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features http-async
-
-      - name: Test mmap-async-tokio
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features mmap-async-tokio
-
-      - name: Test tilejson
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features tilejson
+      - run: |
+          rustc --version
+          cargo --version
+          rustup --version
+      - run: cargo check
+      - run: rustup component add clippy rustfmt
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo test --all-targets --all-features
+      - run: cargo test --features http-async
+      - run: cargo test --features mmap-async-tokio
+      - run: cargo test --features tilejson

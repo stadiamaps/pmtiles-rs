@@ -3,7 +3,8 @@
 [![GitHub](https://img.shields.io/badge/github-stadiamaps/pmtiles--rs-8da0cb?logo=github)](https://github.com/stadiamaps/pmtiles-rs)
 [![crates.io version](https://img.shields.io/crates/v/pmtiles.svg)](https://crates.io/crates/pmtiles)
 [![docs.rs docs](https://docs.rs/pmtiles/badge.svg)](https://docs.rs/pmtiles)
-[![CI build](https://github.com/stadiamaps/pmtiles-rs/workflows/Cargo%20Test/badge.svg)](https://github.com/stadiamaps/pmtiles-rs/actions)
+[![crates.io version](https://img.shields.io/crates/l/pmtiles.svg)](https://github.com/stadiamaps/pmtiles-rs/blob/main/LICENSE-APACHE)
+[![CI build](https://github.com/stadiamaps/pmtiles-rs/workflows/CI/badge.svg)](https://github.com/stadiamaps/pmtiles-rs/actions)
 
 This crate implements the [PMTiles v3 spec](https://github.com/protomaps/PMTiles/blob/master/spec/v3/spec.md),
 originally created by Brandon Liu for Protomaps.
@@ -27,9 +28,25 @@ originally created by Brandon Liu for Protomaps.
 
 PRs welcome!
 
+## Development
+* This project is easier to develop with [just](https://github.com/casey/just#readme), a modern alternative to `make`. Install it with `cargo install just`.
+* To get a list of available commands, run `just`.
+* To run tests, use `just test`.
+
 ## License
 
-This project is dual-licensed as MIT and Apache 2.0. You may select the license most appropriate for your project.
+Licensed under either of
+
+* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+* MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+  at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in the work by you, as defined in the
+Apache-2.0 license, shall be dual licensed as above, without any
+additional terms or conditions.
 
 ## Test Data License
 
