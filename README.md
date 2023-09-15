@@ -9,8 +9,6 @@
 This crate implements the [PMTiles v3 spec](https://github.com/protomaps/PMTiles/blob/master/spec/v3/spec.md),
 originally created by Brandon Liu for Protomaps.
 
-**THIS CRATE IS NOT READY FOR PRODUCTION USE!** However, you might be able to use it for a demo project.
-
 ## Features
 
 - Opening and validating PMTile archives
