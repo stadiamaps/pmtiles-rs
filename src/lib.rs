@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 pub use crate::header::{Compression, Header, TileType};
 
 mod directory;
