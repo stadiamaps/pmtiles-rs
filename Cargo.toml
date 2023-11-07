@@ -1,6 +1,6 @@
 [package]
 name = "pmtiles"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
 license = "MIT OR Apache-2.0"
@@ -8,6 +8,7 @@ description = "Implementation of the PMTiles v3 spec with multiple sync and asyn
 repository = "https://github.com/stadiamaps/pmtiles-rs"
 keywords = ["pmtiles", "gis", "geo"]
 rust-version = "1.61.0"
+categories = ["science::geo"]
 
 [features]
 default = []
