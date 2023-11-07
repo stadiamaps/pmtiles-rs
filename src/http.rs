@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use reqwest::header::{HeaderValue, ACCEPT_RANGES, RANGE};
-use reqwest::{Client, IntoUrl, Method, Request, Url};
+use reqwest::header::{HeaderValue, RANGE};
+use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
 
 use crate::async_reader::AsyncBackend;
 use crate::error::{Error, HttpError};
@@ -20,8 +20,6 @@ impl HttpBackend {
     }
 }
 
-static VALID_ACCEPT_RANGES: HeaderValue = HeaderValue::from_static("bytes");
-
 #[async_trait]
 impl AsyncBackend for HttpBackend {
     async fn read_exact(&self, offset: usize, length: usize) -> Result<Bytes, Error> {
@@ -35,23 +33,19 @@ impl AsyncBackend for HttpBackend {
     }
 
     async fn read(&self, offset: usize, length: usize) -> Result<Bytes, Error> {
-        let mut req = Request::new(Method::GET, self.pmtiles_url.clone());
-        let range_header = req
-            .headers_mut()
-            .entry(RANGE)
-            .or_insert(HeaderValue::from_static(""));
         let end = offset + length - 1;
-        // This .unwrap() should be safe, since `offset` and `end` will always be valid.
-        *range_header = HeaderValue::from_str(format!("bytes={offset}-{end}").as_str()).unwrap();
+        let range = format!("bytes={offset}-{end}");
+        let range = HeaderValue::try_from(range).map_err(HttpError::from)?;
+
+        let mut req = Request::new(Method::GET, self.pmtiles_url.clone());
+        req.headers_mut().insert(RANGE, range);
 
         let response = self.client.execute(req).await?.error_for_status()?;
-
-        if response.headers().get(ACCEPT_RANGES) != Some(&VALID_ACCEPT_RANGES) {
+        if response.status() != StatusCode::PARTIAL_CONTENT {
             return Err(HttpError::RangeRequestsUnsupported.into());
         }
 
         let response_bytes = response.bytes().await?;
-
         if response_bytes.len() > length {
             Err(HttpError::ResponseBodyTooLong(response_bytes.len(), length).into())
         } else {
