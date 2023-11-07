@@ -41,6 +41,8 @@ pub enum HttpError {
     ResponseBodyTooLong(usize, usize),
     #[error("HTTP error {0}")]
     Http(#[from] reqwest::Error),
+    #[error("{0}")]
+    InvalidHeaderValue(#[from] reqwest::header::InvalidHeaderValue),
 }
 
 // This is required because thiserror #[from] does not support two-level conversion.
