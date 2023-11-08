@@ -5,7 +5,7 @@ use varint_rs::VarintReader;
 
 use crate::error::PmtError;
 
-pub(crate) struct Directory {
+pub struct Directory {
     entries: Vec<Entry>,
 }
 
@@ -81,7 +81,7 @@ impl TryFrom<Bytes> for Directory {
 }
 
 #[derive(Clone, Default, Debug)]
-pub(crate) struct Entry {
+pub struct Entry {
     pub(crate) tile_id: u64,
     pub(crate) offset: u64,
     pub(crate) length: u32,
@@ -90,7 +90,7 @@ pub(crate) struct Entry {
 
 #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 impl Entry {
-    pub fn is_leaf(&self) -> bool {
+    pub(crate) fn is_leaf(&self) -> bool {
         self.run_length == 0
     }
 }

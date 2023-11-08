@@ -9,6 +9,9 @@ use reqwest::{Client, IntoUrl};
 #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 use tokio::io::AsyncReadExt;
 
+use crate::cache::SearchResult;
+#[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
+use crate::cache::{DirectoryCache, NoCache};
 use crate::directory::{Directory, Entry};
 use crate::error::PmtError;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
@@ -19,17 +22,27 @@ use crate::mmap::MmapBackend;
 use crate::tile::tile_id;
 use crate::{Compression, Header};
 
-pub struct AsyncPmTilesReader<B> {
+pub struct AsyncPmTilesReader<B, C = NoCache> {
     backend: B,
+    cache: C,
     header: Header,
     root_directory: Directory,
 }
 
-impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
+impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
+    /// Creates a new cached reader from a specified source and validates the provided PMTiles archive is valid.
+    ///
+    /// Note: Prefer using new_with_* methods.
+    pub async fn try_from_source(backend: B) -> Result<Self, Error> {
+        Self::try_from_cached_source(backend, NoCache).await
+    }
+}
+
+impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTilesReader<B, C> {
     /// Creates a new reader from a specified source and validates the provided PMTiles archive is valid.
     ///
     /// Note: Prefer using new_with_* methods.
-    pub async fn try_from_source(backend: B) -> Result<Self, PmtError> {
+    pub async fn try_from_cached_source(backend: B, cache: C) -> Result<Self, PmtError> {
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
         let mut initial_bytes = backend.read(0, MAX_INITIAL_BYTES).await?;
         if initial_bytes.len() < HEADER_SIZE {
@@ -47,6 +60,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
 
         Ok(Self {
             backend,
+            cache,
             header,
             root_directory,
         })
@@ -145,11 +159,21 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
         // the recursion is done as two functions because it is a bit cleaner,
         // and it allows directory to be cached later without cloning it first.
         let offset = (self.header.leaf_offset + entry.offset) as _;
-        let length = entry.length as _;
-        let dir = self.read_directory(offset, length).await.ok()?;
-        let entry = dir.find_tile_id(tile_id);
 
-        if let Some(entry) = entry {
+        let entry = match self.cache.get_dir_entry(offset, tile_id) {
+            SearchResult::NotCached => {
+                // Cache miss - read from backend
+                let length = entry.length as _;
+                let dir = self.read_directory(offset, length).await.ok()?;
+                let entry = dir.find_tile_id(tile_id).cloned();
+                self.cache.insert_dir(offset, dir);
+                entry
+            }
+            SearchResult::NotFound => None,
+            SearchResult::Found(entry) => Some(entry),
+        };
+
+        if let Some(ref entry) = entry {
             if entry.is_leaf() {
                 return if depth <= 4 {
                     self.find_entry_rec(tile_id, entry, depth + 1).await
@@ -159,7 +183,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
             }
         }
 
-        entry.cloned()
+        entry
     }
 
     async fn read_directory(&self, offset: usize, length: usize) -> Result<Directory, PmtError> {
@@ -191,26 +215,50 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
 }
 
 #[cfg(feature = "http-async")]
-impl AsyncPmTilesReader<HttpBackend> {
+impl AsyncPmTilesReader<HttpBackend, NoCache> {
     /// Creates a new PMTiles reader from a URL using the Reqwest backend.
     ///
     /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
     pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> Result<Self, PmtError> {
+        Self::new_with_cached_url(client, url, NoCache).await
+    }
+}
+
+#[cfg(feature = "http-async")]
+impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
+    /// Creates a new PMTiles reader with cache from a URL using the Reqwest backend.
+    ///
+    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    pub async fn new_with_cached_url<U: IntoUrl>(
+        client: Client,
+        url: U,
+        cache: C,
+    ) -> Result<Self, Error> {
         let backend = HttpBackend::try_from(client, url)?;
 
-        Self::try_from_source(backend).await
+        Self::try_from_cached_source(backend, cache).await
     }
 }
 
 #[cfg(feature = "mmap-async-tokio")]
-impl AsyncPmTilesReader<MmapBackend> {
+impl AsyncPmTilesReader<MmapBackend, NoCache> {
     /// Creates a new PMTiles reader from a file path using the async mmap backend.
     ///
     /// Fails if [p] does not exist or is an invalid archive.
     pub async fn new_with_path<P: AsRef<Path>>(path: P) -> Result<Self, PmtError> {
+        Self::new_with_cached_path(path, NoCache).await
+    }
+}
+
+#[cfg(feature = "mmap-async-tokio")]
+impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
+    /// Creates a new cached PMTiles reader from a file path using the async mmap backend.
+    ///
+    /// Fails if [p] does not exist or is an invalid archive.
+    pub async fn new_with_cached_path<P: AsRef<Path>>(path: P, cache: C) -> Result<Self, Error> {
         let backend = MmapBackend::try_from(path).await?;
 
-        Self::try_from_source(backend).await
+        Self::try_from_cached_source(backend, cache).await
     }
 }
 

@@ -1,8 +1,12 @@
 #![forbid(unsafe_code)]
 
+mod tile;
+
+mod header;
 pub use crate::header::{Compression, Header, TileType};
 
 mod directory;
+pub use directory::{Directory, Entry};
 
 mod error;
 pub use error::PmtError;
@@ -19,7 +23,9 @@ pub mod mmap;
 
 #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 pub mod async_reader;
-pub mod tile;
+
+#[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
+pub mod cache;
 
 #[cfg(test)]
 mod tests {
