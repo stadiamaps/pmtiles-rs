@@ -25,7 +25,7 @@ impl Directory {
                 // https://github.com/protomaps/PMTiles/blob/9c7f298fb42290354b8ed0a9b2f50e5c0d270c40/js/index.ts#L210
                 if next_id > 0 {
                     let previous_tile = self.entries.get(next_id - 1)?;
-                    if previous_tile.run_length == 0
+                    if previous_tile.is_leaf()
                         || tile_id - previous_tile.tile_id < previous_tile.run_length as u64
                     {
                         return Some(previous_tile);
@@ -86,6 +86,13 @@ pub(crate) struct Entry {
     pub(crate) offset: u64,
     pub(crate) length: u32,
     pub(crate) run_length: u32,
+}
+
+#[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
+impl Entry {
+    pub fn is_leaf(&self) -> bool {
+        self.run_length == 0
+    }
 }
 
 #[cfg(test)]

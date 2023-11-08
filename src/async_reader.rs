@@ -16,12 +16,12 @@ use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::http::HttpBackend;
 #[cfg(feature = "mmap-async-tokio")]
 use crate::mmap::MmapBackend;
-use crate::tile::{tile_id, Tile};
+use crate::tile::tile_id;
 use crate::{Compression, Header};
 
-pub struct AsyncPmTilesReader<B: AsyncBackend> {
-    pub header: Header,
+pub struct AsyncPmTilesReader<B> {
     backend: B,
+    header: Header,
     root_directory: Directory,
 }
 
@@ -30,11 +30,13 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     ///
     /// Note: Prefer using new_with_* methods.
     pub async fn try_from_source(backend: B) -> Result<Self, Error> {
-        let mut initial_bytes = backend.read_initial_bytes().await?;
+        // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
+        let mut initial_bytes = backend.read(0, MAX_INITIAL_BYTES).await?;
+        if initial_bytes.len() < HEADER_SIZE {
+            return Err(Error::InvalidHeader);
+        }
 
-        let header_bytes = initial_bytes.split_to(HEADER_SIZE);
-
-        let header = Header::try_from_bytes(header_bytes)?;
+        let header = Header::try_from_bytes(initial_bytes.split_to(HEADER_SIZE))?;
 
         let directory_bytes = initial_bytes
             .split_off((header.root_offset as usize) - HEADER_SIZE)
@@ -44,31 +46,27 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
             Self::read_compressed_directory(header.internal_compression, directory_bytes).await?;
 
         Ok(Self {
-            header,
             backend,
+            header,
             root_directory,
         })
     }
 
-    /// Fetches a [Tile] from the archive.
-    pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> Option<Tile> {
+    /// Fetches tile bytes from the archive.
+    pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> Option<Bytes> {
         let tile_id = tile_id(z, x, y);
-        let entry = self.find_tile_entry(tile_id, None, 0).await?;
+        let entry = self.find_tile_entry(tile_id).await?;
 
-        let data = self
-            .backend
-            .read_exact(
-                (self.header.data_offset + entry.offset) as _,
-                entry.length as _,
-            )
-            .await
-            .ok()?;
+        let offset = (self.header.data_offset + entry.offset) as _;
+        let length = entry.length as _;
+        let data = self.backend.read_exact(offset, length).await.ok()?;
 
-        Some(Tile {
-            data,
-            tile_type: self.header.tile_type,
-            tile_compression: self.header.tile_compression,
-        })
+        Some(data)
+    }
+
+    /// Access header information.
+    pub fn get_header(&self) -> &Header {
+        &self.header
     }
 
     /// Gets metadata from the archive.
@@ -76,13 +74,9 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     /// Note: by spec, this should be valid JSON. This method currently returns a [String].
     /// This may change in the future.
     pub async fn get_metadata(&self) -> Result<String, Error> {
-        let metadata = self
-            .backend
-            .read_exact(
-                self.header.metadata_offset as _,
-                self.header.metadata_length as _,
-            )
-            .await?;
+        let offset = self.header.metadata_offset as _;
+        let length = self.header.metadata_length as _;
+        let metadata = self.backend.read_exact(offset, length).await?;
 
         let decompressed_metadata =
             Self::decompress(self.header.internal_compression, metadata).await?;
@@ -132,49 +126,42 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
         Ok(tj)
     }
 
-    #[async_recursion]
-    async fn find_tile_entry(
-        &self,
-        tile_id: u64,
-        next_dir: Option<Directory>,
-        depth: u8,
-    ) -> Option<Entry> {
-        // Max recursion...
-        if depth >= 4 {
-            return None;
-        }
-
-        let next_dir = next_dir.as_ref().unwrap_or(&self.root_directory);
-
-        match next_dir.find_tile_id(tile_id) {
-            None => None,
-            Some(needle) => {
-                if needle.run_length == 0 {
-                    // Leaf directory
-                    let next_dir = self
-                        .read_directory(
-                            (self.header.leaf_offset + needle.offset) as _,
-                            needle.length as _,
-                        )
-                        .await
-                        .ok()?;
-                    self.find_tile_entry(tile_id, Some(next_dir), depth + 1)
-                        .await
-                } else {
-                    Some(needle.clone())
-                }
+    /// Recursively locates a tile in the archive.
+    async fn find_tile_entry(&self, tile_id: u64) -> Option<Entry> {
+        let entry = self.root_directory.find_tile_id(tile_id);
+        if let Some(entry) = entry {
+            if entry.is_leaf() {
+                return self.find_entry_rec(tile_id, entry, 0).await;
             }
         }
+        entry.cloned()
+    }
+
+    #[async_recursion]
+    async fn find_entry_rec(&self, tile_id: u64, entry: &Entry, depth: u8) -> Option<Entry> {
+        // the recursion is done as two functions because it is a bit cleaner,
+        // and it allows directory to be cached later without cloning it first.
+        let offset = (self.header.leaf_offset + entry.offset) as _;
+        let length = entry.length as _;
+        let dir = self.read_directory(offset, length).await.ok()?;
+        let entry = dir.find_tile_id(tile_id);
+
+        if let Some(entry) = entry {
+            if entry.is_leaf() {
+                return if depth <= 4 {
+                    self.find_entry_rec(tile_id, entry, depth + 1).await
+                } else {
+                    None
+                };
+            }
+        }
+
+        entry.cloned()
     }
 
     async fn read_directory(&self, offset: usize, length: usize) -> Result<Directory, Error> {
-        Self::read_directory_with_backend(
-            &self.backend,
-            self.header.internal_compression,
-            offset,
-            length,
-        )
-        .await
+        let data = self.backend.read_exact(offset, length).await?;
+        Self::read_compressed_directory(self.header.internal_compression, data).await
     }
 
     async fn read_compressed_directory(
@@ -182,19 +169,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
         bytes: Bytes,
     ) -> Result<Directory, Error> {
         let decompressed_bytes = Self::decompress(compression, bytes).await?;
-
         Directory::try_from(decompressed_bytes)
-    }
-
-    async fn read_directory_with_backend(
-        backend: &B,
-        compression: Compression,
-        offset: usize,
-        length: usize,
-    ) -> Result<Directory, Error> {
-        let directory_bytes = backend.read_exact(offset, length).await?;
-
-        Self::read_compressed_directory(compression, directory_bytes).await
     }
 
     async fn decompress(compression: Compression, bytes: Bytes) -> Result<Bytes, Error> {
@@ -229,8 +204,8 @@ impl AsyncPmTilesReader<MmapBackend> {
     /// Creates a new PMTiles reader from a file path using the async mmap backend.
     ///
     /// Fails if [p] does not exist or is an invalid archive.
-    pub async fn new_with_path<P: AsRef<Path>>(p: P) -> Result<Self, Error> {
-        let backend = MmapBackend::try_from(p).await?;
+    pub async fn new_with_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let backend = MmapBackend::try_from(path).await?;
 
         Self::try_from_source(backend).await
     }
@@ -243,16 +218,6 @@ pub trait AsyncBackend {
 
     /// Reads up to `length` bytes starting at `offset`.
     async fn read(&self, offset: usize, length: usize) -> Result<Bytes, Error>;
-
-    /// Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
-    async fn read_initial_bytes(&self) -> Result<Bytes, Error> {
-        let bytes = self.read(0, MAX_INITIAL_BYTES).await?;
-        if bytes.len() < HEADER_SIZE {
-            return Err(Error::InvalidHeader);
-        }
-
-        Ok(bytes)
-    }
 }
 
 #[cfg(test)]
@@ -274,11 +239,11 @@ mod tests {
         let tile = tiles.get_tile(z, x, y).await.unwrap();
 
         assert_eq!(
-            tile.data.len(),
+            tile.len(),
             fixture_bytes.len(),
             "Expected tile length to match."
         );
-        assert_eq!(tile.data, fixture_bytes, "Expected tile to match fixture.");
+        assert_eq!(tile, fixture_bytes, "Expected tile to match fixture.");
     }
 
     #[tokio::test]
