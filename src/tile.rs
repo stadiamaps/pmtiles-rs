@@ -1,7 +1,3 @@
-use bytes::Bytes;
-
-use crate::{Compression, TileType};
-
 #[cfg(any(feature = "http-async", feature = "mmap-async-tokio", test))]
 pub(crate) fn tile_id(z: u8, x: u64, y: u64) -> u64 {
     if z == 0 {
@@ -13,12 +9,6 @@ pub(crate) fn tile_id(z: u8, x: u64, y: u64) -> u64 {
     let tile_id = hilbert_2d::u64::xy2h_discrete(x, y, z.into(), hilbert_2d::Variant::Hilbert);
 
     base_id + tile_id
-}
-
-pub struct Tile {
-    pub data: Bytes,
-    pub tile_type: TileType,
-    pub tile_compression: Compression,
 }
 
 #[cfg(test)]

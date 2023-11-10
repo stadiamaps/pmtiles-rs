@@ -67,6 +67,6 @@ mod tests {
         let client = reqwest::Client::builder().use_rustls_tls().build().unwrap();
         let backend = HttpBackend::try_from(client, TEST_URL).unwrap();
 
-        let _tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+        AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     }
 }

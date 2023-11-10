@@ -14,6 +14,7 @@ test:
     cargo test --features http-async
     cargo test --features mmap-async-tokio
     cargo test --features tilejson
+    cargo test
     RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 
 # Run cargo fmt and cargo clippy
@@ -25,7 +26,7 @@ fmt:
 
 # Run cargo clippy
 clippy:
-    cargo clippy --workspace --all-targets --bins --tests --lib --benches -- -D warnings
+    cargo clippy --workspace --all-targets --all-features --bins --tests --lib --benches -- -D warnings
 
 # Build and open code documentation
 docs:

@@ -80,18 +80,26 @@ impl Header {
             tiles: sources,
             minzoom: self.min_zoom,
             maxzoom: self.max_zoom,
-            bounds: tilejson::Bounds::new(
-                self.min_longitude as f64,
-                self.min_latitude as f64,
-                self.max_longitude as f64,
-                self.max_latitude as f64,
-            ),
-            center: tilejson::Center::new(
-                self.center_longitude as f64,
-                self.center_latitude as f64,
-                self.center_zoom,
-            ),
+            bounds: self.get_bounds(),
+            center: self.get_center(),
         }
+    }
+
+    pub fn get_bounds(&self) -> tilejson::Bounds {
+        tilejson::Bounds::new(
+            self.min_longitude as f64,
+            self.min_latitude as f64,
+            self.max_longitude as f64,
+            self.max_latitude as f64,
+        )
+    }
+
+    pub fn get_center(&self) -> tilejson::Center {
+        tilejson::Center::new(
+            self.center_longitude as f64,
+            self.center_latitude as f64,
+            self.center_zoom,
+        )
     }
 }
 
