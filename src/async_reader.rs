@@ -220,7 +220,7 @@ impl AsyncPmTilesReader<HttpBackend, NoCache> {
     ///
     /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
     pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> Result<Self, PmtError> {
-        Self::new_with_cached_url(client, url, NoCache).await
+        Self::new_with_cached_url(NoCache, client, url).await
     }
 }
 
@@ -230,9 +230,9 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
     ///
     /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
     pub async fn new_with_cached_url<U: IntoUrl>(
+        cache: C,
         client: Client,
         url: U,
-        cache: C,
     ) -> Result<Self, Error> {
         let backend = HttpBackend::try_from(client, url)?;
 
@@ -246,7 +246,7 @@ impl AsyncPmTilesReader<MmapBackend, NoCache> {
     ///
     /// Fails if [p] does not exist or is an invalid archive.
     pub async fn new_with_path<P: AsRef<Path>>(path: P) -> Result<Self, PmtError> {
-        Self::new_with_cached_path(path, NoCache).await
+        Self::new_with_cached_path(NoCache, path).await
     }
 }
 
@@ -255,7 +255,7 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
     /// Creates a new cached PMTiles reader from a file path using the async mmap backend.
     ///
     /// Fails if [p] does not exist or is an invalid archive.
-    pub async fn new_with_cached_path<P: AsRef<Path>>(path: P, cache: C) -> Result<Self, Error> {
+    pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> Result<Self, Error> {
         let backend = MmapBackend::try_from(path).await?;
 
         Self::try_from_cached_source(backend, cache).await
