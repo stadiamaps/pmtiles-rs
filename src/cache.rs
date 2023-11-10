@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 
@@ -47,19 +47,19 @@ impl DirectoryCache for NoCache {
 /// A simple HashMap-based implementation of a PMTiles directory cache.
 #[derive(Default)]
 pub struct HashMapCache {
-    pub cache: Arc<Mutex<HashMap<usize, Directory>>>,
+    pub cache: Arc<RwLock<HashMap<usize, Directory>>>,
 }
 
 #[async_trait]
 impl DirectoryCache for HashMapCache {
     async fn get_dir_entry(&self, offset: usize, tile_id: u64) -> DirCacheResult {
-        if let Some(dir) = self.cache.lock().unwrap().get(&offset) {
+        if let Some(dir) = self.cache.read().unwrap().get(&offset) {
             return dir.find_tile_id(tile_id).into();
         }
         DirCacheResult::NotCached
     }
 
     async fn insert_dir(&self, offset: usize, directory: Directory) {
-        self.cache.lock().unwrap().insert(offset, directory);
+        self.cache.write().unwrap().insert(offset, directory);
     }
 }
