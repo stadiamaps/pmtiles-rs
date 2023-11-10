@@ -5,6 +5,7 @@ use varint_rs::VarintReader;
 
 use crate::error::PmtError;
 
+#[derive(Clone)]
 pub struct Directory {
     entries: Vec<DirEntry>,
 }

@@ -13,8 +13,6 @@ pub use error::PmtError;
 #[cfg(feature = "http-async")]
 pub use error::PmtHttpError;
 
-mod header;
-
 #[cfg(feature = "http-async")]
 pub mod http;
 

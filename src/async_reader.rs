@@ -33,7 +33,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
     /// Creates a new cached reader from a specified source and validates the provided PMTiles archive is valid.
     ///
     /// Note: Prefer using new_with_* methods.
-    pub async fn try_from_source(backend: B) -> Result<Self, Error> {
+    pub async fn try_from_source(backend: B) -> Result<Self, PmtError> {
         Self::try_from_cached_source(backend, NoCache).await
     }
 }
@@ -145,13 +145,13 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
     /// Recursively locates a tile in the archive.
     async fn find_tile_entry(&self, tile_id: u64) -> Option<DirEntry> {
-        let entry = self.root_directory.find_tile_id(tile_id)?;
-        if entry.is_leaf() {
-            self.find_entry_rec(tile_id, entry, 0).await
-        } else {
-            entry
+        let entry = self.root_directory.find_tile_id(tile_id);
+        if let Some(entry) = entry {
+            if entry.is_leaf() {
+                return self.find_entry_rec(tile_id, entry, 0).await;
+            }
         }
-        .cloned()
+        entry.cloned()
     }
 
     #[async_recursion]
@@ -160,13 +160,13 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         // and it allows directory to be cached later without cloning it first.
         let offset = (self.header.leaf_offset + entry.offset) as _;
 
-        let entry = match self.cache.get_dir_entry(offset, tile_id) {
+        let entry = match self.cache.get_dir_entry(offset, tile_id).await {
             DirCacheResult::NotCached => {
                 // Cache miss - read from backend
                 let length = entry.length as _;
                 let dir = self.read_directory(offset, length).await.ok()?;
                 let entry = dir.find_tile_id(tile_id).cloned();
-                self.cache.insert_dir(offset, dir);
+                self.cache.insert_dir(offset, dir).await;
                 entry
             }
             DirCacheResult::NotFound => None,
@@ -233,7 +233,7 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
         cache: C,
         client: Client,
         url: U,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, PmtError> {
         let backend = HttpBackend::try_from(client, url)?;
 
         Self::try_from_cached_source(backend, cache).await
@@ -255,7 +255,7 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
     /// Creates a new cached PMTiles reader from a file path using the async mmap backend.
     ///
     /// Fails if [p] does not exist or is an invalid archive.
-    pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> Result<Self, Error> {
+    pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> Result<Self, PmtError> {
         let backend = MmapBackend::try_from(path).await?;
 
         Self::try_from_cached_source(backend, cache).await
