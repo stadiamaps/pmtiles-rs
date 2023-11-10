@@ -5,8 +5,9 @@ use varint_rs::VarintReader;
 
 use crate::error::PmtError;
 
-pub(crate) struct Directory {
-    entries: Vec<Entry>,
+#[derive(Clone)]
+pub struct Directory {
+    entries: Vec<DirEntry>,
 }
 
 impl Debug for Directory {
@@ -17,7 +18,7 @@ impl Debug for Directory {
 
 impl Directory {
     #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
-    pub fn find_tile_id(&self, tile_id: u64) -> Option<&Entry> {
+    pub fn find_tile_id(&self, tile_id: u64) -> Option<&DirEntry> {
         match self.entries.binary_search_by(|e| e.tile_id.cmp(&tile_id)) {
             Ok(idx) => self.entries.get(idx),
             Err(next_id) => {
@@ -44,7 +45,7 @@ impl TryFrom<Bytes> for Directory {
         let mut buffer = buffer.reader();
         let n_entries = buffer.read_usize_varint()?;
 
-        let mut entries = vec![Entry::default(); n_entries];
+        let mut entries = vec![DirEntry::default(); n_entries];
 
         // Read tile IDs
         let mut next_tile_id = 0;
@@ -64,7 +65,7 @@ impl TryFrom<Bytes> for Directory {
         }
 
         // Read Offsets
-        let mut last_entry: Option<&Entry> = None;
+        let mut last_entry: Option<&DirEntry> = None;
         for entry in entries.iter_mut() {
             let offset = buffer.read_u64_varint()?;
             entry.offset = if offset == 0 {
@@ -81,7 +82,7 @@ impl TryFrom<Bytes> for Directory {
 }
 
 #[derive(Clone, Default, Debug)]
-pub(crate) struct Entry {
+pub struct DirEntry {
     pub(crate) tile_id: u64,
     pub(crate) offset: u64,
     pub(crate) length: u32,
@@ -89,8 +90,8 @@ pub(crate) struct Entry {
 }
 
 #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
-impl Entry {
-    pub fn is_leaf(&self) -> bool {
+impl DirEntry {
+    pub(crate) fn is_leaf(&self) -> bool {
         self.run_length == 0
     }
 }
