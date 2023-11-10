@@ -3,7 +3,12 @@
 pub use crate::header::{Compression, Header, TileType};
 
 mod directory;
-pub mod error;
+
+mod error;
+pub use error::PmtError;
+#[cfg(feature = "http-async")]
+pub use error::PmtHttpError;
+
 mod header;
 
 #[cfg(feature = "http-async")]

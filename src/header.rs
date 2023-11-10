@@ -3,7 +3,7 @@ use std::panic::catch_unwind;
 
 use bytes::{Buf, Bytes};
 
-use crate::error::Error;
+use crate::error::PmtError;
 
 #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
@@ -59,7 +59,7 @@ impl Compression {
 }
 
 impl TryInto<Compression> for u8 {
-    type Error = Error;
+    type Error = PmtError;
 
     fn try_into(self) -> Result<Compression, Self::Error> {
         match self {
@@ -68,7 +68,7 @@ impl TryInto<Compression> for u8 {
             2 => Ok(Compression::Gzip),
             3 => Ok(Compression::Brotli),
             4 => Ok(Compression::Zstd),
-            _ => Err(Error::InvalidCompression),
+            _ => Err(PmtError::InvalidCompression),
         }
     }
 }
@@ -125,7 +125,7 @@ impl TileType {
 }
 
 impl TryInto<TileType> for u8 {
-    type Error = Error;
+    type Error = PmtError;
 
     fn try_into(self) -> Result<TileType, Self::Error> {
         match self {
@@ -134,7 +134,7 @@ impl TryInto<TileType> for u8 {
             2 => Ok(TileType::Png),
             3 => Ok(TileType::Jpeg),
             4 => Ok(TileType::Webp),
-            _ => Err(Error::InvalidTileType),
+            _ => Err(PmtError::InvalidTileType),
         }
     }
 }
@@ -147,15 +147,15 @@ impl Header {
         buf.get_i32_le() as f32 / 10_000_000.
     }
 
-    pub fn try_from_bytes(mut bytes: Bytes) -> Result<Self, Error> {
+    pub fn try_from_bytes(mut bytes: Bytes) -> Result<Self, PmtError> {
         let magic_bytes = bytes.split_to(V3_MAGIC.len());
 
         // Assert magic
         if magic_bytes != V3_MAGIC {
             return Err(if magic_bytes.starts_with(V2_MAGIC.as_bytes()) {
-                Error::UnsupportedPmTilesVersion
+                PmtError::UnsupportedPmTilesVersion
             } else {
-                Error::InvalidMagicNumber
+                PmtError::InvalidMagicNumber
             });
         }
 
@@ -189,7 +189,7 @@ impl Header {
                 center_latitude: Self::read_coordinate_part(&mut bytes),
             })
         })
-        .map_err(|_| Error::InvalidHeader)?
+        .map_err(|_| PmtError::InvalidHeader)?
     }
 }
 

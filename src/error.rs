@@ -3,7 +3,7 @@ use std::string::FromUtf8Error;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum PmtError {
     #[error("Invalid magic number")]
     InvalidMagicNumber,
     #[error("Invalid PMTiles version")]
@@ -27,12 +27,12 @@ pub enum Error {
     UnableToOpenMmapFile,
     #[cfg(feature = "http-async")]
     #[error("{0}")]
-    Http(#[from] HttpError),
+    Http(#[from] PmtHttpError),
 }
 
 #[cfg(feature = "http-async")]
 #[derive(Debug, Error)]
-pub enum HttpError {
+pub enum PmtHttpError {
     #[error("Unexpected number of bytes returned [expected: {0}, received: {1}].")]
     UnexpectedNumberOfBytesReturned(usize, usize),
     #[error("Range requests unsupported")]
@@ -47,8 +47,8 @@ pub enum HttpError {
 
 // This is required because thiserror #[from] does not support two-level conversion.
 #[cfg(feature = "http-async")]
-impl From<reqwest::Error> for Error {
+impl From<reqwest::Error> for PmtError {
     fn from(e: reqwest::Error) -> Self {
-        Self::Http(HttpError::Http(e))
+        Self::Http(PmtHttpError::Http(e))
     }
 }
