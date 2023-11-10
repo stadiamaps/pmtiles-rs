@@ -30,7 +30,7 @@ pub struct AsyncPmTilesReader<B, C = NoCache> {
 }
 
 impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
-    /// Creates a new cached reader from a specified source and validates the provided PMTiles archive is valid.
+    /// Creates a new reader from a specified source and validates the provided PMTiles archive is valid.
     ///
     /// Note: Prefer using new_with_* methods.
     pub async fn try_from_source(backend: B) -> Result<Self, PmtError> {
@@ -39,7 +39,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
 }
 
 impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTilesReader<B, C> {
-    /// Creates a new reader from a specified source and validates the provided PMTiles archive is valid.
+    /// Creates a new cached reader from a specified source and validates the provided PMTiles archive is valid.
     ///
     /// Note: Prefer using new_with_* methods.
     pub async fn try_from_cached_source(backend: B, cache: C) -> Result<Self, PmtError> {
