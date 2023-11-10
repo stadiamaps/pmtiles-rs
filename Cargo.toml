@@ -43,3 +43,13 @@ tokio = { version = "1", features = ["test-util", "macros", "rt"] }
 
 [package.metadata.docs.rs]
 all-features = true
+
+[lints.rust]
+unsafe_code = "forbid"
+unused_qualifications = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+module_name_repetitions = "allow"
+similar_names = "allow"
