@@ -6,7 +6,7 @@ mod header;
 pub use crate::header::{Compression, Header, TileType};
 
 mod directory;
-pub use directory::{Directory, Entry};
+pub use directory::{DirEntry, Directory};
 
 mod error;
 pub use error::PmtError;

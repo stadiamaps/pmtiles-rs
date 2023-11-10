@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::directory::{Directory, Entry};
+use crate::directory::{DirEntry, Directory};
 
 pub enum SearchResult {
     NotCached,
     NotFound,
-    Found(Entry),
+    Found(DirEntry),
 }
 
-impl From<Option<&Entry>> for SearchResult {
-    fn from(entry: Option<&Entry>) -> Self {
+impl From<Option<&DirEntry>> for SearchResult {
+    fn from(entry: Option<&DirEntry>) -> Self {
         match entry {
             Some(entry) => SearchResult::Found(entry.clone()),
             None => SearchResult::NotFound,

@@ -12,7 +12,7 @@ use tokio::io::AsyncReadExt;
 use crate::cache::SearchResult;
 #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 use crate::cache::{DirectoryCache, NoCache};
-use crate::directory::{Directory, Entry};
+use crate::directory::{DirEntry, Directory};
 use crate::error::PmtError;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 #[cfg(feature = "http-async")]
@@ -144,7 +144,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     /// Recursively locates a tile in the archive.
-    async fn find_tile_entry(&self, tile_id: u64) -> Option<Entry> {
+    async fn find_tile_entry(&self, tile_id: u64) -> Option<DirEntry> {
         let entry = self.root_directory.find_tile_id(tile_id)?;
         if entry.is_leaf() {
             self.find_entry_rec(tile_id, entry, 0).await
@@ -155,7 +155,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     #[async_recursion]
-    async fn find_entry_rec(&self, tile_id: u64, entry: &Entry, depth: u8) -> Option<Entry> {
+    async fn find_entry_rec(&self, tile_id: u64, entry: &DirEntry, depth: u8) -> Option<DirEntry> {
         // the recursion is done as two functions because it is a bit cleaner,
         // and it allows directory to be cached later without cloning it first.
         let offset = (self.header.leaf_offset + entry.offset) as _;
