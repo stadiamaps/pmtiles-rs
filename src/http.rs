@@ -4,7 +4,7 @@ use reqwest::header::{HeaderValue, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
 
 use crate::async_reader::AsyncBackend;
-use crate::error::{Error, HttpError};
+use crate::error::{PmtError, PmtHttpError};
 
 pub struct HttpBackend {
     client: Client,
@@ -12,7 +12,7 @@ pub struct HttpBackend {
 }
 
 impl HttpBackend {
-    pub fn try_from<U: IntoUrl>(client: Client, url: U) -> Result<Self, Error> {
+    pub fn try_from<U: IntoUrl>(client: Client, url: U) -> Result<Self, PmtError> {
         Ok(HttpBackend {
             client,
             pmtiles_url: url.into_url()?,
@@ -22,32 +22,32 @@ impl HttpBackend {
 
 #[async_trait]
 impl AsyncBackend for HttpBackend {
-    async fn read_exact(&self, offset: usize, length: usize) -> Result<Bytes, Error> {
+    async fn read_exact(&self, offset: usize, length: usize) -> Result<Bytes, PmtError> {
         let data = self.read(offset, length).await?;
 
         if data.len() == length {
             Ok(data)
         } else {
-            Err(HttpError::UnexpectedNumberOfBytesReturned(length, data.len()).into())
+            Err(PmtHttpError::UnexpectedNumberOfBytesReturned(length, data.len()).into())
         }
     }
 
-    async fn read(&self, offset: usize, length: usize) -> Result<Bytes, Error> {
+    async fn read(&self, offset: usize, length: usize) -> Result<Bytes, PmtError> {
         let end = offset + length - 1;
         let range = format!("bytes={offset}-{end}");
-        let range = HeaderValue::try_from(range).map_err(HttpError::from)?;
+        let range = HeaderValue::try_from(range).map_err(PmtHttpError::from)?;
 
         let mut req = Request::new(Method::GET, self.pmtiles_url.clone());
         req.headers_mut().insert(RANGE, range);
 
         let response = self.client.execute(req).await?.error_for_status()?;
         if response.status() != StatusCode::PARTIAL_CONTENT {
-            return Err(HttpError::RangeRequestsUnsupported.into());
+            return Err(PmtHttpError::RangeRequestsUnsupported.into());
         }
 
         let response_bytes = response.bytes().await?;
         if response_bytes.len() > length {
-            Err(HttpError::ResponseBodyTooLong(response_bytes.len(), length).into())
+            Err(PmtHttpError::ResponseBodyTooLong(response_bytes.len(), length).into())
         } else {
             Ok(response_bytes)
         }

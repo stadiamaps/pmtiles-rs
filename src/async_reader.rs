@@ -10,7 +10,7 @@ use reqwest::{Client, IntoUrl};
 use tokio::io::AsyncReadExt;
 
 use crate::directory::{Directory, Entry};
-use crate::error::Error;
+use crate::error::PmtError;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 #[cfg(feature = "http-async")]
 use crate::http::HttpBackend;
@@ -29,11 +29,11 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     /// Creates a new reader from a specified source and validates the provided PMTiles archive is valid.
     ///
     /// Note: Prefer using new_with_* methods.
-    pub async fn try_from_source(backend: B) -> Result<Self, Error> {
+    pub async fn try_from_source(backend: B) -> Result<Self, PmtError> {
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
         let mut initial_bytes = backend.read(0, MAX_INITIAL_BYTES).await?;
         if initial_bytes.len() < HEADER_SIZE {
-            return Err(Error::InvalidHeader);
+            return Err(PmtError::InvalidHeader);
         }
 
         let header = Header::try_from_bytes(initial_bytes.split_to(HEADER_SIZE))?;
@@ -73,7 +73,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     ///
     /// Note: by spec, this should be valid JSON. This method currently returns a [String].
     /// This may change in the future.
-    pub async fn get_metadata(&self) -> Result<String, Error> {
+    pub async fn get_metadata(&self) -> Result<String, PmtError> {
         let offset = self.header.metadata_offset as _;
         let length = self.header.metadata_length as _;
         let metadata = self.backend.read_exact(offset, length).await?;
@@ -85,13 +85,16 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     }
 
     #[cfg(feature = "tilejson")]
-    pub async fn parse_tilejson(&self, sources: Vec<String>) -> Result<tilejson::TileJSON, Error> {
+    pub async fn parse_tilejson(
+        &self,
+        sources: Vec<String>,
+    ) -> Result<tilejson::TileJSON, PmtError> {
         use serde_json::Value;
 
         let meta = self.get_metadata().await?;
-        let meta: Value = serde_json::from_str(&meta).map_err(|_| Error::InvalidMetadata)?;
+        let meta: Value = serde_json::from_str(&meta).map_err(|_| PmtError::InvalidMetadata)?;
         let Value::Object(meta) = meta else {
-            return Err(Error::InvalidMetadata);
+            return Err(PmtError::InvalidMetadata);
         };
 
         let mut tj = self.header.get_tilejson(sources);
@@ -117,7 +120,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
                 if let Ok(v) = serde_json::from_value::<Vec<tilejson::VectorLayer>>(value) {
                     tj.vector_layers = Some(v);
                 } else {
-                    return Err(Error::InvalidMetadata);
+                    return Err(PmtError::InvalidMetadata);
                 }
             } else {
                 tj.other.insert(key, value);
@@ -159,7 +162,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
         entry.cloned()
     }
 
-    async fn read_directory(&self, offset: usize, length: usize) -> Result<Directory, Error> {
+    async fn read_directory(&self, offset: usize, length: usize) -> Result<Directory, PmtError> {
         let data = self.backend.read_exact(offset, length).await?;
         Self::read_compressed_directory(self.header.internal_compression, data).await
     }
@@ -167,12 +170,12 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
     async fn read_compressed_directory(
         compression: Compression,
         bytes: Bytes,
-    ) -> Result<Directory, Error> {
+    ) -> Result<Directory, PmtError> {
         let decompressed_bytes = Self::decompress(compression, bytes).await?;
         Directory::try_from(decompressed_bytes)
     }
 
-    async fn decompress(compression: Compression, bytes: Bytes) -> Result<Bytes, Error> {
+    async fn decompress(compression: Compression, bytes: Bytes) -> Result<Bytes, PmtError> {
         let mut decompressed_bytes = Vec::with_capacity(bytes.len() * 2);
         match compression {
             Compression::Gzip => {
@@ -192,7 +195,7 @@ impl AsyncPmTilesReader<HttpBackend> {
     /// Creates a new PMTiles reader from a URL using the Reqwest backend.
     ///
     /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
-    pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> Result<Self, Error> {
+    pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> Result<Self, PmtError> {
         let backend = HttpBackend::try_from(client, url)?;
 
         Self::try_from_source(backend).await
@@ -204,7 +207,7 @@ impl AsyncPmTilesReader<MmapBackend> {
     /// Creates a new PMTiles reader from a file path using the async mmap backend.
     ///
     /// Fails if [p] does not exist or is an invalid archive.
-    pub async fn new_with_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub async fn new_with_path<P: AsRef<Path>>(path: P) -> Result<Self, PmtError> {
         let backend = MmapBackend::try_from(path).await?;
 
         Self::try_from_source(backend).await
@@ -214,10 +217,10 @@ impl AsyncPmTilesReader<MmapBackend> {
 #[async_trait]
 pub trait AsyncBackend {
     /// Reads exactly `length` bytes starting at `offset`
-    async fn read_exact(&self, offset: usize, length: usize) -> Result<Bytes, Error>;
+    async fn read_exact(&self, offset: usize, length: usize) -> Result<Bytes, PmtError>;
 
     /// Reads up to `length` bytes starting at `offset`.
-    async fn read(&self, offset: usize, length: usize) -> Result<Bytes, Error>;
+    async fn read(&self, offset: usize, length: usize) -> Result<Bytes, PmtError>;
 }
 
 #[cfg(test)]

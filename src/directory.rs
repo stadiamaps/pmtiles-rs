@@ -3,7 +3,7 @@ use std::fmt::{Debug, Formatter};
 use bytes::{Buf, Bytes};
 use varint_rs::VarintReader;
 
-use crate::error::Error;
+use crate::error::PmtError;
 
 pub(crate) struct Directory {
     entries: Vec<Entry>,
@@ -38,9 +38,9 @@ impl Directory {
 }
 
 impl TryFrom<Bytes> for Directory {
-    type Error = Error;
+    type Error = PmtError;
 
-    fn try_from(buffer: Bytes) -> Result<Self, Error> {
+    fn try_from(buffer: Bytes) -> Result<Self, PmtError> {
         let mut buffer = buffer.reader();
         let n_entries = buffer.read_usize_varint()?;
 
@@ -68,7 +68,7 @@ impl TryFrom<Bytes> for Directory {
         for entry in entries.iter_mut() {
             let offset = buffer.read_u64_varint()?;
             entry.offset = if offset == 0 {
-                let e = last_entry.ok_or(Error::InvalidEntry)?;
+                let e = last_entry.ok_or(PmtError::InvalidEntry)?;
                 e.offset + e.length as u64
             } else {
                 offset - 1
