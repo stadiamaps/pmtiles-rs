@@ -9,7 +9,7 @@ use reqwest::{Client, IntoUrl};
 #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 use tokio::io::AsyncReadExt;
 
-use crate::cache::SearchResult;
+use crate::cache::DirCacheResult;
 #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 use crate::cache::{DirectoryCache, NoCache};
 use crate::directory::{DirEntry, Directory};
@@ -161,7 +161,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         let offset = (self.header.leaf_offset + entry.offset) as _;
 
         let entry = match self.cache.get_dir_entry(offset, tile_id) {
-            SearchResult::NotCached => {
+            DirCacheResult::NotCached => {
                 // Cache miss - read from backend
                 let length = entry.length as _;
                 let dir = self.read_directory(offset, length).await.ok()?;
@@ -169,8 +169,8 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                 self.cache.insert_dir(offset, dir);
                 entry
             }
-            SearchResult::NotFound => None,
-            SearchResult::Found(entry) => Some(entry),
+            DirCacheResult::NotFound => None,
+            DirCacheResult::Found(entry) => Some(entry),
         };
 
         if let Some(ref entry) = entry {

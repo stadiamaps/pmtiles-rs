@@ -3,17 +3,17 @@ use std::sync::{Arc, Mutex};
 
 use crate::directory::{DirEntry, Directory};
 
-pub enum SearchResult {
+pub enum DirCacheResult {
     NotCached,
     NotFound,
     Found(DirEntry),
 }
 
-impl From<Option<&DirEntry>> for SearchResult {
+impl From<Option<&DirEntry>> for DirCacheResult {
     fn from(entry: Option<&DirEntry>) -> Self {
         match entry {
-            Some(entry) => SearchResult::Found(entry.clone()),
-            None => SearchResult::NotFound,
+            Some(entry) => DirCacheResult::Found(entry.clone()),
+            None => DirCacheResult::NotFound,
         }
     }
 }
@@ -21,7 +21,7 @@ impl From<Option<&DirEntry>> for SearchResult {
 /// A cache for PMTiles directories.
 pub trait DirectoryCache {
     /// Get a directory from the cache, using the offset as a key.
-    fn get_dir_entry(&self, offset: usize, tile_id: u64) -> SearchResult;
+    fn get_dir_entry(&self, offset: usize, tile_id: u64) -> DirCacheResult;
 
     /// Insert a directory into the cache, using the offset as a key.
     /// Note that cache must be internally mutable.
@@ -32,8 +32,8 @@ pub struct NoCache;
 
 impl DirectoryCache for NoCache {
     #[inline]
-    fn get_dir_entry(&self, _offset: usize, _tile_id: u64) -> SearchResult {
-        SearchResult::NotCached
+    fn get_dir_entry(&self, _offset: usize, _tile_id: u64) -> DirCacheResult {
+        DirCacheResult::NotCached
     }
 
     #[inline]
@@ -47,11 +47,11 @@ pub struct HashMapCache {
 }
 
 impl DirectoryCache for HashMapCache {
-    fn get_dir_entry(&self, offset: usize, tile_id: u64) -> SearchResult {
+    fn get_dir_entry(&self, offset: usize, tile_id: u64) -> DirCacheResult {
         if let Some(dir) = self.cache.lock().unwrap().get(&offset) {
             return dir.find_tile_id(tile_id).into();
         }
-        SearchResult::NotCached
+        DirCacheResult::NotCached
     }
 
     fn insert_dir(&self, offset: usize, directory: Directory) {
