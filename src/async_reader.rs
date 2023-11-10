@@ -131,13 +131,13 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B> {
 
     /// Recursively locates a tile in the archive.
     async fn find_tile_entry(&self, tile_id: u64) -> Option<Entry> {
-        let entry = self.root_directory.find_tile_id(tile_id);
-        if let Some(entry) = entry {
-            if entry.is_leaf() {
-                return self.find_entry_rec(tile_id, entry, 0).await;
-            }
+        let entry = self.root_directory.find_tile_id(tile_id)?;
+        if entry.is_leaf() {
+            self.find_entry_rec(tile_id, entry, 0).await
+        } else {
+            entry
         }
-        entry.cloned()
+        .cloned()
     }
 
     #[async_recursion]
