@@ -44,7 +44,7 @@ impl DirectoryCache for NoCache {
     async fn insert_dir(&self, _offset: usize, _directory: Directory) {}
 }
 
-/// A simple HashMap-based implementation of a PMTiles directory cache.
+/// A simple HashMap-based implementation of a `PMTiles` directory cache.
 #[derive(Default)]
 pub struct HashMapCache {
     pub cache: Arc<RwLock<HashMap<usize, Directory>>>,

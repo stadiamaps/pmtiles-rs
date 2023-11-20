@@ -18,6 +18,7 @@ impl Debug for Directory {
 
 impl Directory {
     #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
+    #[must_use]
     pub fn find_tile_id(&self, tile_id: u64) -> Option<&DirEntry> {
         match self.entries.binary_search_by(|e| e.tile_id.cmp(&tile_id)) {
             Ok(idx) => self.entries.get(idx),
@@ -27,7 +28,7 @@ impl Directory {
                 if next_id > 0 {
                     let previous_tile = self.entries.get(next_id - 1)?;
                     if previous_tile.is_leaf()
-                        || tile_id - previous_tile.tile_id < previous_tile.run_length as u64
+                        || tile_id - previous_tile.tile_id < u64::from(previous_tile.run_length)
                     {
                         return Some(previous_tile);
                     }
@@ -49,28 +50,28 @@ impl TryFrom<Bytes> for Directory {
 
         // Read tile IDs
         let mut next_tile_id = 0;
-        for entry in entries.iter_mut() {
+        for entry in &mut entries {
             next_tile_id += buffer.read_u64_varint()?;
             entry.tile_id = next_tile_id;
         }
 
         // Read Run Lengths
-        for entry in entries.iter_mut() {
+        for entry in &mut entries {
             entry.run_length = buffer.read_u32_varint()?;
         }
 
         // Read Lengths
-        for entry in entries.iter_mut() {
+        for entry in &mut entries {
             entry.length = buffer.read_u32_varint()?;
         }
 
         // Read Offsets
         let mut last_entry: Option<&DirEntry> = None;
-        for entry in entries.iter_mut() {
+        for entry in &mut entries {
             let offset = buffer.read_u64_varint()?;
             entry.offset = if offset == 0 {
                 let e = last_entry.ok_or(PmtError::InvalidEntry)?;
-                e.offset + e.length as u64
+                e.offset + u64::from(e.length)
             } else {
                 offset - 1
             };
@@ -116,7 +117,7 @@ mod tests {
         reader.read_exact(header_bytes.as_mut()).unwrap();
 
         let header = Header::try_from_bytes(header_bytes.freeze()).unwrap();
-        let mut directory_bytes = BytesMut::zeroed(header.root_length as usize);
+        let mut directory_bytes = BytesMut::zeroed(usize::try_from(header.root_length).unwrap());
         reader.read_exact(directory_bytes.as_mut()).unwrap();
 
         let mut decompressed = BytesMut::zeroed(directory_bytes.len() * 2);
@@ -136,7 +137,7 @@ mod tests {
         // ...it breaks pattern on the 59th tile
         assert_eq!(directory.entries[58].tile_id, 58);
         assert_eq!(directory.entries[58].run_length, 2);
-        assert_eq!(directory.entries[58].offset, 422070);
+        assert_eq!(directory.entries[58].offset, 422_070);
         assert_eq!(directory.entries[58].length, 850);
     }
 }

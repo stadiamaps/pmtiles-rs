@@ -49,6 +49,7 @@ pub enum Compression {
 }
 
 impl Compression {
+    #[must_use]
     pub fn content_encoding(&self) -> Option<&'static str> {
         Some(match self {
             Compression::Gzip => "gzip",
@@ -75,6 +76,7 @@ impl TryInto<Compression> for u8 {
 
 #[cfg(feature = "tilejson")]
 impl Header {
+    #[must_use]
     pub fn get_tilejson(&self, sources: Vec<String>) -> tilejson::TileJSON {
         tilejson::tilejson! {
             tiles: sources,
@@ -85,19 +87,21 @@ impl Header {
         }
     }
 
+    #[must_use]
     pub fn get_bounds(&self) -> tilejson::Bounds {
         tilejson::Bounds::new(
-            self.min_longitude as f64,
-            self.min_latitude as f64,
-            self.max_longitude as f64,
-            self.max_latitude as f64,
+            f64::from(self.min_longitude),
+            f64::from(self.min_latitude),
+            f64::from(self.max_longitude),
+            f64::from(self.max_latitude),
         )
     }
 
+    #[must_use]
     pub fn get_center(&self) -> tilejson::Center {
         tilejson::Center::new(
-            self.center_longitude as f64,
-            self.center_latitude as f64,
+            f64::from(self.center_longitude),
+            f64::from(self.center_latitude),
             self.center_zoom,
         )
     }
@@ -113,6 +117,7 @@ pub enum TileType {
 }
 
 impl TileType {
+    #[must_use]
     pub fn content_type(&self) -> &'static str {
         match self {
             TileType::Mvt => "application/vnd.mapbox-vector-tile",
@@ -143,7 +148,9 @@ static V3_MAGIC: &str = "PMTiles";
 static V2_MAGIC: &str = "PM";
 
 impl Header {
+    #[allow(clippy::cast_precision_loss)]
     fn read_coordinate_part<B: Buf>(mut buf: B) -> f32 {
+        // TODO: would it be more precise to do `((value as f64) / 10_000_000.) as f32` ?
         buf.get_i32_le() as f32 / 10_000_000.
     }
 
@@ -195,6 +202,7 @@ impl Header {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unreadable_literal, clippy::float_cmp)]
     use std::fs::File;
     use std::io::Read;
     use std::num::NonZeroU64;

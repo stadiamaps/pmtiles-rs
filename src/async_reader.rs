@@ -1,3 +1,7 @@
+// FIXME: This seems like a bug - there are lots of u64 to usize conversions in this file,
+//        so any file larger than 4GB, or an untrusted file with bad data may crash.
+#![allow(clippy::cast_possible_truncation)]
+
 #[cfg(feature = "mmap-async-tokio")]
 use std::path::Path;
 
@@ -30,18 +34,18 @@ pub struct AsyncPmTilesReader<B, C = NoCache> {
 }
 
 impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
-    /// Creates a new reader from a specified source and validates the provided PMTiles archive is valid.
+    /// Creates a new reader from a specified source and validates the provided `PMTiles` archive is valid.
     ///
-    /// Note: Prefer using new_with_* methods.
+    /// Note: Prefer using `new_with_*` methods.
     pub async fn try_from_source(backend: B) -> Result<Self, PmtError> {
         Self::try_from_cached_source(backend, NoCache).await
     }
 }
 
 impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTilesReader<B, C> {
-    /// Creates a new cached reader from a specified source and validates the provided PMTiles archive is valid.
+    /// Creates a new cached reader from a specified source and validates the provided `PMTiles` archive is valid.
     ///
-    /// Note: Prefer using new_with_* methods.
+    /// Note: Prefer using `new_with_*` methods.
     pub async fn try_from_cached_source(backend: B, cache: C) -> Result<Self, PmtError> {
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
         let mut initial_bytes = backend.read(0, MAX_INITIAL_BYTES).await?;
@@ -216,7 +220,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
 #[cfg(feature = "http-async")]
 impl AsyncPmTilesReader<HttpBackend, NoCache> {
-    /// Creates a new PMTiles reader from a URL using the Reqwest backend.
+    /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
     ///
     /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
     pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> Result<Self, PmtError> {
@@ -226,7 +230,7 @@ impl AsyncPmTilesReader<HttpBackend, NoCache> {
 
 #[cfg(feature = "http-async")]
 impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
-    /// Creates a new PMTiles reader with cache from a URL using the Reqwest backend.
+    /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
     ///
     /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
     pub async fn new_with_cached_url<U: IntoUrl>(
@@ -242,7 +246,7 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
 
 #[cfg(feature = "mmap-async-tokio")]
 impl AsyncPmTilesReader<MmapBackend, NoCache> {
-    /// Creates a new PMTiles reader from a file path using the async mmap backend.
+    /// Creates a new `PMTiles` reader from a file path using the async mmap backend.
     ///
     /// Fails if [p] does not exist or is an invalid archive.
     pub async fn new_with_path<P: AsRef<Path>>(path: P) -> Result<Self, PmtError> {
@@ -252,7 +256,7 @@ impl AsyncPmTilesReader<MmapBackend, NoCache> {
 
 #[cfg(feature = "mmap-async-tokio")]
 impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
-    /// Creates a new cached PMTiles reader from a file path using the async mmap backend.
+    /// Creates a new cached `PMTiles` reader from a file path using the async mmap backend.
     ///
     /// Fails if [p] does not exist or is an invalid archive.
     pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> Result<Self, PmtError> {
