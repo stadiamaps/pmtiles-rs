@@ -9,9 +9,9 @@ mod directory;
 pub use directory::{DirEntry, Directory};
 
 mod error;
-pub use error::PmtError;
 #[cfg(feature = "http-async")]
 pub use error::PmtHttpError;
+pub use error::{PmtError, PmtResult};
 
 #[cfg(feature = "http-async")]
 pub mod http;

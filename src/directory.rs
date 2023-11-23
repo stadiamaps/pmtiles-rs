@@ -42,7 +42,7 @@ impl Directory {
 impl TryFrom<Bytes> for Directory {
     type Error = PmtError;
 
-    fn try_from(buffer: Bytes) -> Result<Self, PmtError> {
+    fn try_from(buffer: Bytes) -> Result<Self, Self::Error> {
         let mut buffer = buffer.reader();
         let n_entries = buffer.read_usize_varint()?;
 

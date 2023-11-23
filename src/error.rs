@@ -2,6 +2,10 @@ use std::string::FromUtf8Error;
 
 use thiserror::Error;
 
+/// A specialized [`Result`] type for `PMTiles` operations.
+pub type PmtResult<T> = Result<T, PmtError>;
+
+/// Errors that can occur while reading `PMTiles` files.
 #[derive(Debug, Error)]
 pub enum PmtError {
     #[error("Invalid magic number")]

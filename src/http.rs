@@ -4,7 +4,7 @@ use reqwest::header::{HeaderValue, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
 
 use crate::async_reader::AsyncBackend;
-use crate::error::{PmtError, PmtHttpError};
+use crate::error::{PmtHttpError, PmtResult};
 
 pub struct HttpBackend {
     client: Client,
@@ -12,7 +12,7 @@ pub struct HttpBackend {
 }
 
 impl HttpBackend {
-    pub fn try_from<U: IntoUrl>(client: Client, url: U) -> Result<Self, PmtError> {
+    pub fn try_from<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
         Ok(HttpBackend {
             client,
             pmtiles_url: url.into_url()?,
@@ -22,7 +22,7 @@ impl HttpBackend {
 
 #[async_trait]
 impl AsyncBackend for HttpBackend {
-    async fn read_exact(&self, offset: usize, length: usize) -> Result<Bytes, PmtError> {
+    async fn read_exact(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
         let data = self.read(offset, length).await?;
 
         if data.len() == length {
@@ -32,7 +32,7 @@ impl AsyncBackend for HttpBackend {
         }
     }
 
-    async fn read(&self, offset: usize, length: usize) -> Result<Bytes, PmtError> {
+    async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
         let end = offset + length - 1;
         let range = format!("bytes={offset}-{end}");
         let range = HeaderValue::try_from(range).map_err(PmtHttpError::from)?;
