@@ -17,7 +17,7 @@ use crate::cache::DirCacheResult;
 #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 use crate::cache::{DirectoryCache, NoCache};
 use crate::directory::{DirEntry, Directory};
-use crate::error::PmtError;
+use crate::error::{PmtError, PmtResult};
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 #[cfg(feature = "http-async")]
 use crate::http::HttpBackend;
@@ -37,7 +37,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
     /// Creates a new reader from a specified source and validates the provided `PMTiles` archive is valid.
     ///
     /// Note: Prefer using `new_with_*` methods.
-    pub async fn try_from_source(backend: B) -> Result<Self, PmtError> {
+    pub async fn try_from_source(backend: B) -> PmtResult<Self> {
         Self::try_from_cached_source(backend, NoCache).await
     }
 }
@@ -46,7 +46,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// Creates a new cached reader from a specified source and validates the provided `PMTiles` archive is valid.
     ///
     /// Note: Prefer using `new_with_*` methods.
-    pub async fn try_from_cached_source(backend: B, cache: C) -> Result<Self, PmtError> {
+    pub async fn try_from_cached_source(backend: B, cache: C) -> PmtResult<Self> {
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
         let mut initial_bytes = backend.read(0, MAX_INITIAL_BYTES).await?;
         if initial_bytes.len() < HEADER_SIZE {
@@ -91,7 +91,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ///
     /// Note: by spec, this should be valid JSON. This method currently returns a [String].
     /// This may change in the future.
-    pub async fn get_metadata(&self) -> Result<String, PmtError> {
+    pub async fn get_metadata(&self) -> PmtResult<String> {
         let offset = self.header.metadata_offset as _;
         let length = self.header.metadata_length as _;
         let metadata = self.backend.read_exact(offset, length).await?;
@@ -103,10 +103,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     #[cfg(feature = "tilejson")]
-    pub async fn parse_tilejson(
-        &self,
-        sources: Vec<String>,
-    ) -> Result<tilejson::TileJSON, PmtError> {
+    pub async fn parse_tilejson(&self, sources: Vec<String>) -> PmtResult<tilejson::TileJSON> {
         use serde_json::Value;
 
         let meta = self.get_metadata().await?;
@@ -190,7 +187,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         entry
     }
 
-    async fn read_directory(&self, offset: usize, length: usize) -> Result<Directory, PmtError> {
+    async fn read_directory(&self, offset: usize, length: usize) -> PmtResult<Directory> {
         let data = self.backend.read_exact(offset, length).await?;
         Self::read_compressed_directory(self.header.internal_compression, data).await
     }
@@ -198,12 +195,12 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     async fn read_compressed_directory(
         compression: Compression,
         bytes: Bytes,
-    ) -> Result<Directory, PmtError> {
+    ) -> PmtResult<Directory> {
         let decompressed_bytes = Self::decompress(compression, bytes).await?;
         Directory::try_from(decompressed_bytes)
     }
 
-    async fn decompress(compression: Compression, bytes: Bytes) -> Result<Bytes, PmtError> {
+    async fn decompress(compression: Compression, bytes: Bytes) -> PmtResult<Bytes> {
         let mut decompressed_bytes = Vec::with_capacity(bytes.len() * 2);
         match compression {
             Compression::Gzip => {
@@ -223,7 +220,7 @@ impl AsyncPmTilesReader<HttpBackend, NoCache> {
     /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
     ///
     /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
-    pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> Result<Self, PmtError> {
+    pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
         Self::new_with_cached_url(NoCache, client, url).await
     }
 }
@@ -237,7 +234,7 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
         cache: C,
         client: Client,
         url: U,
-    ) -> Result<Self, PmtError> {
+    ) -> PmtResult<Self> {
         let backend = HttpBackend::try_from(client, url)?;
 
         Self::try_from_cached_source(backend, cache).await
@@ -249,7 +246,7 @@ impl AsyncPmTilesReader<MmapBackend, NoCache> {
     /// Creates a new `PMTiles` reader from a file path using the async mmap backend.
     ///
     /// Fails if [p] does not exist or is an invalid archive.
-    pub async fn new_with_path<P: AsRef<Path>>(path: P) -> Result<Self, PmtError> {
+    pub async fn new_with_path<P: AsRef<Path>>(path: P) -> PmtResult<Self> {
         Self::new_with_cached_path(NoCache, path).await
     }
 }
@@ -259,7 +256,7 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
     /// Creates a new cached `PMTiles` reader from a file path using the async mmap backend.
     ///
     /// Fails if [p] does not exist or is an invalid archive.
-    pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> Result<Self, PmtError> {
+    pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> PmtResult<Self> {
         let backend = MmapBackend::try_from(path).await?;
 
         Self::try_from_cached_source(backend, cache).await
@@ -269,10 +266,10 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
 #[async_trait]
 pub trait AsyncBackend {
     /// Reads exactly `length` bytes starting at `offset`
-    async fn read_exact(&self, offset: usize, length: usize) -> Result<Bytes, PmtError>;
+    async fn read_exact(&self, offset: usize, length: usize) -> PmtResult<Bytes>;
 
     /// Reads up to `length` bytes starting at `offset`.
-    async fn read(&self, offset: usize, length: usize) -> Result<Bytes, PmtError>;
+    async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes>;
 }
 
 #[cfg(test)]

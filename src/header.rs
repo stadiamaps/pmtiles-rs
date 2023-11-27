@@ -3,7 +3,7 @@ use std::panic::catch_unwind;
 
 use bytes::{Buf, Bytes};
 
-use crate::error::PmtError;
+use crate::error::{PmtError, PmtResult};
 
 #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
@@ -154,7 +154,7 @@ impl Header {
         buf.get_i32_le() as f32 / 10_000_000.
     }
 
-    pub fn try_from_bytes(mut bytes: Bytes) -> Result<Self, PmtError> {
+    pub fn try_from_bytes(mut bytes: Bytes) -> PmtResult<Self> {
         let magic_bytes = bytes.split_to(V3_MAGIC.len());
 
         // Assert magic
