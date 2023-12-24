@@ -17,6 +17,7 @@ impl Debug for Directory {
 }
 
 impl Directory {
+    /// Find the directory entry for a given tile ID.
     #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
     #[must_use]
     pub fn find_tile_id(&self, tile_id: u64) -> Option<&DirEntry> {
@@ -36,6 +37,12 @@ impl Directory {
                 None
             }
         }
+    }
+
+    /// Get an estimated byte size of the directory object. Use this for cache eviction.
+    #[must_use]
+    pub fn get_approx_byte_size(&self) -> usize {
+        self.entries.capacity() * std::mem::size_of::<DirEntry>()
     }
 }
 
