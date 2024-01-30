@@ -14,6 +14,8 @@ test:
     cargo test --features http-async
     cargo test --features mmap-async-tokio
     cargo test --features tilejson
+    cargo test --features s3-async
+    cargo test --features s3-async-rustls
     cargo test
     RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 

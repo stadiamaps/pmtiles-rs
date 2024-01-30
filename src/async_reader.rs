@@ -33,6 +33,7 @@ use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::http::HttpBackend;
 #[cfg(feature = "mmap-async-tokio")]
 use crate::mmap::MmapBackend;
+#[cfg(any(feature = "s3-async-rustls", feature = "s3-async"))]
 use crate::s3::S3Backend;
 use crate::tile::tile_id;
 use crate::{Compression, Header};
