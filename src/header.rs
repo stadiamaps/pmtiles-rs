@@ -5,9 +5,7 @@ use bytes::{Buf, Bytes};
 
 use crate::error::{PmtError, PmtResult};
 
-#[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
-#[cfg(any(feature = "http-async", feature = "mmap-async-tokio", test))]
 pub(crate) const HEADER_SIZE: usize = 127;
 
 #[allow(dead_code)]

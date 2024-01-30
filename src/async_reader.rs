@@ -10,11 +10,21 @@ use async_trait::async_trait;
 use bytes::Bytes;
 #[cfg(feature = "http-async")]
 use reqwest::{Client, IntoUrl};
-#[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
+#[cfg(any(
+    feature = "http-async",
+    feature = "mmap-async-tokio",
+    feature = "s3-async-rustls",
+    feature = "s3-async"
+))]
 use tokio::io::AsyncReadExt;
 
 use crate::cache::DirCacheResult;
-#[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
+#[cfg(any(
+    feature = "http-async",
+    feature = "mmap-async-tokio",
+    feature = "s3-async",
+    feature = "s3-async-rustls"
+))]
 use crate::cache::{DirectoryCache, NoCache};
 use crate::directory::{DirEntry, Directory};
 use crate::error::{PmtError, PmtResult};
@@ -23,6 +33,7 @@ use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::http::HttpBackend;
 #[cfg(feature = "mmap-async-tokio")]
 use crate::mmap::MmapBackend;
+use crate::s3::S3Backend;
 use crate::tile::tile_id;
 use crate::{Compression, Header};
 
@@ -258,6 +269,32 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
     /// Fails if [p] does not exist or is an invalid archive.
     pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> PmtResult<Self> {
         let backend = MmapBackend::try_from(path).await?;
+
+        Self::try_from_cached_source(backend, cache).await
+    }
+}
+
+#[cfg(any(feature = "s3-async", feature = "s3-async-rustls"))]
+impl AsyncPmTilesReader<S3Backend, NoCache> {
+    /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
+    ///
+    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    pub async fn new_with_bucket_path(bucket: s3::Bucket, path: String) -> PmtResult<Self> {
+        Self::new_with_cached_bucket_path(NoCache, bucket, path).await
+    }
+}
+
+#[cfg(any(feature = "s3-async", feature = "s3-async-rustls"))]
+impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<S3Backend, C> {
+    /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
+    ///
+    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    pub async fn new_with_cached_bucket_path(
+        cache: C,
+        bucket: s3::Bucket,
+        path: String,
+    ) -> PmtResult<Self> {
+        let backend = S3Backend::from(bucket, path);
 
         Self::try_from_cached_source(backend, cache).await
     }

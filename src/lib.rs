@@ -1,28 +1,33 @@
 #![forbid(unsafe_code)]
 
+pub use directory::{Directory, DirEntry};
+pub use error::{PmtError, PmtResult};
+#[cfg(feature = "http-async")]
+pub use error::PmtHttpError;
+
+pub use crate::header::{Compression, Header, TileType};
+
 mod tile;
 
 mod header;
-pub use crate::header::{Compression, Header, TileType};
 
 mod directory;
-pub use directory::{DirEntry, Directory};
 
 mod error;
-#[cfg(feature = "http-async")]
-pub use error::PmtHttpError;
-pub use error::{PmtError, PmtResult};
 
 #[cfg(feature = "http-async")]
 pub mod http;
 
+#[cfg(any(feature = "s3-async", feature = "s3-async-rustls"))]
+pub mod s3;
+
 #[cfg(feature = "mmap-async-tokio")]
 pub mod mmap;
 
-#[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
+#[cfg(any(feature = "http-async", feature = "mmap-async-tokio", feature = "s3-async-rustls", feature = "s3-async"))]
 pub mod async_reader;
 
-#[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
+#[cfg(any(feature = "http-async", feature = "mmap-async-tokio", feature = "s3-async", feature = "s3-async-rustls"))]
 pub mod cache;
 
 #[cfg(test)]

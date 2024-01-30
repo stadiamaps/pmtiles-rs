@@ -1,10 +1,19 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use reqwest::header::{HeaderValue, RANGE};
-use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
+use reqwest::{
+    header::{HeaderValue, RANGE},
+    Client,
+    IntoUrl,
+    Method,
+    Request,
+    StatusCode,
+    Url
+};
 
-use crate::async_reader::AsyncBackend;
-use crate::error::{PmtHttpError, PmtResult};
+use crate::{
+    async_reader::AsyncBackend,
+    error::{PmtHttpError, PmtResult}
+};
 
 pub struct HttpBackend {
     client: Client,

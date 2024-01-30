@@ -32,6 +32,9 @@ pub enum PmtError {
     #[cfg(feature = "http-async")]
     #[error("{0}")]
     Http(#[from] PmtHttpError),
+    #[cfg(any(feature = "s3-async-rustls", feature = "s3-async"))]
+    #[error("{0}")]
+    S3(#[from] PmtS3Error)
 }
 
 #[cfg(feature = "http-async")]
@@ -54,5 +57,24 @@ pub enum PmtHttpError {
 impl From<reqwest::Error> for PmtError {
     fn from(e: reqwest::Error) -> Self {
         Self::Http(PmtHttpError::Http(e))
+    }
+}
+
+#[cfg(any(feature = "s3-async-rustls", feature = "s3-async"))]
+#[derive(Debug, Error)]
+pub enum PmtS3Error {
+    #[error("Unexpected number of bytes returned [expected: {0}, received: {1}].")]
+    UnexpectedNumberOfBytesReturned(usize, usize),
+    #[error("S3 response body is too long, Response {0}B > requested {1}B")]
+    ResponseBodyTooLong(usize, usize),
+    #[error("S3 error {0}")]
+    S3(#[from] s3::error::S3Error),
+}
+
+// This is required because thiserror #[from] does not support two-level conversion.
+#[cfg(any(feature = "s3-async-rustls", feature = "s3-async"))]
+impl From<s3::error::S3Error> for PmtError {
+    fn from(e: s3::error::S3Error) -> Self {
+        Self::S3(PmtS3Error::S3(e))
     }
 }
