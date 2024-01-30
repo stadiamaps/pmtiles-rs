@@ -34,7 +34,7 @@ pub enum PmtError {
     Http(#[from] PmtHttpError),
     #[cfg(any(feature = "s3-async-rustls", feature = "s3-async"))]
     #[error("{0}")]
-    S3(#[from] PmtS3Error)
+    S3(#[from] PmtS3Error),
 }
 
 #[cfg(feature = "http-async")]
