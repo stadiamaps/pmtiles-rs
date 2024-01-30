@@ -10,6 +10,7 @@ pub struct S3Backend {
 }
 
 impl S3Backend {
+    #[must_use]
     pub fn from(bucket: Bucket, pmtiles_path: String) -> S3Backend {
         Self {
             bucket,
