@@ -30,10 +30,10 @@ pub enum PmtError {
     #[error("Unable to open mmap file")]
     UnableToOpenMmapFile,
     #[cfg(feature = "http-async")]
-    #[error("{0}")]
+    #[error(transparent)]
     Http(#[from] PmtHttpError),
-    #[cfg(any(feature = "s3-async-rustls", feature = "s3-async"))]
-    #[error("{0}")]
+    #[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
+    #[error(transparent)]
     S3(#[from] PmtS3Error),
 }
 
@@ -48,7 +48,7 @@ pub enum PmtHttpError {
     ResponseBodyTooLong(usize, usize),
     #[error("HTTP error {0}")]
     Http(#[from] reqwest::Error),
-    #[error("{0}")]
+    #[error(transparent)]
     InvalidHeaderValue(#[from] reqwest::header::InvalidHeaderValue),
 }
 
