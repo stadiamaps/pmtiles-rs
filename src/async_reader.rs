@@ -18,6 +18,12 @@ use reqwest::{Client, IntoUrl};
 ))]
 use tokio::io::AsyncReadExt;
 
+#[cfg(feature = "http-async")]
+use crate::backend::http::HttpBackend;
+#[cfg(feature = "mmap-async-tokio")]
+use crate::backend::mmap::MmapBackend;
+#[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
+use crate::backend::s3::S3Backend;
 use crate::cache::DirCacheResult;
 #[cfg(any(
     feature = "http-async",
@@ -29,12 +35,6 @@ use crate::cache::{DirectoryCache, NoCache};
 use crate::directory::{DirEntry, Directory};
 use crate::error::{PmtError, PmtResult};
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
-#[cfg(feature = "http-async")]
-use crate::http::HttpBackend;
-#[cfg(feature = "mmap-async-tokio")]
-use crate::mmap::MmapBackend;
-#[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
-use crate::s3::S3Backend;
 use crate::tile::tile_id;
 use crate::{Compression, Header};
 
@@ -314,7 +314,7 @@ pub trait AsyncBackend {
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
     use super::AsyncPmTilesReader;
-    use crate::mmap::MmapBackend;
+    use crate::backend::mmap::MmapBackend;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
 
     #[tokio::test]

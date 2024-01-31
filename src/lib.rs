@@ -5,7 +5,16 @@ pub use directory::{DirEntry, Directory};
 pub use error::PmtHttpError;
 pub use error::{PmtError, PmtResult};
 
-pub use crate::header::{Compression, Header, TileType};
+pub use header::{Compression, Header, TileType};
+
+#[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
+pub use backend::s3::S3Backend;
+
+#[cfg(feature = "http-async")]
+pub use backend::http::HttpBackend;
+
+#[cfg(feature = "mmap-async-tokio")]
+pub use backend::mmap::MmapBackend;
 
 mod tile;
 
@@ -15,14 +24,7 @@ mod directory;
 
 mod error;
 
-#[cfg(feature = "http-async")]
-pub mod http;
-
-#[cfg(any(feature = "s3-async-native", feature = "s3-async-rustls"))]
-pub mod s3;
-
-#[cfg(feature = "mmap-async-tokio")]
-pub mod mmap;
+mod backend;
 
 #[cfg(any(
     feature = "http-async",

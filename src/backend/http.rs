@@ -60,8 +60,8 @@ impl AsyncBackend for HttpBackend {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::async_reader::AsyncPmTilesReader;
-    use crate::http::HttpBackend;
 
     static TEST_URL: &str =
         "https://protomaps.github.io/PMTiles/protomaps(vector)ODbL_firenze.pmtiles";
