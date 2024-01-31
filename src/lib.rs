@@ -18,7 +18,7 @@ mod error;
 #[cfg(feature = "http-async")]
 pub mod http;
 
-#[cfg(any(feature = "s3-async", feature = "s3-async-rustls"))]
+#[cfg(any(feature = "s3-async-native", feature = "s3-async-rustls"))]
 pub mod s3;
 
 #[cfg(feature = "mmap-async-tokio")]
@@ -28,14 +28,14 @@ pub mod mmap;
     feature = "http-async",
     feature = "mmap-async-tokio",
     feature = "s3-async-rustls",
-    feature = "s3-async"
+    feature = "s3-async-native"
 ))]
 pub mod async_reader;
 
 #[cfg(any(
     feature = "http-async",
     feature = "mmap-async-tokio",
-    feature = "s3-async",
+    feature = "s3-async-native",
     feature = "s3-async-rustls"
 ))]
 pub mod cache;

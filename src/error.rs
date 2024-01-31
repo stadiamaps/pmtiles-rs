@@ -60,7 +60,7 @@ impl From<reqwest::Error> for PmtError {
     }
 }
 
-#[cfg(any(feature = "s3-async-rustls", feature = "s3-async"))]
+#[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
 #[derive(Debug, Error)]
 pub enum PmtS3Error {
     #[error("Unexpected number of bytes returned [expected: {0}, received: {1}].")]
@@ -72,7 +72,7 @@ pub enum PmtS3Error {
 }
 
 // This is required because thiserror #[from] does not support two-level conversion.
-#[cfg(any(feature = "s3-async-rustls", feature = "s3-async"))]
+#[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
 impl From<s3::error::S3Error> for PmtError {
     fn from(e: s3::error::S3Error) -> Self {
         Self::S3(PmtS3Error::S3(e))

@@ -14,7 +14,7 @@ use reqwest::{Client, IntoUrl};
     feature = "http-async",
     feature = "mmap-async-tokio",
     feature = "s3-async-rustls",
-    feature = "s3-async"
+    feature = "s3-async-native"
 ))]
 use tokio::io::AsyncReadExt;
 
@@ -22,7 +22,7 @@ use crate::cache::DirCacheResult;
 #[cfg(any(
     feature = "http-async",
     feature = "mmap-async-tokio",
-    feature = "s3-async",
+    feature = "s3-async-native",
     feature = "s3-async-rustls"
 ))]
 use crate::cache::{DirectoryCache, NoCache};
@@ -33,7 +33,7 @@ use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::http::HttpBackend;
 #[cfg(feature = "mmap-async-tokio")]
 use crate::mmap::MmapBackend;
-#[cfg(any(feature = "s3-async-rustls", feature = "s3-async"))]
+#[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
 use crate::s3::S3Backend;
 use crate::tile::tile_id;
 use crate::{Compression, Header};
@@ -275,7 +275,7 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
     }
 }
 
-#[cfg(any(feature = "s3-async", feature = "s3-async-rustls"))]
+#[cfg(any(feature = "s3-async-native", feature = "s3-async-rustls"))]
 impl AsyncPmTilesReader<S3Backend, NoCache> {
     /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
     ///
@@ -285,7 +285,7 @@ impl AsyncPmTilesReader<S3Backend, NoCache> {
     }
 }
 
-#[cfg(any(feature = "s3-async", feature = "s3-async-rustls"))]
+#[cfg(any(feature = "s3-async-native", feature = "s3-async-rustls"))]
 impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<S3Backend, C> {
     /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
     ///
