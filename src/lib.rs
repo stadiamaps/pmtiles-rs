@@ -8,7 +8,7 @@ pub use header::{Compression, Header, TileType};
 #[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
 pub use backend::S3Backend;
 
-#[cfg(feature = "http-async")]
+#[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
 pub use s3;
 
 #[cfg(feature = "http-async")]
