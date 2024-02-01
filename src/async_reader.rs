@@ -19,11 +19,11 @@ use reqwest::{Client, IntoUrl};
 use tokio::io::AsyncReadExt;
 
 #[cfg(feature = "http-async")]
-use crate::backend::http::HttpBackend;
+use crate::backend::HttpBackend;
 #[cfg(feature = "mmap-async-tokio")]
-use crate::backend::mmap::MmapBackend;
+use crate::backend::MmapBackend;
 #[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
-use crate::backend::s3::S3Backend;
+use crate::backend::S3Backend;
 use crate::cache::DirCacheResult;
 #[cfg(any(
     feature = "http-async",
@@ -314,7 +314,7 @@ pub trait AsyncBackend {
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
     use super::AsyncPmTilesReader;
-    use crate::backend::mmap::MmapBackend;
+    use crate::backend::MmapBackend;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
 
     #[tokio::test]

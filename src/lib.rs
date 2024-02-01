@@ -8,13 +8,13 @@ pub use error::{PmtError, PmtResult};
 pub use header::{Compression, Header, TileType};
 
 #[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
-pub use backend::s3::S3Backend;
+pub use backend::S3Backend;
 
 #[cfg(feature = "http-async")]
-pub use backend::http::HttpBackend;
+pub use backend::HttpBackend;
 
 #[cfg(feature = "mmap-async-tokio")]
-pub use backend::mmap::MmapBackend;
+pub use backend::MmapBackend;
 
 mod tile;
 

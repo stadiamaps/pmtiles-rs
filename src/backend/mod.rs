@@ -1,8 +1,17 @@
 #[cfg(any(feature = "s3-async-native", feature = "s3-async-rustls"))]
-pub(crate) mod s3;
+mod s3;
+
+#[cfg(any(feature = "s3-async-native", feature = "s3-async-rustls"))]
+pub use s3::S3Backend;
 
 #[cfg(feature = "http-async")]
-pub(crate) mod http;
+mod http;
+
+#[cfg(feature = "http-async")]
+pub use http::HttpBackend;
 
 #[cfg(feature = "mmap-async-tokio")]
-pub(crate) mod mmap;
+mod mmap;
+
+#[cfg(feature = "mmap-async-tokio")]
+pub use mmap::MmapBackend;
