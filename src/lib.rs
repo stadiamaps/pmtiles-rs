@@ -9,7 +9,13 @@ pub use header::{Compression, Header, TileType};
 pub use backend::S3Backend;
 
 #[cfg(feature = "http-async")]
+pub use s3;
+
+#[cfg(feature = "http-async")]
 pub use backend::HttpBackend;
+
+#[cfg(feature = "http-async")]
+pub use reqwest;
 
 #[cfg(feature = "mmap-async-tokio")]
 pub use backend::MmapBackend;
