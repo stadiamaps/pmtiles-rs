@@ -16,6 +16,7 @@ originally created by Brandon Liu for Protomaps.
 - Backends supported:
   - Async `mmap` (Tokio) for local files
   - Async `http` and `https` (Reqwuest + Tokio) for URLs
+  - Async `s3` (Rust-S3 + Tokio) for S3-compatible buckets
 
 ## Plans & TODOs
 
