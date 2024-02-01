@@ -1,8 +1,6 @@
 #![forbid(unsafe_code)]
 
 pub use directory::{DirEntry, Directory};
-#[cfg(feature = "http-async")]
-pub use error::PmtHttpError;
 pub use error::{PmtError, PmtResult};
 
 pub use header::{Compression, Header, TileType};

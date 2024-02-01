@@ -29,52 +29,30 @@ pub enum PmtError {
     #[cfg(feature = "mmap-async-tokio")]
     #[error("Unable to open mmap file")]
     UnableToOpenMmapFile,
-    #[cfg(feature = "http-async")]
-    #[error(transparent)]
-    Http(#[from] PmtHttpError),
-    #[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
-    #[error(transparent)]
-    S3(#[from] PmtS3Error),
-}
-
-#[cfg(feature = "http-async")]
-#[derive(Debug, Error)]
-pub enum PmtHttpError {
+    #[cfg(any(
+        feature = "http-async",
+        feature = "s3-async-native",
+        feature = "s3-async-rustls"
+    ))]
     #[error("Unexpected number of bytes returned [expected: {0}, received: {1}].")]
     UnexpectedNumberOfBytesReturned(usize, usize),
+    #[cfg(feature = "http-async")]
     #[error("Range requests unsupported")]
     RangeRequestsUnsupported,
+    #[cfg(any(
+        feature = "http-async",
+        feature = "s3-async-native",
+        feature = "s3-async-rustls"
+    ))]
     #[error("HTTP response body is too long, Response {0}B > requested {1}B")]
     ResponseBodyTooLong(usize, usize),
-    #[error("HTTP error {0}")]
+    #[cfg(feature = "http-async")]
+    #[error(transparent)]
     Http(#[from] reqwest::Error),
+    #[cfg(feature = "http-async")]
     #[error(transparent)]
     InvalidHeaderValue(#[from] reqwest::header::InvalidHeaderValue),
-}
-
-// This is required because thiserror #[from] does not support two-level conversion.
-#[cfg(feature = "http-async")]
-impl From<reqwest::Error> for PmtError {
-    fn from(e: reqwest::Error) -> Self {
-        Self::Http(PmtHttpError::Http(e))
-    }
-}
-
-#[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
-#[derive(Debug, Error)]
-pub enum PmtS3Error {
-    #[error("Unexpected number of bytes returned [expected: {0}, received: {1}].")]
-    UnexpectedNumberOfBytesReturned(usize, usize),
-    #[error("S3 response body is too long, Response {0}B > requested {1}B")]
-    ResponseBodyTooLong(usize, usize),
-    #[error("S3 error {0}")]
+    #[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
+    #[error(transparent)]
     S3(#[from] s3::error::S3Error),
-}
-
-// This is required because thiserror #[from] does not support two-level conversion.
-#[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
-impl From<s3::error::S3Error> for PmtError {
-    fn from(e: s3::error::S3Error) -> Self {
-        Self::S3(PmtS3Error::S3(e))
-    }
 }

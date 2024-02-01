@@ -5,10 +5,7 @@ use reqwest::{
     Client, IntoUrl, Method, Request, StatusCode, Url,
 };
 
-use crate::{
-    async_reader::AsyncBackend,
-    error::{PmtHttpError, PmtResult},
-};
+use crate::{async_reader::AsyncBackend, error::PmtResult, PmtError};
 
 pub struct HttpBackend {
     client: Client,
@@ -32,26 +29,29 @@ impl AsyncBackend for HttpBackend {
         if data.len() == length {
             Ok(data)
         } else {
-            Err(PmtHttpError::UnexpectedNumberOfBytesReturned(length, data.len()).into())
+            Err(PmtError::UnexpectedNumberOfBytesReturned(
+                length,
+                data.len(),
+            ))
         }
     }
 
     async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
         let end = offset + length - 1;
         let range = format!("bytes={offset}-{end}");
-        let range = HeaderValue::try_from(range).map_err(PmtHttpError::from)?;
+        let range = HeaderValue::try_from(range)?;
 
         let mut req = Request::new(Method::GET, self.pmtiles_url.clone());
         req.headers_mut().insert(RANGE, range);
 
         let response = self.client.execute(req).await?.error_for_status()?;
         if response.status() != StatusCode::PARTIAL_CONTENT {
-            return Err(PmtHttpError::RangeRequestsUnsupported.into());
+            return Err(PmtError::RangeRequestsUnsupported);
         }
 
         let response_bytes = response.bytes().await?;
         if response_bytes.len() > length {
-            Err(PmtHttpError::ResponseBodyTooLong(response_bytes.len(), length).into())
+            Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
         } else {
             Ok(response_bytes)
         }

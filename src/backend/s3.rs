@@ -4,7 +4,7 @@ use s3::Bucket;
 
 use crate::{
     async_reader::AsyncBackend,
-    error::PmtS3Error::{ResponseBodyTooLong, UnexpectedNumberOfBytesReturned},
+    error::PmtError::{ResponseBodyTooLong, UnexpectedNumberOfBytesReturned},
 };
 
 pub struct S3Backend {
@@ -30,7 +30,7 @@ impl AsyncBackend for S3Backend {
         if data.len() == length {
             Ok(data)
         } else {
-            Err(UnexpectedNumberOfBytesReturned(length, data.len()).into())
+            Err(UnexpectedNumberOfBytesReturned(length, data.len()))
         }
     }
 
@@ -47,7 +47,7 @@ impl AsyncBackend for S3Backend {
         let response_bytes = response.bytes();
 
         if response_bytes.len() > length {
-            Err(ResponseBodyTooLong(response_bytes.len(), length).into())
+            Err(ResponseBodyTooLong(response_bytes.len(), length))
         } else {
             Ok(response_bytes.clone())
         }
