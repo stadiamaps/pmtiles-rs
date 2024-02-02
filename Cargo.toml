@@ -1,6 +1,6 @@
 [package]
 name = "pmtiles"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
 license = "MIT OR Apache-2.0"
@@ -13,17 +13,16 @@ categories = ["science::geo"]
 [features]
 default = []
 http-async = ["dep:tokio", "dep:reqwest"]
-s3-async-native = ["dep:tokio", "dep:rust-s3", "rust-s3/tokio-native-tls"]
-s3-async-rustls = ["dep:tokio", "dep:rust-s3", "rust-s3/tokio-rustls-tls"]
-mmap-async-tokio = ["dep:tokio", "dep:fmmap", "fmmap?/tokio-async"]
+s3-async-native = ["dep:tokio", "dep:rust-s3", "rust-s3?/tokio-native-tls"]
+s3-async-rustls = ["dep:tokio", "dep:rust-s3", "rust-s3?/tokio-rustls-tls"]
+mmap-async-tokio = ["dep:tokio", "dep:fmmap", "fmmap?/tokio-async", "async-compression?/tokio"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
 
 # TODO: support other async libraries
 
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
-# TODO: tokio is always requested here, but the tokio dependency is optional below - maybe make it required?
-async-compression = { version = "0.4", features = ["gzip", "zstd", "brotli", "tokio"] }
+async-compression = { version = "0.4", features = ["gzip", "zstd", "brotli"] }
 async-recursion = "1"
 async-trait = "0.1"
 bytes = "1"

@@ -2,23 +2,18 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use s3::Bucket;
 
-use crate::{
-    async_reader::AsyncBackend,
-    error::PmtError::{ResponseBodyTooLong, UnexpectedNumberOfBytesReturned},
-};
+use crate::async_reader::AsyncBackend;
+use crate::error::PmtError::{ResponseBodyTooLong, UnexpectedNumberOfBytesReturned};
 
 pub struct S3Backend {
     bucket: Bucket,
-    pmtiles_path: String,
+    path: String,
 }
 
 impl S3Backend {
     #[must_use]
-    pub fn from(bucket: Bucket, pmtiles_path: String) -> S3Backend {
-        Self {
-            bucket,
-            pmtiles_path,
-        }
+    pub fn from(bucket: Bucket, path: String) -> S3Backend {
+        Self { bucket, path }
     }
 }
 
@@ -38,7 +33,7 @@ impl AsyncBackend for S3Backend {
         let response = self
             .bucket
             .get_object_range(
-                self.pmtiles_path.as_str(),
+                self.path.as_str(),
                 offset as _,
                 Some((offset + length - 1) as _),
             )

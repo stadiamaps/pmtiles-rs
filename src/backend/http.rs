@@ -1,22 +1,22 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use reqwest::{
-    header::{HeaderValue, RANGE},
-    Client, IntoUrl, Method, Request, StatusCode, Url,
-};
+use reqwest::header::{HeaderValue, RANGE};
+use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
 
-use crate::{async_reader::AsyncBackend, error::PmtResult, PmtError};
+use crate::async_reader::AsyncBackend;
+use crate::error::PmtResult;
+use crate::PmtError;
 
 pub struct HttpBackend {
     client: Client,
-    pmtiles_url: Url,
+    url: Url,
 }
 
 impl HttpBackend {
     pub fn try_from<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
         Ok(HttpBackend {
             client,
-            pmtiles_url: url.into_url()?,
+            url: url.into_url()?,
         })
     }
 }
@@ -41,7 +41,7 @@ impl AsyncBackend for HttpBackend {
         let range = format!("bytes={offset}-{end}");
         let range = HeaderValue::try_from(range)?;
 
-        let mut req = Request::new(Method::GET, self.pmtiles_url.clone());
+        let mut req = Request::new(Method::GET, self.url.clone());
         req.headers_mut().insert(RANGE, range);
 
         let response = self.client.execute(req).await?.error_for_status()?;
