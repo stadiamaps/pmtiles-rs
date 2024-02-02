@@ -1,6 +1,6 @@
 [package]
 name = "pmtiles"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
 license = "MIT OR Apache-2.0"
@@ -13,6 +13,8 @@ categories = ["science::geo"]
 [features]
 default = []
 http-async = ["dep:tokio", "dep:reqwest"]
+s3-async-native = ["dep:tokio", "dep:rust-s3", "rust-s3/tokio-native-tls"]
+s3-async-rustls = ["dep:tokio", "dep:rust-s3", "rust-s3/tokio-rustls-tls"]
 mmap-async-tokio = ["dep:tokio", "dep:fmmap", "fmmap?/tokio-async"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
 
@@ -34,6 +36,7 @@ thiserror = "1"
 tilejson = { version = "0.4", optional = true }
 tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
 varint-rs = "2"
+rust-s3 = {  version = "0.33.0", optional = true, default-features = false, features = ["fail-on-err"] }
 
 [dev-dependencies]
 flate2 = "1"

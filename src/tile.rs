@@ -1,4 +1,3 @@
-#[cfg(any(feature = "http-async", feature = "mmap-async-tokio", test))]
 pub(crate) fn tile_id(z: u8, x: u64, y: u64) -> u64 {
     if z == 0 {
         return 0;

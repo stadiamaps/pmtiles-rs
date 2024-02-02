@@ -18,7 +18,6 @@ impl Debug for Directory {
 
 impl Directory {
     /// Find the directory entry for a given tile ID.
-    #[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
     #[must_use]
     pub fn find_tile_id(&self, tile_id: u64) -> Option<&DirEntry> {
         match self.entries.binary_search_by(|e| e.tile_id.cmp(&tile_id)) {
@@ -97,7 +96,6 @@ pub struct DirEntry {
     pub(crate) run_length: u32,
 }
 
-#[cfg(any(feature = "http-async", feature = "mmap-async-tokio"))]
 impl DirEntry {
     pub(crate) fn is_leaf(&self) -> bool {
         self.run_length == 0

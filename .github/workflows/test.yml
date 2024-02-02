@@ -29,4 +29,6 @@ jobs:
       - run: cargo test --features http-async
       - run: cargo test --features mmap-async-tokio
       - run: cargo test --features tilejson
+      - run: cargo test --features s3-async-native
+      - run: cargo test --features s3-async-rustls
       - run: cargo test
