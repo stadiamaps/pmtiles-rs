@@ -3,9 +3,34 @@ use bytes::Bytes;
 use reqwest::header::{HeaderValue, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
 
-use crate::async_reader::AsyncBackend;
+use crate::async_reader::{AsyncBackend, AsyncPmTilesReader};
+use crate::cache::{DirectoryCache, NoCache};
 use crate::error::PmtResult;
 use crate::PmtError;
+
+impl AsyncPmTilesReader<HttpBackend, NoCache> {
+    /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
+    ///
+    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
+        Self::new_with_cached_url(NoCache, client, url).await
+    }
+}
+
+impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
+    /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
+    ///
+    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    pub async fn new_with_cached_url<U: IntoUrl>(
+        cache: C,
+        client: Client,
+        url: U,
+    ) -> PmtResult<Self> {
+        let backend = HttpBackend::try_from(client, url)?;
+
+        Self::try_from_cached_source(backend, cache).await
+    }
+}
 
 pub struct HttpBackend {
     client: Client,

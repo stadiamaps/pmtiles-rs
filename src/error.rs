@@ -29,21 +29,13 @@ pub enum PmtError {
     #[cfg(feature = "mmap-async-tokio")]
     #[error("Unable to open mmap file")]
     UnableToOpenMmapFile,
-    #[cfg(any(
-        feature = "http-async",
-        feature = "s3-async-native",
-        feature = "s3-async-rustls"
-    ))]
+    #[cfg(any(feature = "http-async", feature = "__async-s3"))]
     #[error("Unexpected number of bytes returned [expected: {0}, received: {1}].")]
     UnexpectedNumberOfBytesReturned(usize, usize),
     #[cfg(feature = "http-async")]
     #[error("Range requests unsupported")]
     RangeRequestsUnsupported,
-    #[cfg(any(
-        feature = "http-async",
-        feature = "s3-async-native",
-        feature = "s3-async-rustls"
-    ))]
+    #[cfg(any(feature = "http-async", feature = "__async-s3"))]
     #[error("HTTP response body is too long, Response {0}B > requested {1}B")]
     ResponseBodyTooLong(usize, usize),
     #[cfg(feature = "http-async")]
@@ -52,7 +44,7 @@ pub enum PmtError {
     #[cfg(feature = "http-async")]
     #[error(transparent)]
     InvalidHeaderValue(#[from] reqwest::header::InvalidHeaderValue),
-    #[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
+    #[cfg(feature = "__async-s3")]
     #[error(transparent)]
     S3(#[from] s3::error::S3Error),
 }

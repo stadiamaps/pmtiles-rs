@@ -5,7 +5,9 @@ use bytes::{Buf, Bytes};
 
 use crate::error::{PmtError, PmtResult};
 
+#[cfg(feature = "__async")]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
+#[cfg(any(test, feature = "__async"))]
 pub(crate) const HEADER_SIZE: usize = 127;
 
 #[allow(dead_code)]
