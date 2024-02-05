@@ -1,6 +1,6 @@
 [package]
 name = "pmtiles"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
 license = "MIT OR Apache-2.0"
@@ -19,6 +19,7 @@ s3-async-rustls = ["__async-s3"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
 
 # Forward some of the common features to reqwest dependency
+reqwest-default = ["reqwest?/default"]
 reqwest-native-tls = ["reqwest?/native-tls"]
 reqwest-rustls-tls = ["reqwest?/rustls-tls"]
 reqwest-rustls-tls-webpki-roots = ["reqwest?/rustls-tls-webpki-roots"]
