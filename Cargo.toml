@@ -1,6 +1,6 @@
 [package]
 name = "pmtiles"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
 license = "MIT OR Apache-2.0"
@@ -12,31 +12,39 @@ categories = ["science::geo"]
 
 [features]
 default = []
-http-async = ["dep:tokio", "dep:reqwest"]
-s3-async-native = ["dep:tokio", "dep:rust-s3", "rust-s3/tokio-native-tls"]
-s3-async-rustls = ["dep:tokio", "dep:rust-s3", "rust-s3/tokio-rustls-tls"]
-mmap-async-tokio = ["dep:tokio", "dep:fmmap", "fmmap?/tokio-async"]
+http-async = ["__async", "dep:reqwest"]
+mmap-async-tokio = ["__async", "dep:fmmap", "fmmap?/tokio-async"]
+s3-async-native = ["__async-s3"]
+s3-async-rustls = ["__async-s3"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
 
-# TODO: support other async libraries
+# Forward some of the common features to reqwest dependency
+reqwest-default = ["reqwest?/default"]
+reqwest-native-tls = ["reqwest?/native-tls"]
+reqwest-rustls-tls = ["reqwest?/rustls-tls"]
+reqwest-rustls-tls-webpki-roots = ["reqwest?/rustls-tls-webpki-roots"]
+reqwest-rustls-tls-native-roots = ["reqwest?/rustls-tls-native-roots"]
+
+# Internal features, do not use
+__async = ["dep:tokio", "async-compression/tokio"]
+__async-s3 = ["__async", "dep:rust-s3", "rust-s3?/tokio-native-tls"]
 
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
-# TODO: tokio is always requested here, but the tokio dependency is optional below - maybe make it required?
-async-compression = { version = "0.4", features = ["gzip", "zstd", "brotli", "tokio"] }
+async-compression = { version = "0.4", features = ["gzip", "zstd", "brotli"] }
 async-recursion = "1"
 async-trait = "0.1"
 bytes = "1"
 fmmap = { version = "0.3", default-features = false, optional = true }
 hilbert_2d = "1"
 reqwest = { version = "0.11", default-features = false, optional = true }
+rust-s3 = {  version = "0.33.0", optional = true, default-features = false, features = ["fail-on-err"] }
 serde = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
 thiserror = "1"
 tilejson = { version = "0.4", optional = true }
 tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
 varint-rs = "2"
-rust-s3 = {  version = "0.33.0", optional = true, default-features = false, features = ["fail-on-err"] }
 
 [dev-dependencies]
 flate2 = "1"

@@ -1,22 +1,47 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use reqwest::{
-    header::{HeaderValue, RANGE},
-    Client, IntoUrl, Method, Request, StatusCode, Url,
-};
+use reqwest::header::{HeaderValue, RANGE};
+use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
 
-use crate::{async_reader::AsyncBackend, error::PmtResult, PmtError};
+use crate::async_reader::{AsyncBackend, AsyncPmTilesReader};
+use crate::cache::{DirectoryCache, NoCache};
+use crate::error::PmtResult;
+use crate::PmtError;
+
+impl AsyncPmTilesReader<HttpBackend, NoCache> {
+    /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
+    ///
+    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
+        Self::new_with_cached_url(NoCache, client, url).await
+    }
+}
+
+impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
+    /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
+    ///
+    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    pub async fn new_with_cached_url<U: IntoUrl>(
+        cache: C,
+        client: Client,
+        url: U,
+    ) -> PmtResult<Self> {
+        let backend = HttpBackend::try_from(client, url)?;
+
+        Self::try_from_cached_source(backend, cache).await
+    }
+}
 
 pub struct HttpBackend {
     client: Client,
-    pmtiles_url: Url,
+    url: Url,
 }
 
 impl HttpBackend {
     pub fn try_from<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
         Ok(HttpBackend {
             client,
-            pmtiles_url: url.into_url()?,
+            url: url.into_url()?,
         })
     }
 }
@@ -41,7 +66,7 @@ impl AsyncBackend for HttpBackend {
         let range = format!("bytes={offset}-{end}");
         let range = HeaderValue::try_from(range)?;
 
-        let mut req = Request::new(Method::GET, self.pmtiles_url.clone());
+        let mut req = Request::new(Method::GET, self.url.clone());
         req.headers_mut().insert(RANGE, range);
 
         let response = self.client.execute(req).await?.error_for_status()?;

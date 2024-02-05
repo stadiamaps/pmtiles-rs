@@ -2,35 +2,14 @@
 //        so any file larger than 4GB, or an untrusted file with bad data may crash.
 #![allow(clippy::cast_possible_truncation)]
 
-#[cfg(feature = "mmap-async-tokio")]
-use std::path::Path;
-
 use async_recursion::async_recursion;
 use async_trait::async_trait;
 use bytes::Bytes;
-#[cfg(feature = "http-async")]
-use reqwest::{Client, IntoUrl};
-#[cfg(any(
-    feature = "http-async",
-    feature = "mmap-async-tokio",
-    feature = "s3-async-rustls",
-    feature = "s3-async-native"
-))]
+#[cfg(feature = "__async")]
 use tokio::io::AsyncReadExt;
 
-#[cfg(feature = "http-async")]
-use crate::backend::HttpBackend;
-#[cfg(feature = "mmap-async-tokio")]
-use crate::backend::MmapBackend;
-#[cfg(any(feature = "s3-async-rustls", feature = "s3-async-native"))]
-use crate::backend::S3Backend;
 use crate::cache::DirCacheResult;
-#[cfg(any(
-    feature = "http-async",
-    feature = "mmap-async-tokio",
-    feature = "s3-async-native",
-    feature = "s3-async-rustls"
-))]
+#[cfg(feature = "__async")]
 use crate::cache::{DirectoryCache, NoCache};
 use crate::directory::{DirEntry, Directory};
 use crate::error::{PmtError, PmtResult};
@@ -227,80 +206,6 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 }
 
-#[cfg(feature = "http-async")]
-impl AsyncPmTilesReader<HttpBackend, NoCache> {
-    /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
-    ///
-    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
-    pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
-        Self::new_with_cached_url(NoCache, client, url).await
-    }
-}
-
-#[cfg(feature = "http-async")]
-impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
-    /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
-    ///
-    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
-    pub async fn new_with_cached_url<U: IntoUrl>(
-        cache: C,
-        client: Client,
-        url: U,
-    ) -> PmtResult<Self> {
-        let backend = HttpBackend::try_from(client, url)?;
-
-        Self::try_from_cached_source(backend, cache).await
-    }
-}
-
-#[cfg(feature = "mmap-async-tokio")]
-impl AsyncPmTilesReader<MmapBackend, NoCache> {
-    /// Creates a new `PMTiles` reader from a file path using the async mmap backend.
-    ///
-    /// Fails if [p] does not exist or is an invalid archive.
-    pub async fn new_with_path<P: AsRef<Path>>(path: P) -> PmtResult<Self> {
-        Self::new_with_cached_path(NoCache, path).await
-    }
-}
-
-#[cfg(feature = "mmap-async-tokio")]
-impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
-    /// Creates a new cached `PMTiles` reader from a file path using the async mmap backend.
-    ///
-    /// Fails if [p] does not exist or is an invalid archive.
-    pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> PmtResult<Self> {
-        let backend = MmapBackend::try_from(path).await?;
-
-        Self::try_from_cached_source(backend, cache).await
-    }
-}
-
-#[cfg(any(feature = "s3-async-native", feature = "s3-async-rustls"))]
-impl AsyncPmTilesReader<S3Backend, NoCache> {
-    /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
-    ///
-    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
-    pub async fn new_with_bucket_path(bucket: s3::Bucket, path: String) -> PmtResult<Self> {
-        Self::new_with_cached_bucket_path(NoCache, bucket, path).await
-    }
-}
-
-#[cfg(any(feature = "s3-async-native", feature = "s3-async-rustls"))]
-impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<S3Backend, C> {
-    /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
-    ///
-    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
-    pub async fn new_with_cached_bucket_path(
-        cache: C,
-        bucket: s3::Bucket,
-        path: String,
-    ) -> PmtResult<Self> {
-        let backend = S3Backend::from(bucket, path);
-
-        Self::try_from_cached_source(backend, cache).await
-    }
-}
-
 #[async_trait]
 pub trait AsyncBackend {
     /// Reads exactly `length` bytes starting at `offset`
@@ -314,8 +219,8 @@ pub trait AsyncBackend {
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
     use super::AsyncPmTilesReader;
-    use crate::backend::MmapBackend;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
+    use crate::MmapBackend;
 
     #[tokio::test]
     async fn open_sanity_check() {
