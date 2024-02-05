@@ -307,15 +307,22 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "This test requires a 200mb file to be downloaded. See https://github.com/maplibre/martin/issues/675"]
     async fn test_martin_675() {
-        // the file was manually placed here from the test because it is 200mb
-        // see also https://github.com/protomaps/PMTiles/issues/182 - once the file is shrunk somehow?
-        let backend = MmapBackend::try_from("fixtures/tiles.pmtiles")
+        let backend = MmapBackend::try_from("fixtures/leaf.pmtiles")
             .await
             .unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
-        let tile = tiles.get_tile(7, 35, 50).await;
-        assert!(tile.is_some());
+        // Verify that the test case does contain a leaf directory
+        assert_ne!(0, tiles.get_header().leaf_length);
+        for (contents, z, x, y) in [
+            (b"0", 0, 0, 0),
+            (b"1", 1, 0, 0),
+            (b"2", 1, 0, 1),
+            (b"3", 1, 1, 1),
+            (b"4", 1, 1, 0),
+        ] {
+            let tile = tiles.get_tile(z, x, y).await.unwrap();
+            assert_eq!(tile, &contents[..]);
+        }
     }
 }
