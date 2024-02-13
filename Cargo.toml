@@ -1,6 +1,6 @@
 [package]
 name = "pmtiles"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
 license = "MIT OR Apache-2.0"
@@ -14,8 +14,8 @@ categories = ["science::geo"]
 default = []
 http-async = ["__async", "dep:reqwest"]
 mmap-async-tokio = ["__async", "dep:fmmap", "fmmap?/tokio-async"]
-s3-async-native = ["__async-s3"]
-s3-async-rustls = ["__async-s3"]
+s3-async-native = ["__async-s3", "__async-s3-nativetls"]
+s3-async-rustls = ["__async-s3", "__async-s3-rustls"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
 
 # Forward some of the common features to reqwest dependency
@@ -27,7 +27,9 @@ reqwest-rustls-tls-native-roots = ["reqwest?/rustls-tls-native-roots"]
 
 # Internal features, do not use
 __async = ["dep:tokio", "async-compression/tokio"]
-__async-s3 = ["__async", "dep:rust-s3", "rust-s3?/tokio-native-tls"]
+__async-s3 = ["__async", "dep:rust-s3"]
+__async-s3-nativetls = ["rust-s3?/tokio-native-tls"]
+__async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]
 
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
