@@ -2,11 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
   release:
-    types: [published]
+    types: [ published ]
   workflow_dispatch:
 
 jobs:
@@ -32,3 +32,5 @@ jobs:
       - run: cargo test --features s3-async-native
       - run: cargo test --features s3-async-rustls
       - run: cargo test
+      - name: Check semver
+        uses: obi1kenobi/cargo-semver-checks-action@v2
