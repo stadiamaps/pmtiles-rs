@@ -62,23 +62,16 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     /// Fetches tile bytes from the archive.
-    pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> Option<Bytes> {
-        self.try_get_tile(z, x, y).await.ok()
-    }
-
-    /// Fetches tile bytes from the archive, exposing the underlying error
-    /// (if any).
-    pub async fn try_get_tile(&self, z: u8, x: u64, y: u64) -> PmtResult<Bytes> {
+    pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> PmtResult<Option<Bytes>> {
         let tile_id = tile_id(z, x, y);
-        let entry = self
-            .find_tile_entry(tile_id)
-            .await
-            .ok_or(PmtError::TileNotFound)?;
+        let Some(entry) = self.find_tile_entry(tile_id).await else {
+            return Ok(None);
+        };
 
         let offset = (self.header.data_offset + entry.offset) as _;
         let length = entry.length as _;
 
-        self.backend.read_exact(offset, length).await
+        Ok(Some(self.backend.read_exact(offset, length).await?))
     }
 
     /// Access header information.
@@ -226,9 +219,10 @@ pub trait AsyncBackend {
 #[cfg(test)]
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
-    use super::AsyncPmTilesReader;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
-    use crate::{MmapBackend, PmtError, PmtResult};
+    use crate::MmapBackend;
+
+    use super::AsyncPmTilesReader;
 
     #[tokio::test]
     async fn open_sanity_check() {
@@ -239,7 +233,7 @@ mod tests {
     async fn compare_tiles(z: u8, x: u64, y: u64, fixture_bytes: &[u8]) {
         let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
-        let tile = tiles.get_tile(z, x, y).await.unwrap();
+        let tile = tiles.get_tile(z, x, y).await.unwrap().unwrap();
 
         assert_eq!(
             tile.len(),
@@ -273,10 +267,8 @@ mod tests {
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let tile = tiles.get_tile(6, 31, 23).await;
-        assert!(tile.is_none());
-
-        let tile = tiles.try_get_tile(6, 31, 23).await;
-        assert!(matches!(tile, PmtResult::Err(PmtError::TileNotFound)));
+        assert!(tile.is_ok());
+        assert!(tile.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -285,7 +277,7 @@ mod tests {
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let tile = tiles.get_tile(12, 2174, 1492).await;
-        assert!(tile.is_some());
+        assert!(tile.is_ok_and(|t| t.is_some()));
     }
 
     #[tokio::test]
@@ -332,7 +324,7 @@ mod tests {
             (b"3", 1, 1, 1),
             (b"4", 1, 1, 0),
         ] {
-            let tile = tiles.get_tile(z, x, y).await.unwrap();
+            let tile = tiles.get_tile(z, x, y).await.unwrap().unwrap();
             assert_eq!(tile, &contents[..]);
         }
     }
