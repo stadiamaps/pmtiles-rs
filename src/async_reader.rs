@@ -64,7 +64,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// Fetches tile bytes from the archive.
     pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> PmtResult<Option<Bytes>> {
         let tile_id = tile_id(z, x, y);
-        let Some(entry) = self.find_tile_entry(tile_id).await else {
+        let Some(entry) = self.find_tile_entry(tile_id).await? else {
             return Ok(None);
         };
 
@@ -137,18 +137,24 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     /// Recursively locates a tile in the archive.
-    async fn find_tile_entry(&self, tile_id: u64) -> Option<DirEntry> {
+    async fn find_tile_entry(&self, tile_id: u64) -> PmtResult<Option<DirEntry>> {
         let entry = self.root_directory.find_tile_id(tile_id);
         if let Some(entry) = entry {
             if entry.is_leaf() {
                 return self.find_entry_rec(tile_id, entry, 0).await;
             }
         }
-        entry.cloned()
+
+        Ok(entry.cloned())
     }
 
     #[async_recursion]
-    async fn find_entry_rec(&self, tile_id: u64, entry: &DirEntry, depth: u8) -> Option<DirEntry> {
+    async fn find_entry_rec(
+        &self,
+        tile_id: u64,
+        entry: &DirEntry,
+        depth: u8,
+    ) -> PmtResult<Option<DirEntry>> {
         // the recursion is done as two functions because it is a bit cleaner,
         // and it allows directory to be cached later without cloning it first.
         let offset = (self.header.leaf_offset + entry.offset) as _;
@@ -157,7 +163,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             DirCacheResult::NotCached => {
                 // Cache miss - read from backend
                 let length = entry.length as _;
-                let dir = self.read_directory(offset, length).await.ok()?;
+                let dir = self.read_directory(offset, length).await?;
                 let entry = dir.find_tile_id(tile_id).cloned();
                 self.cache.insert_dir(offset, dir).await;
                 entry
@@ -171,12 +177,12 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                 return if depth <= 4 {
                     self.find_entry_rec(tile_id, entry, depth + 1).await
                 } else {
-                    None
+                    Ok(None)
                 };
             }
         }
 
-        entry
+        Ok(entry)
     }
 
     async fn read_directory(&self, offset: usize, length: usize) -> PmtResult<Directory> {
