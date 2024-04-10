@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use bytes::Bytes;
 use s3::Bucket;
 
@@ -43,7 +42,6 @@ impl S3Backend {
     }
 }
 
-#[async_trait]
 impl AsyncBackend for S3Backend {
     async fn read_exact(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
         let data = self.read(offset, length).await?;

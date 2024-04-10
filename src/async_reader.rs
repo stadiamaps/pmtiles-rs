@@ -2,8 +2,9 @@
 //        so any file larger than 4GB, or an untrusted file with bad data may crash.
 #![allow(clippy::cast_possible_truncation)]
 
+use std::future::Future;
+
 use async_recursion::async_recursion;
-use async_trait::async_trait;
 use bytes::Bytes;
 #[cfg(feature = "__async")]
 use tokio::io::AsyncReadExt;
@@ -213,22 +214,24 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 }
 
-#[async_trait]
 pub trait AsyncBackend {
     /// Reads exactly `length` bytes starting at `offset`
-    async fn read_exact(&self, offset: usize, length: usize) -> PmtResult<Bytes>;
+    fn read_exact(
+        &self,
+        offset: usize,
+        length: usize,
+    ) -> impl Future<Output = PmtResult<Bytes>> + Send;
 
     /// Reads up to `length` bytes starting at `offset`.
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes>;
+    fn read(&self, offset: usize, length: usize) -> impl Future<Output = PmtResult<Bytes>> + Send;
 }
 
 #[cfg(test)]
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
+    use super::AsyncPmTilesReader;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::MmapBackend;
-
-    use super::AsyncPmTilesReader;
 
     #[tokio::test]
     async fn open_sanity_check() {

@@ -1,13 +1,13 @@
 [package]
 name = "pmtiles"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>"]
 license = "MIT OR Apache-2.0"
 description = "Implementation of the PMTiles v3 spec with multiple sync and async backends."
 repository = "https://github.com/stadiamaps/pmtiles-rs"
 keywords = ["pmtiles", "gis", "geo"]
-rust-version = "1.68.2"
+rust-version = "1.75.0"
 categories = ["science::geo"]
 
 [features]
@@ -35,7 +35,6 @@ __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]
 # TODO: determine how we want to handle compression in async & sync environments
 async-compression = { version = "0.4", features = ["gzip", "zstd", "brotli"] }
 async-recursion = "1"
-async-trait = "0.1"
 bytes = "1"
 fmmap = { version = "0.3", default-features = false, optional = true }
 hilbert_2d = "1"
