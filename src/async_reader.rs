@@ -62,15 +62,16 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     /// Fetches tile bytes from the archive.
-    pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> Option<Bytes> {
+    pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> PmtResult<Option<Bytes>> {
         let tile_id = tile_id(z, x, y);
-        let entry = self.find_tile_entry(tile_id).await?;
+        let Some(entry) = self.find_tile_entry(tile_id).await? else {
+            return Ok(None);
+        };
 
         let offset = (self.header.data_offset + entry.offset) as _;
         let length = entry.length as _;
-        let data = self.backend.read_exact(offset, length).await.ok()?;
 
-        Some(data)
+        Ok(Some(self.backend.read_exact(offset, length).await?))
     }
 
     /// Access header information.
@@ -136,18 +137,24 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     /// Recursively locates a tile in the archive.
-    async fn find_tile_entry(&self, tile_id: u64) -> Option<DirEntry> {
+    async fn find_tile_entry(&self, tile_id: u64) -> PmtResult<Option<DirEntry>> {
         let entry = self.root_directory.find_tile_id(tile_id);
         if let Some(entry) = entry {
             if entry.is_leaf() {
                 return self.find_entry_rec(tile_id, entry, 0).await;
             }
         }
-        entry.cloned()
+
+        Ok(entry.cloned())
     }
 
     #[async_recursion]
-    async fn find_entry_rec(&self, tile_id: u64, entry: &DirEntry, depth: u8) -> Option<DirEntry> {
+    async fn find_entry_rec(
+        &self,
+        tile_id: u64,
+        entry: &DirEntry,
+        depth: u8,
+    ) -> PmtResult<Option<DirEntry>> {
         // the recursion is done as two functions because it is a bit cleaner,
         // and it allows directory to be cached later without cloning it first.
         let offset = (self.header.leaf_offset + entry.offset) as _;
@@ -156,7 +163,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             DirCacheResult::NotCached => {
                 // Cache miss - read from backend
                 let length = entry.length as _;
-                let dir = self.read_directory(offset, length).await.ok()?;
+                let dir = self.read_directory(offset, length).await?;
                 let entry = dir.find_tile_id(tile_id).cloned();
                 self.cache.insert_dir(offset, dir).await;
                 entry
@@ -170,12 +177,12 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                 return if depth <= 4 {
                     self.find_entry_rec(tile_id, entry, depth + 1).await
                 } else {
-                    None
+                    Ok(None)
                 };
             }
         }
 
-        entry
+        Ok(entry)
     }
 
     async fn read_directory(&self, offset: usize, length: usize) -> PmtResult<Directory> {
@@ -218,9 +225,10 @@ pub trait AsyncBackend {
 #[cfg(test)]
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
-    use super::AsyncPmTilesReader;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::MmapBackend;
+
+    use super::AsyncPmTilesReader;
 
     #[tokio::test]
     async fn open_sanity_check() {
@@ -231,7 +239,7 @@ mod tests {
     async fn compare_tiles(z: u8, x: u64, y: u64, fixture_bytes: &[u8]) {
         let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
-        let tile = tiles.get_tile(z, x, y).await.unwrap();
+        let tile = tiles.get_tile(z, x, y).await.unwrap().unwrap();
 
         assert_eq!(
             tile.len(),
@@ -265,7 +273,8 @@ mod tests {
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let tile = tiles.get_tile(6, 31, 23).await;
-        assert!(tile.is_none());
+        assert!(tile.is_ok());
+        assert!(tile.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -274,7 +283,7 @@ mod tests {
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let tile = tiles.get_tile(12, 2174, 1492).await;
-        assert!(tile.is_some());
+        assert!(tile.is_ok_and(|t| t.is_some()));
     }
 
     #[tokio::test]
@@ -321,7 +330,7 @@ mod tests {
             (b"3", 1, 1, 1),
             (b"4", 1, 1, 0),
         ] {
-            let tile = tiles.get_tile(z, x, y).await.unwrap();
+            let tile = tiles.get_tile(z, x, y).await.unwrap().unwrap();
             assert_eq!(tile, &contents[..]);
         }
     }
