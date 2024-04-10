@@ -4,7 +4,6 @@
 
 use std::future::Future;
 
-use async_recursion::async_recursion;
 use bytes::Bytes;
 #[cfg(feature = "__async")]
 use tokio::io::AsyncReadExt;
@@ -149,7 +148,6 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         Ok(entry.cloned())
     }
 
-    #[async_recursion]
     async fn find_entry_rec(
         &self,
         tile_id: u64,
@@ -176,7 +174,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         if let Some(ref entry) = entry {
             if entry.is_leaf() {
                 return if depth <= 4 {
-                    self.find_entry_rec(tile_id, entry, depth + 1).await
+                    Box::pin(self.find_entry_rec(tile_id, entry, depth + 1)).await
                 } else {
                     Ok(None)
                 };
