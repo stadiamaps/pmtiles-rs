@@ -47,4 +47,6 @@ pub enum PmtError {
     #[cfg(feature = "__async-s3")]
     #[error(transparent)]
     S3(#[from] s3::error::S3Error),
+    #[error("Tile was not found in the PMTiles archive.")]
+    TileNotFound,
 }
