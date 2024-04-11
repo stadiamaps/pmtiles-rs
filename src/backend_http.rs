@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use bytes::Bytes;
 use reqwest::header::{HeaderValue, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
@@ -46,7 +45,6 @@ impl HttpBackend {
     }
 }
 
-#[async_trait]
 impl AsyncBackend for HttpBackend {
     async fn read_exact(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
         let data = self.read(offset, length).await?;
@@ -86,14 +84,13 @@ impl AsyncBackend for HttpBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::async_reader::AsyncPmTilesReader;
 
     static TEST_URL: &str =
         "https://protomaps.github.io/PMTiles/protomaps(vector)ODbL_firenze.pmtiles";
 
     #[tokio::test]
     async fn basic_http_test() {
-        let client = reqwest::Client::builder().use_rustls_tls().build().unwrap();
+        let client = Client::builder().use_rustls_tls().build().unwrap();
         let backend = HttpBackend::try_from(client, TEST_URL).unwrap();
 
         AsyncPmTilesReader::try_from_source(backend).await.unwrap();

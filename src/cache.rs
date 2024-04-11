@@ -1,7 +1,6 @@
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::{Arc, RwLock};
-
-use async_trait::async_trait;
 
 use crate::directory::{DirEntry, Directory};
 
@@ -20,20 +19,25 @@ impl From<Option<&DirEntry>> for DirCacheResult {
     }
 }
 
-/// A cache for PMTiles directories.
-#[async_trait]
+/// A cache for `PMTiles` directories.
 pub trait DirectoryCache {
     /// Get a directory from the cache, using the offset as a key.
-    async fn get_dir_entry(&self, offset: usize, tile_id: u64) -> DirCacheResult;
+    fn get_dir_entry(
+        &self,
+        offset: usize,
+        tile_id: u64,
+    ) -> impl Future<Output = DirCacheResult> + Send;
 
     /// Insert a directory into the cache, using the offset as a key.
     /// Note that cache must be internally mutable.
-    async fn insert_dir(&self, offset: usize, directory: Directory);
+    fn insert_dir(&self, offset: usize, directory: Directory) -> impl Future<Output = ()> + Send;
 }
 
 pub struct NoCache;
 
-#[async_trait]
+// TODO: Remove #[allow] after switching to Rust/Clippy v1.78+ in CI
+//       See https://github.com/rust-lang/rust-clippy/pull/12323
+#[allow(clippy::no_effect_underscore_binding)]
 impl DirectoryCache for NoCache {
     #[inline]
     async fn get_dir_entry(&self, _offset: usize, _tile_id: u64) -> DirCacheResult {
@@ -50,7 +54,6 @@ pub struct HashMapCache {
     pub cache: Arc<RwLock<HashMap<usize, Directory>>>,
 }
 
-#[async_trait]
 impl DirectoryCache for HashMapCache {
     async fn get_dir_entry(&self, offset: usize, tile_id: u64) -> DirCacheResult {
         if let Some(dir) = self.cache.read().unwrap().get(&offset) {

@@ -1,7 +1,6 @@
 use std::io;
 use std::path::Path;
 
-use async_trait::async_trait;
 use bytes::{Buf, Bytes};
 use fmmap::tokio::{AsyncMmapFile, AsyncMmapFileExt as _, AsyncOptions};
 
@@ -49,7 +48,6 @@ impl From<fmmap::error::Error> for PmtError {
     }
 }
 
-#[async_trait]
 impl AsyncBackend for MmapBackend {
     async fn read_exact(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
         if self.file.len() >= offset + length {
