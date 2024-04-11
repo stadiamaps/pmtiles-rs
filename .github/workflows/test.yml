@@ -51,7 +51,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ steps.metadata.outputs.rust-version }}
-          components: clippy,rustfmt
       - run: cargo test --all-targets --all-features
       - run: cargo test --features http-async
       - run: cargo test --features mmap-async-tokio
