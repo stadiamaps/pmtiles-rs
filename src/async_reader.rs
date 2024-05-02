@@ -15,6 +15,7 @@ use crate::directory::{DirEntry, Directory};
 use crate::error::{PmtError, PmtResult};
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::tile::tile_id;
+use crate::PmtError::UnsupportedCompression;
 use crate::{Compression, Header};
 
 pub struct AsyncPmTilesReader<B, C = NoCache> {
@@ -205,7 +206,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                     .read_to_end(&mut decompressed_bytes)
                     .await?;
             }
-            _ => todo!("Support other forms of internal compression."),
+            v => Err(UnsupportedCompression(v))?,
         }
 
         Ok(Bytes::from(decompressed_bytes))

@@ -56,6 +56,8 @@ pub struct HashMapCache {
 
 impl DirectoryCache for HashMapCache {
     async fn get_dir_entry(&self, offset: usize, tile_id: u64) -> DirCacheResult {
+        // Panic if the lock is poisoned is not something the user can handle
+        #[allow(clippy::unwrap_used)]
         if let Some(dir) = self.cache.read().unwrap().get(&offset) {
             return dir.find_tile_id(tile_id).into();
         }
@@ -63,6 +65,8 @@ impl DirectoryCache for HashMapCache {
     }
 
     async fn insert_dir(&self, offset: usize, directory: Directory) {
+        // Panic if the lock is poisoned is not something the user can handle
+        #[allow(clippy::unwrap_used)]
         self.cache.write().unwrap().insert(offset, directory);
     }
 }
