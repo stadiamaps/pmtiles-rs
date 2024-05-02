@@ -2,6 +2,8 @@ use std::string::FromUtf8Error;
 
 use thiserror::Error;
 
+use crate::Compression;
+
 /// A specialized [`Result`] type for `PMTiles` operations.
 pub type PmtResult<T> = Result<T, PmtError>;
 
@@ -14,6 +16,8 @@ pub enum PmtError {
     UnsupportedPmTilesVersion,
     #[error("Invalid compression")]
     InvalidCompression,
+    #[error("Unsupported compression {0:?}")]
+    UnsupportedCompression(Compression),
     #[error("Invalid PMTiles entry")]
     InvalidEntry,
     #[error("Invalid header")]
