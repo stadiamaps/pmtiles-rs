@@ -37,8 +37,8 @@ async-compression = { version = "0.4", features = ["gzip"] }
 bytes = "1"
 fmmap = { version = "0.3", default-features = false, optional = true }
 hilbert_2d = "1"
-reqwest = { version = "0.12.4", default-features = false, optional = true }
-rust-s3 = { version = "0.33.0", optional = true, default-features = false, features = ["fail-on-err"] }
+reqwest = { version = "0.12", default-features = false, optional = true }
+rust-s3 = { version = "0.34", optional = true, default-features = false, features = ["fail-on-err"] }
 serde = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
 thiserror = "1"
@@ -49,7 +49,7 @@ varint-rs = "2"
 [dev-dependencies]
 flate2 = "1"
 fmmap = { version = "0.3", features = ["tokio-async"] }
-reqwest = { version = "0.12.4", features = ["rustls-tls-webpki-roots"] }
+reqwest = { version = "0.12", features = ["rustls-tls-webpki-roots"] }
 tokio = { version = "1", features = ["test-util", "macros", "rt"] }
 
 [package.metadata.docs.rs]
