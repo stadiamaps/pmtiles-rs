@@ -41,7 +41,7 @@ impl Directory {
     /// Get an estimated byte size of the directory object. Use this for cache eviction.
     #[must_use]
     pub fn get_approx_byte_size(&self) -> usize {
-        self.entries.capacity() * size_of::<DirEntry>()
+        self.entries.capacity() * std::mem::size_of::<DirEntry>()
     }
 }
 
