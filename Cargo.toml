@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 description = "Implementation of the PMTiles v3 spec with multiple sync and async backends."
 repository = "https://github.com/stadiamaps/pmtiles-rs"
 keywords = ["pmtiles", "gis", "geo"]
-rust-version = "1.77.0"
+rust-version = "1.78.0"
 categories = ["science::geo"]
 
 [features]
