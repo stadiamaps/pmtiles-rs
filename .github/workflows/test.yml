@@ -16,6 +16,7 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+      - uses: extractions/setup-just@v2
       - uses: Swatinem/rust-cache@v2
         if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
 
@@ -23,17 +24,7 @@ jobs:
           rustc --version
           cargo --version
           rustup --version
-      - run: cargo check
-      - run: rustup component add clippy rustfmt
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: cargo test --all-targets --all-features
-      - run: cargo test --features http-async
-      - run: cargo test --features mmap-async-tokio
-      - run: cargo test --features tilejson
-      - run: cargo test --features s3-async-native
-      - run: cargo test --features s3-async-rustls
-      - run: cargo test
+      - run: just test-all
       - name: Check semver
         uses: obi1kenobi/cargo-semver-checks-action@v2
 
@@ -42,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v2
       - uses: Swatinem/rust-cache@v2
         if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
       - name: Read crate metadata
@@ -51,10 +43,4 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ steps.metadata.outputs.rust-version }}
-      - run: cargo test --all-targets --all-features
-      - run: cargo test --features http-async
-      - run: cargo test --features mmap-async-tokio
-      - run: cargo test --features tilejson
-      - run: cargo test --features s3-async-native
-      - run: cargo test --features s3-async-rustls
-      - run: cargo test
+      - run: just test
