@@ -38,7 +38,11 @@ pub enum PmtError {
     #[cfg(feature = "http-async")]
     #[error("Range requests unsupported")]
     RangeRequestsUnsupported,
-    #[cfg(any(feature = "http-async", feature = "__async-s3"))]
+    #[cfg(any(
+        feature = "http-async",
+        feature = "__async-s3",
+        feature = "__async-aws-s3"
+    ))]
     #[error("HTTP response body is too long, Response {0}B > requested {1}B")]
     ResponseBodyTooLong(usize, usize),
     #[cfg(feature = "http-async")]
@@ -50,4 +54,9 @@ pub enum PmtError {
     #[cfg(feature = "__async-s3")]
     #[error(transparent)]
     S3(#[from] s3::error::S3Error),
+    #[cfg(feature = "__async-aws-s3")]
+    #[error(transparent)]
+    AwsS3Request(
+        #[from] aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::get_object::GetObjectError>,
+    ),
 }

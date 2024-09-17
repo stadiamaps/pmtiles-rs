@@ -2,6 +2,8 @@
 
 #[cfg(feature = "__async")]
 pub mod async_reader;
+#[cfg(feature = "__async-aws-s3")]
+mod backend_aws_s3;
 #[cfg(feature = "http-async")]
 mod backend_http;
 #[cfg(feature = "mmap-async-tokio")]
@@ -27,6 +29,8 @@ pub use error::{PmtError, PmtResult};
 pub use header::{Compression, Header, TileType};
 //
 // Re-export crates exposed in our API to simplify dependency management
+#[cfg(feature = "__async-aws-s3")]
+pub use aws_sdk_s3;
 #[cfg(feature = "http-async")]
 pub use reqwest;
 #[cfg(feature = "__async-s3")]
