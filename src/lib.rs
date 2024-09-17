@@ -18,6 +18,8 @@ mod header;
 #[cfg(feature = "__async")]
 mod tile;
 
+#[cfg(feature = "aws-s3-async")]
+pub use backend_aws_s3::AwsS3Backend;
 #[cfg(feature = "http-async")]
 pub use backend_http::HttpBackend;
 #[cfg(feature = "mmap-async-tokio")]
