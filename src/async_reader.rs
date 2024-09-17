@@ -215,16 +215,25 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
 pub trait AsyncBackend {
     /// Reads exactly `length` bytes starting at `offset`
-    async fn read_exact(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
-        let data = self.read(offset, length).await?;
+    fn read_exact(
+        &self,
+        offset: usize,
+        length: usize,
+    ) -> impl Future<Output = PmtResult<Bytes>> + Send
+    where
+        Self: Sync,
+    {
+        async move {
+            let data = self.read(offset, length).await?;
 
-        if data.len() == length {
-            Ok(data)
-        } else {
-            Err(PmtError::UnexpectedNumberOfBytesReturned(
-                length,
-                data.len(),
-            ))
+            if data.len() == length {
+                Ok(data)
+            } else {
+                Err(PmtError::UnexpectedNumberOfBytesReturned(
+                    length,
+                    data.len(),
+                ))
+            }
         }
     }
 
