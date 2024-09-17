@@ -29,7 +29,7 @@ reqwest-rustls-tls-webpki-roots = ["reqwest?/rustls-tls-webpki-roots"]
 # Internal features, do not use
 __async = ["dep:tokio", "async-compression/tokio"]
 __async-s3 = ["__async", "dep:rust-s3"]
-__async-s3-nativetls = ["rust-s3?/tokio-native-tls"]
+__async-s3-nativetls = ["rust-s3?/use-tokio-native-tls"]
 __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]
 __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
 
