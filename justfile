@@ -3,6 +3,7 @@
 @_default:
     just --list --unsorted
 
+# Run cargo check
 check:
     cargo check
 
@@ -11,7 +12,6 @@ _add_tools:
 
 # Run all tests
 test:
-    # These are the same tests that are run on CI. Eventually CI should just call into justfile
     cargo test --all-targets --all-features
     cargo test --features http-async
     cargo test --features mmap-async-tokio
