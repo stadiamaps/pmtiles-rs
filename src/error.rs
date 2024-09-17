@@ -33,7 +33,6 @@ pub enum PmtError {
     #[cfg(feature = "mmap-async-tokio")]
     #[error("Unable to open mmap file")]
     UnableToOpenMmapFile,
-    #[cfg(any(feature = "http-async", feature = "__async-s3"))]
     #[error("Unexpected number of bytes returned [expected: {0}, received: {1}].")]
     UnexpectedNumberOfBytesReturned(usize, usize),
     #[cfg(feature = "http-async")]
