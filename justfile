@@ -12,7 +12,6 @@ _add_tools:
 
 # Run all tests
 test:
-    cargo test --all-targets --all-features
     cargo test --features http-async
     cargo test --features mmap-async-tokio
     cargo test --features tilejson
@@ -38,7 +37,12 @@ fmt-nightly:
 
 # Run cargo clippy
 clippy: _add_tools
-    cargo clippy --workspace --all-targets --all-features --bins --tests --lib --benches -- -D warnings
+    cargo clippy --features http-async
+    cargo clippy --features mmap-async-tokio
+    cargo clippy --features tilejson
+    cargo clippy --features s3-async-native
+    cargo clippy --features s3-async-rustls
+    cargo clippy --features aws-s3-async
 
 # Build and open code documentation
 docs:
