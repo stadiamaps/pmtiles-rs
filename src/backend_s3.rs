@@ -1,10 +1,12 @@
 use bytes::Bytes;
 use s3::Bucket;
 
-use crate::async_reader::{AsyncBackend, AsyncPmTilesReader};
-use crate::cache::{DirectoryCache, NoCache};
-use crate::error::PmtError::{ResponseBodyTooLong, UnexpectedNumberOfBytesReturned};
-use crate::PmtResult;
+use crate::{
+    async_reader::{AsyncBackend, AsyncPmTilesReader},
+    cache::{DirectoryCache, NoCache},
+    error::PmtError::ResponseBodyTooLong,
+    PmtResult,
+};
 
 impl AsyncPmTilesReader<S3Backend, NoCache> {
     /// Creates a new `PMTiles` reader from a bucket and path to the
@@ -61,7 +63,7 @@ impl AsyncBackend for S3Backend {
         if response_bytes.len() > length {
             Err(ResponseBodyTooLong(response_bytes.len(), length))
         } else {
-            Ok(response_bytes)
+            Ok(response_bytes.clone())
         }
     }
 }
