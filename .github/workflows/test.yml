@@ -28,7 +28,8 @@ jobs:
       - name: Check semver
         uses: obi1kenobi/cargo-semver-checks-action@v2
         with:
-          features: "http-async,mmap-async-tokio,tilejson,s3-async-native,aws-s3-async"
+          feature-group: only-explicit-features
+          features: "http-async,mmap-async-tokio,tilejson,s3-async-rustls,aws-s3-async"
 
   msrv:
     name: Test MSRV
