@@ -16,7 +16,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-      - uses: extractions/setup-just@v2
+      - uses: taiki-e/install-action@v2
+        with: { tool: just }
       - uses: Swatinem/rust-cache@v2
         if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
 
