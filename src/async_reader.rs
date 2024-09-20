@@ -219,7 +219,23 @@ pub trait AsyncBackend {
         &self,
         offset: usize,
         length: usize,
-    ) -> impl Future<Output = PmtResult<Bytes>> + Send;
+    ) -> impl Future<Output = PmtResult<Bytes>> + Send
+    where
+        Self: Sync,
+    {
+        async move {
+            let data = self.read(offset, length).await?;
+
+            if data.len() == length {
+                Ok(data)
+            } else {
+                Err(PmtError::UnexpectedNumberOfBytesReturned(
+                    length,
+                    data.len(),
+                ))
+            }
+        }
+    }
 
     /// Reads up to `length` bytes starting at `offset`.
     fn read(&self, offset: usize, length: usize) -> impl Future<Output = PmtResult<Bytes>> + Send;

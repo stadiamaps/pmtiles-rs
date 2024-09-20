@@ -46,19 +46,6 @@ impl HttpBackend {
 }
 
 impl AsyncBackend for HttpBackend {
-    async fn read_exact(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
-        let data = self.read(offset, length).await?;
-
-        if data.len() == length {
-            Ok(data)
-        } else {
-            Err(PmtError::UnexpectedNumberOfBytesReturned(
-                length,
-                data.len(),
-            ))
-        }
-    }
-
     async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
         let end = offset + length - 1;
         let range = format!("bytes={offset}-{end}");
