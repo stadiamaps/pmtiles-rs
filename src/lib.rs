@@ -17,6 +17,8 @@ mod error;
 mod header;
 #[cfg(feature = "__async")]
 mod tile;
+#[cfg(feature = "__writer")]
+pub mod writer;
 
 #[cfg(feature = "aws-s3-async")]
 pub use backend_aws_s3::AwsS3Backend;

@@ -11,7 +11,7 @@ rust-version = "1.81.0"
 categories = ["science::geo"]
 
 [features]
-default = []
+default = ["__writer"]
 http-async = ["__async", "dep:reqwest"]
 mmap-async-tokio = ["__async", "dep:fmmap", "fmmap?/tokio-async"]
 s3-async-native = ["__async-s3", "__async-s3-nativetls"]
@@ -32,12 +32,15 @@ __async-s3 = ["__async", "dep:rust-s3"]
 __async-s3-nativetls = ["rust-s3?/use-tokio-native-tls"]
 __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]
 __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
+__writer = []
 
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
+ahash = { version = "0.8.11", default-features = false, features = ["std","no-rng"] }
 aws-sdk-s3 = { version = "1.49.0", optional = true }
 async-compression = { version = "0.4", features = ["gzip"] }
 bytes = "1"
+flate2 = "1"
 fmmap = { version = "0.3", default-features = false, optional = true }
 hilbert_2d = "1"
 reqwest = { version = "0.12.4", default-features = false, optional = true }
@@ -50,9 +53,9 @@ tokio = { version = "1", default-features = false, features = ["io-util"], optio
 varint-rs = "2"
 
 [dev-dependencies]
-flate2 = "1"
 fmmap = { version = "0.3", features = ["tokio-async"] }
 reqwest = { version = "0.12.4", features = ["rustls-tls-webpki-roots"] }
+tempfile = "3.13.0"
 tokio = { version = "1", features = ["test-util", "macros", "rt"] }
 
 [package.metadata.docs.rs]

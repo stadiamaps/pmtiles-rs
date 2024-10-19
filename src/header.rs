@@ -1,13 +1,14 @@
-use std::num::NonZeroU64;
+use std::num::{NonZero, NonZeroU64};
 use std::panic::catch_unwind;
+use std::{io, io::Write};
 
 use bytes::{Buf, Bytes};
 
 use crate::error::{PmtError, PmtResult};
 
-#[cfg(feature = "__async")]
+#[cfg(any(feature = "__async", feature = "__writer"))]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
-#[cfg(any(test, feature = "__async"))]
+#[cfg(any(test, feature = "__async", feature = "__writer"))]
 pub(crate) const HEADER_SIZE: usize = 127;
 
 #[allow(dead_code)]
@@ -144,7 +145,7 @@ impl TryInto<TileType> for u8 {
     }
 }
 
-static V3_MAGIC: &str = "PMTiles";
+pub(crate) static V3_MAGIC: &str = "PMTiles";
 static V2_MAGIC: &str = "PM";
 
 impl Header {
@@ -197,6 +198,47 @@ impl Header {
             })
         })
         .map_err(|_| PmtError::InvalidHeader)?
+    }
+}
+
+impl Header {
+    pub fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        // Write magic number
+        writer.write_all(V3_MAGIC.as_bytes())?;
+
+        // Write header fields
+        writer.write_all(&[self.version])?;
+        writer.write_all(&self.root_offset.to_le_bytes())?;
+        writer.write_all(&self.root_length.to_le_bytes())?;
+        writer.write_all(&self.metadata_offset.to_le_bytes())?;
+        writer.write_all(&self.metadata_length.to_le_bytes())?;
+        writer.write_all(&self.leaf_offset.to_le_bytes())?;
+        writer.write_all(&self.leaf_length.to_le_bytes())?;
+        writer.write_all(&self.data_offset.to_le_bytes())?;
+        writer.write_all(&self.data_length.to_le_bytes())?;
+        writer.write_all(&self.n_addressed_tiles.map_or(0, NonZero::get).to_le_bytes())?;
+        writer.write_all(&self.n_tile_entries.map_or(0, NonZero::get).to_le_bytes())?;
+        writer.write_all(&self.n_tile_contents.map_or(0, NonZero::get).to_le_bytes())?;
+        writer.write_all(&[u8::from(self.clustered)])?;
+        writer.write_all(&[self.internal_compression as u8])?;
+        writer.write_all(&[self.tile_compression as u8])?;
+        writer.write_all(&[self.tile_type as u8])?;
+        writer.write_all(&[self.min_zoom])?;
+        writer.write_all(&[self.max_zoom])?;
+        Self::write_coordinate_part(writer, self.min_longitude)?;
+        Self::write_coordinate_part(writer, self.min_latitude)?;
+        Self::write_coordinate_part(writer, self.max_longitude)?;
+        Self::write_coordinate_part(writer, self.max_latitude)?;
+        writer.write_all(&[self.center_zoom])?;
+        Self::write_coordinate_part(writer, self.center_longitude)?;
+        Self::write_coordinate_part(writer, self.center_latitude)?;
+
+        Ok(())
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn write_coordinate_part<W: Write>(writer: &mut W, value: f32) -> io::Result<()> {
+        writer.write_all(&((value * 10_000_000.0) as i32).to_le_bytes())
     }
 }
 
@@ -302,5 +344,32 @@ mod tests {
                 43.832542419433594
             ))
         );
+    }
+
+    #[test]
+    fn write_header() {
+        let mut test = File::open(RASTER_FILE).unwrap();
+        let mut header_bytes = [0; HEADER_SIZE];
+        test.read_exact(header_bytes.as_mut_slice()).unwrap();
+        let header = Header::try_from_bytes(Bytes::copy_from_slice(&header_bytes)).unwrap();
+
+        let mut buf = vec![];
+        header.write_to(&mut buf).unwrap();
+        let out = Header::try_from_bytes(Bytes::from(buf)).unwrap();
+        assert_eq!(header.version, out.version);
+        assert_eq!(header.tile_type, out.tile_type);
+        assert_eq!(header.n_addressed_tiles, out.n_addressed_tiles);
+        assert_eq!(header.n_tile_entries, out.n_tile_entries);
+        assert_eq!(header.n_tile_contents, out.n_tile_contents);
+        assert_eq!(header.min_zoom, out.min_zoom);
+        assert_eq!(header.max_zoom, out.max_zoom);
+        assert_eq!(header.center_zoom, out.center_zoom);
+        assert_eq!(header.center_latitude, out.center_latitude);
+        assert_eq!(header.center_longitude, out.center_longitude);
+        assert_eq!(header.min_latitude, out.min_latitude);
+        assert_eq!(header.max_latitude, out.max_latitude);
+        assert_eq!(header.min_longitude, out.min_longitude);
+        assert_eq!(header.max_longitude, out.max_longitude);
+        assert_eq!(header.clustered, out.clustered);
     }
 }

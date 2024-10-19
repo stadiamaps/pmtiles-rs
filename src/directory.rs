@@ -1,11 +1,12 @@
 use std::fmt::{Debug, Formatter};
+use std::{io, io::Write};
 
 use bytes::{Buf, Bytes};
-use varint_rs::VarintReader;
+use varint_rs::{VarintReader, VarintWriter};
 
 use crate::error::PmtError;
 
-#[derive(Clone)]
+#[derive(Default, Clone)]
 pub struct Directory {
     entries: Vec<DirEntry>,
 }
@@ -42,6 +43,10 @@ impl Directory {
     #[must_use]
     pub fn get_approx_byte_size(&self) -> usize {
         self.entries.capacity() * size_of::<DirEntry>()
+    }
+
+    pub(crate) fn push(&mut self, entry: DirEntry) {
+        self.entries.push(entry);
     }
 }
 
@@ -88,6 +93,44 @@ impl TryFrom<Bytes> for Directory {
     }
 }
 
+impl Directory {
+    pub fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        // Write number of entries
+        writer.write_usize_varint(self.entries.len())?;
+
+        // Write tile IDs
+        let mut last_tile_id = 0;
+        for entry in &self.entries {
+            writer.write_u64_varint(entry.tile_id - last_tile_id)?;
+            last_tile_id = entry.tile_id;
+        }
+
+        // Write Run Lengths
+        for entry in &self.entries {
+            writer.write_u32_varint(entry.run_length)?;
+        }
+
+        // Write Lengths
+        for entry in &self.entries {
+            writer.write_u32_varint(entry.length)?;
+        }
+
+        // Write Offsets
+        let mut last_offset = 0;
+        for entry in &self.entries {
+            let offset_to_write = if entry.offset == last_offset + u64::from(entry.length) {
+                0
+            } else {
+                entry.offset + 1
+            };
+            writer.write_u64_varint(offset_to_write)?;
+            last_offset = entry.offset;
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Clone, Default, Debug)]
 pub struct DirEntry {
     pub(crate) tile_id: u64,
@@ -106,16 +149,15 @@ impl DirEntry {
 mod tests {
     use std::io::{BufReader, Read, Write};
 
-    use bytes::BytesMut;
+    use bytes::{Bytes, BytesMut};
 
     use super::Directory;
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
     use crate::Header;
 
-    #[test]
-    fn read_root_directory() {
-        let test_file = std::fs::File::open(RASTER_FILE).unwrap();
+    fn read_root_directory(fname: &str) -> Directory {
+        let test_file = std::fs::File::open(fname).unwrap();
         let mut reader = BufReader::new(test_file);
 
         let mut header_bytes = BytesMut::zeroed(HEADER_SIZE);
@@ -131,8 +173,12 @@ mod tests {
             gunzip.write_all(&directory_bytes).unwrap();
         }
 
-        let directory = Directory::try_from(decompressed.freeze()).unwrap();
+        Directory::try_from(decompressed.freeze()).unwrap()
+    }
 
+    #[test]
+    fn root_directory() {
+        let directory = read_root_directory(RASTER_FILE);
         assert_eq!(directory.entries.len(), 84);
         // Note: this is not true for all tiles, just the first few...
         for nth in 0..10 {
@@ -144,5 +190,21 @@ mod tests {
         assert_eq!(directory.entries[58].run_length, 2);
         assert_eq!(directory.entries[58].offset, 422_070);
         assert_eq!(directory.entries[58].length, 850);
+    }
+
+    #[test]
+    fn write_directory() {
+        let root_dir = read_root_directory(RASTER_FILE);
+        let mut buf = vec![];
+        root_dir.write_to(&mut buf).unwrap();
+        let dir = Directory::try_from(Bytes::from(buf)).unwrap();
+        assert!(root_dir
+            .entries
+            .iter()
+            .enumerate()
+            .all(|(idx, entry)| dir.entries[idx].tile_id == entry.tile_id
+                && dir.entries[idx].run_length == entry.run_length
+                && dir.entries[idx].offset == entry.offset
+                && dir.entries[idx].length == entry.length));
     }
 }
