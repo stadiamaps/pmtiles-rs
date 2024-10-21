@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, BufWriter, Seek, Write};
+use std::io::{BufWriter, Seek, Write};
 
 use flate2::write::GzEncoder;
 
@@ -85,11 +85,8 @@ impl PmTilesWriter {
     #[allow(clippy::missing_panics_doc)]
     pub fn add_tile(&mut self, tile_id: u64, data: &[u8]) -> PmtResult<()> {
         if data.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "A tile must have at least 1 byte of data.",
-            )
-            .into());
+            // Ignore empty tiles, since the spec does not allow storing them
+            return Ok(());
         }
 
         let is_first = self.entries.is_empty();
