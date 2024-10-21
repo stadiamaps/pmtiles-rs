@@ -1,8 +1,6 @@
 use std::fs::File;
-use std::hash::{Hash, Hasher};
 use std::io::{self, BufWriter, Seek, Write};
 
-use ahash::AHasher;
 use flate2::write::GzEncoder;
 
 use crate::directory::{DirEntry, Directory};
@@ -15,7 +13,7 @@ pub struct PmTilesWriter {
     header: Header,
     entries: Vec<DirEntry>,
     n_addressed_tiles: u64,
-    last_tile_hash: u64,
+    prev_tile_data: Vec<u8>,
 }
 
 impl PmTilesWriter {
@@ -77,14 +75,8 @@ impl PmTilesWriter {
             header,
             entries: Vec::new(),
             n_addressed_tiles: 0,
-            last_tile_hash: 0,
+            prev_tile_data: vec![],
         })
-    }
-
-    fn calculate_hash(value: &impl Hash) -> u64 {
-        let mut hasher = AHasher::default();
-        value.hash(&mut hasher);
-        hasher.finish()
     }
 
     /// Add tile to writer
@@ -110,9 +102,8 @@ impl PmTilesWriter {
         let last_entry = self.entries.last_mut().unwrap_or(&mut first_entry);
 
         self.n_addressed_tiles += 1;
-        let hash = Self::calculate_hash(&data);
         if !is_first
-            && hash == self.last_tile_hash
+            && compare_blobs(&self.prev_tile_data, data)
             && tile_id == last_entry.tile_id + u64::from(last_entry.run_length)
         {
             last_entry.run_length += 1;
@@ -129,7 +120,7 @@ impl PmTilesWriter {
                 length,
             });
 
-            self.last_tile_hash = hash;
+            self.prev_tile_data = data.to_vec();
         }
 
         Ok(())
@@ -175,6 +166,10 @@ impl PmTilesWriter {
 
         Ok(())
     }
+}
+
+fn compare_blobs(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b.iter()).all(|(a, b)| a == b)
 }
 
 #[cfg(test)]
