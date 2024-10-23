@@ -10,7 +10,14 @@ use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::PmtError::{self, UnsupportedCompression};
 use crate::{Compression, Header, TileType};
 
+/// Builder for creating a new writer.
 pub struct PmTilesWriter {
+    header: Header,
+    metadata: String,
+}
+
+/// `PMTiles` file writer.
+pub struct PmTilesFileWriter {
     out: Counter<BufWriter<File>>,
     header: Header,
     entries: Vec<DirEntry>,
@@ -28,7 +35,7 @@ pub(crate) trait WriteTo {
         match compression {
             Compression::None => self.write_to(writer)?,
             Compression::Gzip => {
-                let mut encoder = GzEncoder::new(writer, flate2::Compression::default());
+                let mut encoder = GzEncoder::new(writer, flate2::Compression::best());
                 self.write_to(&mut encoder)?;
             }
             v => Err(UnsupportedCompression(v))?,
@@ -58,7 +65,101 @@ impl WriteTo for [u8] {
 }
 
 impl PmTilesWriter {
-    pub fn create(name: &str, tile_type: TileType, metadata: &str) -> PmtResult<Self> {
+    /// Create a new `PMTiles` writer with default values.
+    #[must_use]
+    pub fn new(tile_type: TileType) -> Self {
+        let tile_compression = match tile_type {
+            TileType::Mvt => Compression::Gzip,
+            _ => Compression::None,
+        };
+        let header = Header {
+            version: 3,
+            root_offset: HEADER_SIZE as u64,
+            root_length: 0,
+            metadata_offset: MAX_INITIAL_BYTES as u64,
+            metadata_length: 0,
+            leaf_offset: 0,
+            leaf_length: 0,
+            data_offset: 0,
+            data_length: 0,
+            n_addressed_tiles: None,
+            n_tile_entries: None,
+            n_tile_contents: None,
+            clustered: true,
+            internal_compression: Compression::Gzip,
+            tile_compression,
+            tile_type,
+            min_zoom: 0,
+            max_zoom: 22,
+            min_longitude: -180.0,
+            min_latitude: -85.0,
+            max_longitude: 180.0,
+            max_latitude: 85.0,
+            center_zoom: 0,
+            center_longitude: 0.0,
+            center_latitude: 0.0,
+        };
+        Self {
+            header,
+            metadata: "{}".to_string(),
+        }
+    }
+    /// Set the compression for metadata and directories.
+    #[must_use]
+    pub fn internal_compression(mut self, compression: Compression) -> Self {
+        self.header.internal_compression = compression;
+        self
+    }
+    /// Set the compression for tile data.
+    #[must_use]
+    pub fn tile_compression(mut self, compression: Compression) -> Self {
+        self.header.tile_compression = compression;
+        self
+    }
+    /// Set the minimum zoom level of the tiles
+    #[must_use]
+    pub fn min_zoom(mut self, level: u8) -> Self {
+        self.header.min_zoom = level;
+        self
+    }
+    /// Set the maximum zoom level of the tiles
+    #[must_use]
+    pub fn max_zoom(mut self, level: u8) -> Self {
+        self.header.max_zoom = level;
+        self
+    }
+    /// Set the bounds of the tiles
+    #[must_use]
+    pub fn bounds(mut self, min_lon: f32, min_lat: f32, max_lon: f32, max_lat: f32) -> Self {
+        self.header.min_latitude = min_lat;
+        self.header.min_longitude = min_lon;
+        self.header.max_latitude = max_lat;
+        self.header.max_longitude = max_lon;
+        self
+    }
+    /// Set the center zoom level.
+    #[must_use]
+    pub fn center_zoom(mut self, level: u8) -> Self {
+        self.header.center_zoom = level;
+        self
+    }
+    /// Set the center position.
+    #[must_use]
+    pub fn center(mut self, lon: f32, lat: f32) -> Self {
+        self.header.center_latitude = lat;
+        self.header.center_longitude = lon;
+        self
+    }
+    /// Set the metadata, which must contain a valid JSON object.
+    ///
+    /// If the tile type has a value of MVT Vector Tile, the object must contain a key of `vector_layers` as described in the `TileJSON` 3.0 specification.
+    #[must_use]
+    pub fn metadata(mut self, metadata: &str) -> Self {
+        self.metadata = metadata.to_string();
+        self
+    }
+    /// Create a new `PMTiles` file writer with the given name.
+    pub fn create(self, name: &str) -> PmtResult<PmTilesFileWriter> {
         let file = File::create(name)?;
         let writer = BufWriter::new(file);
         let mut out = Counter::new(writer);
@@ -74,48 +175,26 @@ impl PmTilesWriter {
         // Reserve space for header and root directory
         out.write_all(&[0u8; MAX_INITIAL_BYTES])?;
 
-        let metadata_length = metadata
+        let metadata_length = self
+            .metadata
             .as_bytes()
-            .write_compressed_to_counted(&mut out, Compression::Gzip)?
+            .write_compressed_to_counted(&mut out, self.header.internal_compression)?
             as u64;
 
-        let header = Header {
-            version: 3,
-            root_offset: HEADER_SIZE as u64,
-            root_length: 0,
-            metadata_offset: MAX_INITIAL_BYTES as u64,
-            metadata_length,
-            leaf_offset: 0,
-            leaf_length: 0,
-            data_offset: MAX_INITIAL_BYTES as u64 + metadata_length,
-            data_length: 0,
-            n_addressed_tiles: None,
-            n_tile_entries: None,
-            n_tile_contents: None,
-            clustered: true,
-            internal_compression: Compression::Gzip, // pmtiles extract does not support None compression
-            tile_compression: Compression::None,
-            tile_type,
-            min_zoom: 0,
-            max_zoom: 22,
-            min_longitude: -180.0,
-            min_latitude: -85.0,
-            max_longitude: 180.0,
-            max_latitude: 85.0,
-            center_zoom: 0,
-            center_longitude: 0.0,
-            center_latitude: 0.0,
-        };
-
-        Ok(Self {
+        let mut writer = PmTilesFileWriter {
             out,
-            header,
+            header: self.header,
             entries: Vec::new(),
             n_addressed_tiles: 0,
             prev_tile_data: vec![],
-        })
-    }
+        };
+        writer.header.metadata_length = metadata_length;
+        writer.header.data_offset = MAX_INITIAL_BYTES as u64 + metadata_length;
 
+        Ok(writer)
+    }
+}
+impl PmTilesFileWriter {
     /// Add tile to writer
     /// Tiles are deduplicated and written to output.
     /// `tile_id` should be increasing.
@@ -227,7 +306,7 @@ impl PmTilesWriter {
         dir.compressed_size(self.header.internal_compression)
     }
 
-    #[allow(clippy::missing_panics_doc)]
+    /// Finish writing the `PMTiles` file.
     pub fn finish(mut self) -> PmtResult<()> {
         if let Some(last) = self.entries.last() {
             self.header.data_length = last.offset + u64::from(last.length);
@@ -286,7 +365,10 @@ mod tests {
 
         let fname = get_temp_file_path("pmtiles").unwrap();
         // let fname = "test.pmtiles".to_string();
-        let mut writer = PmTilesWriter::create(&fname, header_in.tile_type, &metadata_in).unwrap();
+        let mut writer = PmTilesWriter::new(header_in.tile_type)
+            .metadata(&metadata_in)
+            .create(&fname)
+            .unwrap();
         for id in 0..num_tiles.into() {
             let tile = tiles_in.get_tile_by_id(id).await.unwrap().unwrap();
             writer.add_tile(id, &tile).unwrap();
@@ -328,7 +410,7 @@ mod tests {
 
     fn gen_entries(num_tiles: u64) -> (Directory, usize) {
         let fname = get_temp_file_path("pmtiles").unwrap();
-        let mut writer = PmTilesWriter::create(&fname, TileType::Png, "{}").unwrap();
+        let mut writer = PmTilesWriter::new(TileType::Png).create(&fname).unwrap();
         for tile_id in 0..num_tiles {
             writer.entries.push(DirEntry {
                 tile_id,
