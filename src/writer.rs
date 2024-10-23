@@ -21,6 +21,8 @@ pub struct PmTilesStreamWriter<W: Write + Seek> {
     header: Header,
     entries: Vec<DirEntry>,
     n_addressed_tiles: u64,
+    // TODO: Replace with digest HashMap for deduplicating non-subsequent tiles
+    n_tile_contents: u64,
     prev_tile_data: Vec<u8>,
 }
 
@@ -183,6 +185,7 @@ impl PmTilesWriter {
             header: self.header,
             entries: Vec::new(),
             n_addressed_tiles: 0,
+            n_tile_contents: 0,
             prev_tile_data: vec![],
         };
         writer.header.metadata_length = metadata_length;
@@ -222,6 +225,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
             let len =
                 data.write_compressed_to_counted(&mut self.out, self.header.tile_compression)?;
             let length = into_u32(len)?;
+            self.n_tile_contents += 1;
 
             self.entries.push(DirEntry {
                 tile_id,
@@ -310,7 +314,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
             self.header.leaf_offset = self.header.data_offset + self.header.data_length;
             self.header.n_addressed_tiles = self.n_addressed_tiles.try_into().ok();
             self.header.n_tile_entries = (self.entries.len() as u64).try_into().ok();
-            self.header.n_tile_contents = None; //TODO
+            self.header.n_tile_contents = self.n_tile_contents.try_into().ok();
         }
         // Write leaf directories and get root directory
         let root_dir = self.build_directories()?;
@@ -365,6 +369,7 @@ mod tests {
         // let fname = "test.pmtiles".to_string();
         let file = File::create(fname.clone()).unwrap();
         let mut writer = PmTilesWriter::new(header_in.tile_type)
+            .max_zoom(header_in.max_zoom)
             .metadata(&metadata_in)
             .create(file)
             .unwrap();
@@ -383,9 +388,10 @@ mod tests {
         assert_eq!(header_in.tile_type, header_out.tile_type);
         assert_eq!(header_in.n_addressed_tiles, header_out.n_addressed_tiles);
         assert_eq!(header_in.n_tile_entries, header_out.n_tile_entries);
-        // TODO: assert_eq!(header_in.n_tile_contents, header_out.n_tile_contents);
+        // assert_eq!(header_in.n_tile_contents, header_out.n_tile_contents);
+        assert_eq!(Some(84), header_out.n_tile_contents.map(Into::into));
         assert_eq!(header_in.min_zoom, header_out.min_zoom);
-        // TODO: assert_eq!(header_in.max_zoom, header_out.max_zoom);
+        assert_eq!(header_in.max_zoom, header_out.max_zoom);
         assert_eq!(header_in.center_zoom, header_out.center_zoom);
         assert_eq!(header_in.center_latitude, header_out.center_latitude);
         assert_eq!(header_in.center_longitude, header_out.center_longitude);
