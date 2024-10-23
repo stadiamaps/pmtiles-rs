@@ -7,7 +7,7 @@ use flate2::write::GzEncoder;
 use crate::directory::{DirEntry, Directory};
 use crate::error::PmtResult;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
-use crate::PmtError::UnsupportedCompression;
+use crate::PmtError::{self, UnsupportedCompression};
 use crate::{Compression, Header, TileType};
 
 pub struct PmTilesWriter {
@@ -119,7 +119,6 @@ impl PmTilesWriter {
     /// Add tile to writer
     /// Tiles are deduplicated and written to output.
     /// `tile_id` should be increasing.
-    #[allow(clippy::missing_panics_doc)]
     pub fn add_tile(&mut self, tile_id: u64, data: &[u8]) -> PmtResult<()> {
         if data.is_empty() {
             // Ignore empty tiles, since the spec does not allow storing them
@@ -146,7 +145,7 @@ impl PmTilesWriter {
             // Write tile
             let len =
                 data.write_compressed_to_counted(&mut self.out, self.header.tile_compression)?;
-            let length = len.try_into().expect("TODO: check max");
+            let length = into_u32(len)?;
 
             self.entries.push(DirEntry {
                 tile_id,
@@ -164,18 +163,68 @@ impl PmTilesWriter {
     /// Build root and leaf directories from entries.
     /// Leaf directories are written to output.
     /// The root directory is returned.
-    fn build_directories(&self) -> PmtResult<Directory> {
-        let mut root_dir = Directory::default();
-        for entry in &self.entries {
-            root_dir.push(entry.clone());
+    fn build_directories(&mut self) -> PmtResult<Directory> {
+        let (root_dir, num_leaves) = self.optimize_directories(MAX_INITIAL_BYTES - HEADER_SIZE)?;
+        if num_leaves > 0 {
+            // Write leaf directories
+            for leaf in root_dir.entries() {
+                let len = leaf.length as usize;
+                let mut dir = Directory::with_capacity(len);
+                for entry in self.entries.drain(0..len) {
+                    dir.push(entry);
+                }
+                dir.write_compressed_to(&mut self.out, self.header.internal_compression)?;
+            }
         }
-        if root_dir.compressed_size(self.header.internal_compression)?
-            > MAX_INITIAL_BYTES - HEADER_SIZE
-        {
-            // TODO
-        }
-        // TODO: Build and write optimized leaf directories
         Ok(root_dir)
+    }
+
+    fn optimize_directories(&self, target_root_len: usize) -> PmtResult<(Directory, usize)> {
+        // Same logic as go-pmtiles optimizeDirectories
+        if self.entries.len() < 16384 {
+            let root_dir = Directory::from_entries(&self.entries);
+            let root_bytes = root_dir.compressed_size(self.header.internal_compression)?;
+            // Case1: the entire directory fits into the target len
+            if root_bytes <= target_root_len {
+                return Ok((root_dir, 0));
+            }
+        }
+
+        // TODO: case 2: mixed tile entries/directory entries in root
+
+        // case 3: root directory is leaf pointers only
+        // use an iterative method, increasing the size of the leaf directory until the root fits
+
+        let mut leaf_size = (self.entries.len() / 3500).max(4096);
+        loop {
+            let (root_dir, num_leaves) = self.build_roots_leaves(leaf_size)?;
+            let root_bytes = root_dir.compressed_size(self.header.internal_compression)?;
+            if root_bytes <= target_root_len {
+                return Ok((root_dir, num_leaves));
+            }
+            leaf_size += leaf_size / 5; // go-pmtiles: leaf_size *= 1.2
+        }
+    }
+    fn build_roots_leaves(&self, leaf_size: usize) -> PmtResult<(Directory, usize)> {
+        let mut root_dir = Directory::with_capacity(self.entries.len() / leaf_size);
+        let mut offset = 0;
+        for chunk in self.entries.chunks(leaf_size) {
+            let leaf_size = self.dir_size(chunk)?;
+            root_dir.push(DirEntry {
+                tile_id: chunk[0].tile_id,
+                offset,
+                length: into_u32(leaf_size)?,
+                run_length: 0,
+            });
+            offset += leaf_size as u64;
+        }
+
+        let num_leaves = root_dir.entries().len();
+        Ok((root_dir, num_leaves))
+    }
+    fn dir_size(&self, entries: &[DirEntry]) -> PmtResult<usize> {
+        let dir = Directory::from_entries(entries);
+        dir.compressed_size(self.header.internal_compression)
     }
 
     #[allow(clippy::missing_panics_doc)]
@@ -208,13 +257,18 @@ fn compare_blobs(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b.iter()).all(|(a, b)| a == b)
 }
 
+fn into_u32(v: usize) -> PmtResult<u32> {
+    v.try_into().map_err(|_| PmtError::IndexEntryOverflow)
+}
+
 #[cfg(test)]
 #[cfg(feature = "mmap-async-tokio")]
+#[allow(clippy::float_cmp)]
 mod tests {
-    use super::PmTilesWriter;
     use crate::async_reader::AsyncPmTilesReader;
+    use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
     use crate::tests::RASTER_FILE;
-    use crate::MmapBackend;
+    use crate::{DirEntry, Directory, MmapBackend, PmTilesWriter, TileType};
     use tempfile::NamedTempFile;
 
     fn get_temp_file_path(suffix: &str) -> std::io::Result<String> {
@@ -223,7 +277,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[allow(clippy::float_cmp)]
     async fn roundtrip_raster() {
         let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
         let tiles_in = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
@@ -271,5 +324,36 @@ mod tests {
             let tile_out = tiles_out.get_tile(z, x, y).await.unwrap().unwrap();
             assert_eq!(tile_in.len(), tile_out.len());
         }
+    }
+
+    fn gen_entries(num_tiles: u64) -> (Directory, usize) {
+        let fname = get_temp_file_path("pmtiles").unwrap();
+        let mut writer = PmTilesWriter::create(&fname, TileType::Png, "{}").unwrap();
+        for tile_id in 0..num_tiles {
+            writer.entries.push(DirEntry {
+                tile_id,
+                run_length: 1,
+                offset: tile_id,
+                length: 1,
+            });
+        }
+        writer.header.internal_compression = crate::Compression::None; // flate2 compression is extremely slow in debug mode
+        writer
+            .optimize_directories(MAX_INITIAL_BYTES - HEADER_SIZE)
+            .unwrap()
+    }
+
+    #[test]
+    fn no_leaves() {
+        let (root_dir, num_leaves) = gen_entries(100);
+        assert_eq!(num_leaves, 0);
+        assert_eq!(root_dir.entries().len(), 100);
+    }
+
+    #[test]
+    fn with_leaves() {
+        let (root_dir, num_leaves) = gen_entries(20000);
+        assert_eq!(num_leaves, 5);
+        assert_eq!(root_dir.entries().len(), num_leaves);
     }
 }
