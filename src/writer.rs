@@ -348,7 +348,7 @@ mod tests {
     use crate::async_reader::AsyncPmTilesReader;
     use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
     use crate::tests::RASTER_FILE;
-    use crate::{DirEntry, Directory, MmapBackend, PmTilesWriter, TileType};
+    use crate::{Compression, DirEntry, Directory, MmapBackend, PmTilesWriter, TileType};
     use std::fs::File;
     use tempfile::NamedTempFile;
 
@@ -415,8 +415,12 @@ mod tests {
 
     fn gen_entries(num_tiles: u64) -> (Directory, usize) {
         let fname = get_temp_file_path("pmtiles").unwrap();
-        let file = File::create(fname.clone()).unwrap();
-        let mut writer = PmTilesWriter::new(TileType::Png).create(file).unwrap();
+        let file = File::create(fname).unwrap();
+        let mut writer = PmTilesWriter::new(TileType::Png)
+            // flate2 compression is extremely slow in debug mode
+            .internal_compression(Compression::None)
+            .create(file)
+            .unwrap();
         for tile_id in 0..num_tiles {
             writer.entries.push(DirEntry {
                 tile_id,
@@ -425,7 +429,6 @@ mod tests {
                 length: 1,
             });
         }
-        writer.header.internal_compression = crate::Compression::None; // flate2 compression is extremely slow in debug mode
         writer
             .optimize_directories(MAX_INITIAL_BYTES - HEADER_SIZE)
             .unwrap()
