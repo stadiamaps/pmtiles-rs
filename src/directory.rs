@@ -5,6 +5,7 @@ use bytes::{Buf, Bytes};
 use varint_rs::{VarintReader, VarintWriter};
 
 use crate::error::PmtError;
+use crate::writer::WriteTo;
 
 #[derive(Default, Clone)]
 pub struct Directory {
@@ -93,8 +94,8 @@ impl TryFrom<Bytes> for Directory {
     }
 }
 
-impl Directory {
-    pub fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+impl WriteTo for Directory {
+    fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         // Write number of entries
         writer.write_usize_varint(self.entries.len())?;
 
@@ -154,6 +155,7 @@ mod tests {
     use super::Directory;
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
+    use crate::writer::WriteTo;
     use crate::Header;
 
     fn read_root_directory(fname: &str) -> Directory {

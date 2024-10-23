@@ -5,6 +5,7 @@ use std::{io, io::Write};
 use bytes::{Buf, Bytes};
 
 use crate::error::{PmtError, PmtResult};
+use crate::writer::WriteTo;
 
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
 pub(crate) const HEADER_SIZE: usize = 127;
@@ -199,8 +200,8 @@ impl Header {
     }
 }
 
-impl Header {
-    pub fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+impl WriteTo for Header {
+    fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         // Write magic number
         writer.write_all(V3_MAGIC.as_bytes())?;
 
@@ -233,7 +234,8 @@ impl Header {
 
         Ok(())
     }
-
+}
+impl Header {
     #[allow(clippy::cast_possible_truncation)]
     fn write_coordinate_part<W: Write>(writer: &mut W, value: f32) -> io::Result<()> {
         writer.write_all(&((value * 10_000_000.0) as i32).to_le_bytes())
@@ -251,6 +253,7 @@ mod tests {
 
     use crate::header::{Header, TileType, HEADER_SIZE};
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
+    use crate::writer::WriteTo;
 
     #[test]
     fn read_header() {

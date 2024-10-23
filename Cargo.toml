@@ -38,6 +38,7 @@ __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
 aws-sdk-s3 = { version = "1.49.0", optional = true }
 async-compression = { version = "0.4", features = ["gzip"] }
 bytes = "1"
+countio = "0.2.19"
 flate2 = "1"
 fmmap = { version = "0.3", default-features = false, optional = true }
 hilbert_2d = "1"
