@@ -17,11 +17,12 @@ originally created by Brandon Liu for Protomaps.
   - Async `mmap` (Tokio) for local files
   - Async `http` and `https` (Reqwuest + Tokio) for URLs
   - Async `s3` (Rust-S3 + Tokio) for S3-compatible buckets
+- Creating PMTile archives
 
 ## Plans & TODOs
 
 - [ ] Documentation and example code
-- [ ] Support writing and conversion to and from MBTiles + `x/y/z`
+- [ ] Support conversion to and from MBTiles + `x/y/z`
 - [ ] Support additional backends (sync `mmap` and `http` at least)
 - [ ] Support additional async styles (e.g., `async-std`)
 
