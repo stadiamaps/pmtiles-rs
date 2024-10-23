@@ -11,7 +11,7 @@ rust-version = "1.81.0"
 categories = ["science::geo"]
 
 [features]
-default = ["__writer"]
+default = []
 http-async = ["__async", "dep:reqwest"]
 mmap-async-tokio = ["__async", "dep:fmmap", "fmmap?/tokio-async"]
 s3-async-native = ["__async-s3", "__async-s3-nativetls"]
@@ -32,7 +32,6 @@ __async-s3 = ["__async", "dep:rust-s3"]
 __async-s3-nativetls = ["rust-s3?/use-tokio-native-tls"]
 __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]
 __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
-__writer = []
 
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments

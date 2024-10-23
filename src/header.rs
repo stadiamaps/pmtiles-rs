@@ -6,9 +6,7 @@ use bytes::{Buf, Bytes};
 
 use crate::error::{PmtError, PmtResult};
 
-#[cfg(any(feature = "__async", feature = "__writer"))]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
-#[cfg(any(test, feature = "__async", feature = "__writer"))]
 pub(crate) const HEADER_SIZE: usize = 127;
 
 #[allow(dead_code)]
@@ -145,7 +143,7 @@ impl TryInto<TileType> for u8 {
     }
 }
 
-pub(crate) static V3_MAGIC: &str = "PMTiles";
+static V3_MAGIC: &str = "PMTiles";
 static V2_MAGIC: &str = "PM";
 
 impl Header {
