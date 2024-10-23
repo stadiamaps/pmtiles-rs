@@ -1,4 +1,3 @@
-use std::fs::File;
 use std::io::{BufWriter, Seek, Write};
 
 use countio::Counter;
@@ -16,9 +15,9 @@ pub struct PmTilesWriter {
     metadata: String,
 }
 
-/// `PMTiles` file writer.
-pub struct PmTilesFileWriter {
-    out: Counter<BufWriter<File>>,
+/// `PMTiles` streaming writer.
+pub struct PmTilesStreamWriter<W: Write + Seek> {
+    out: Counter<BufWriter<W>>,
     header: Header,
     entries: Vec<DirEntry>,
     n_addressed_tiles: u64,
@@ -158,11 +157,9 @@ impl PmTilesWriter {
         self.metadata = metadata.to_string();
         self
     }
-    /// Create a new `PMTiles` file writer with the given name.
-    pub fn create(self, name: &str) -> PmtResult<PmTilesFileWriter> {
-        let file = File::create(name)?;
-        let writer = BufWriter::new(file);
-        let mut out = Counter::new(writer);
+    /// Create a new `PMTiles` writer.
+    pub fn create<W: Write + Seek>(self, writer: W) -> PmtResult<PmTilesStreamWriter<W>> {
+        let mut out = Counter::new(BufWriter::new(writer));
 
         // We use the following layout:
         // +--------+----------------+----------+-----------+------------------+
@@ -181,7 +178,7 @@ impl PmTilesWriter {
             .write_compressed_to_counted(&mut out, self.header.internal_compression)?
             as u64;
 
-        let mut writer = PmTilesFileWriter {
+        let mut writer = PmTilesStreamWriter {
             out,
             header: self.header,
             entries: Vec::new(),
@@ -194,7 +191,7 @@ impl PmTilesWriter {
         Ok(writer)
     }
 }
-impl PmTilesFileWriter {
+impl<W: Write + Seek> PmTilesStreamWriter<W> {
     /// Add tile to writer
     /// Tiles are deduplicated and written to output.
     /// `tile_id` should be increasing.
@@ -348,6 +345,7 @@ mod tests {
     use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
     use crate::tests::RASTER_FILE;
     use crate::{DirEntry, Directory, MmapBackend, PmTilesWriter, TileType};
+    use std::fs::File;
     use tempfile::NamedTempFile;
 
     fn get_temp_file_path(suffix: &str) -> std::io::Result<String> {
@@ -365,9 +363,10 @@ mod tests {
 
         let fname = get_temp_file_path("pmtiles").unwrap();
         // let fname = "test.pmtiles".to_string();
+        let file = File::create(fname.clone()).unwrap();
         let mut writer = PmTilesWriter::new(header_in.tile_type)
             .metadata(&metadata_in)
-            .create(&fname)
+            .create(file)
             .unwrap();
         for id in 0..num_tiles.into() {
             let tile = tiles_in.get_tile_by_id(id).await.unwrap().unwrap();
@@ -410,7 +409,8 @@ mod tests {
 
     fn gen_entries(num_tiles: u64) -> (Directory, usize) {
         let fname = get_temp_file_path("pmtiles").unwrap();
-        let mut writer = PmTilesWriter::new(TileType::Png).create(&fname).unwrap();
+        let file = File::create(fname.clone()).unwrap();
+        let mut writer = PmTilesWriter::new(TileType::Png).create(file).unwrap();
         for tile_id in 0..num_tiles {
             writer.entries.push(DirEntry {
                 tile_id,

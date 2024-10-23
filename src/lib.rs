@@ -30,7 +30,7 @@ pub use backend_s3::S3Backend;
 pub use directory::{DirEntry, Directory};
 pub use error::{PmtError, PmtResult};
 pub use header::{Compression, Header, TileType};
-pub use writer::{PmTilesFileWriter, PmTilesWriter};
+pub use writer::{PmTilesStreamWriter, PmTilesWriter};
 //
 // Re-export crates exposed in our API to simplify dependency management
 #[cfg(feature = "__async-aws-s3")]
