@@ -17,7 +17,6 @@ pub mod cache;
 mod directory;
 mod error;
 mod header;
-#[cfg(feature = "__async")]
 mod tile;
 mod writer;
 
@@ -32,6 +31,7 @@ pub use backend_s3::S3Backend;
 pub use directory::{DirEntry, Directory};
 pub use error::{PmtError, PmtResult};
 pub use header::{Compression, Header, TileType};
+pub use tile::tile_id;
 pub use writer::{PmTilesStreamWriter, PmTilesWriter};
 //
 // Re-export crates exposed in our API to simplify dependency management

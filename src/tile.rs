@@ -24,7 +24,9 @@ const PYRAMID_SIZE_BY_ZOOM: [u64; 21] = [
     /* 20 */ 366503875925,
 ];
 
-pub(crate) fn tile_id(z: u8, x: u64, y: u64) -> u64 {
+/// Compute the tile id for a given zoom level and tile coordinates.
+#[must_use]
+pub fn tile_id(z: u8, x: u64, y: u64) -> u64 {
     // The 0/0/0 case is not needed for the base id computation, but it will fail hilbert_2d::u64::xy2h_discrete
     if z == 0 {
         return 0;
