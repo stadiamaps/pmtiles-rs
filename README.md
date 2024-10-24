@@ -28,6 +28,20 @@ originally created by Brandon Liu for Protomaps.
 
 PRs welcome!
 
+## Usage examples
+
+### Writing a PMTiles file
+
+```rust
+use pmtiles::{PmTilesWriter, TileType};
+use std::fs::File;
+
+let file = File::create("tiles.pmtiles").unwrap();
+let mut writer = PmTilesWriter::new(TileType::Mvt).create(file).unwrap();
+writer.add_tile(0, &[/*...*/]).unwrap();
+writer.finish().unwrap();
+```
+
 ## Development
 * This project is easier to develop with [just](https://github.com/casey/just#readme), a modern alternative to `make`. Install it with `cargo install just`.
 * To get a list of available commands, run `just`.

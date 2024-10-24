@@ -1,19 +1,5 @@
-//! Read and write `PMTiles` according to the [PMTiles v3 spec](https://github.com/protomaps/PMTiles/blob/master/spec/v3/spec.md).
-//!
-//! ## Writing a `PMTiles` file
-//!
-//! ```rust
-//! use pmtiles::{PmTilesWriter, TileType};
-//! use std::fs::File;
-//!
-//! # let tile_0_0_0 = vec![];
-//! let file = File::create("tiles.pmtiles").unwrap();
-//! let mut writer = PmTilesWriter::new(TileType::Mvt).create(file).unwrap();
-//! writer.add_tile(0, &tile_0_0_0).unwrap();
-//! writer.finish().unwrap();
-//! ```
-//!
-
+#![allow(clippy::doc_markdown)]
+#![cfg_attr(feature = "default", doc = include_str!("../README.md"))]
 #![forbid(unsafe_code)]
 
 #[cfg(feature = "__async")]
