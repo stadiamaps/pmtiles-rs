@@ -28,6 +28,7 @@ pub struct PmTilesStreamWriter<W: Write + Seek> {
 
 pub(crate) trait WriteTo {
     fn write_to<W: Write>(&self, writer: &mut W) -> std::io::Result<()>;
+
     fn write_compressed_to<W: Write>(
         &self,
         writer: &mut W,
@@ -43,6 +44,7 @@ pub(crate) trait WriteTo {
         }
         Ok(())
     }
+
     fn write_compressed_to_counted<W: Write>(
         &self,
         writer: &mut Counter<W>,
@@ -52,6 +54,7 @@ pub(crate) trait WriteTo {
         self.write_compressed_to(writer, compression)?;
         Ok(writer.writer_bytes() - pos)
     }
+
     fn compressed_size(&self, compression: Compression) -> PmtResult<usize> {
         let mut devnull = Counter::new(std::io::sink());
         self.write_compressed_to(&mut devnull, compression)?;
@@ -73,6 +76,7 @@ impl PmTilesWriter {
             TileType::Mvt => Compression::Gzip,
             _ => Compression::None,
         };
+        #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
         let header = Header {
             version: 3,
             root_offset: HEADER_SIZE as u64,
@@ -93,9 +97,9 @@ impl PmTilesWriter {
             min_zoom: 0,
             max_zoom: 22,
             min_longitude: -180.0,
-            min_latitude: -85.0,
+            min_latitude: -85.051129,
             max_longitude: 180.0,
-            max_latitude: 85.0,
+            max_latitude: 85.051129,
             center_zoom: 0,
             center_longitude: 0.0,
             center_latitude: 0.0,
@@ -105,30 +109,35 @@ impl PmTilesWriter {
             metadata: "{}".to_string(),
         }
     }
+
     /// Set the compression for metadata and directories.
     #[must_use]
     pub fn internal_compression(mut self, compression: Compression) -> Self {
         self.header.internal_compression = compression;
         self
     }
+
     /// Set the compression for tile data.
     #[must_use]
     pub fn tile_compression(mut self, compression: Compression) -> Self {
         self.header.tile_compression = compression;
         self
     }
+
     /// Set the minimum zoom level of the tiles
     #[must_use]
     pub fn min_zoom(mut self, level: u8) -> Self {
         self.header.min_zoom = level;
         self
     }
+
     /// Set the maximum zoom level of the tiles
     #[must_use]
     pub fn max_zoom(mut self, level: u8) -> Self {
         self.header.max_zoom = level;
         self
     }
+
     /// Set the bounds of the tiles
     #[must_use]
     pub fn bounds(mut self, min_lon: f32, min_lat: f32, max_lon: f32, max_lat: f32) -> Self {
@@ -138,12 +147,14 @@ impl PmTilesWriter {
         self.header.max_longitude = max_lon;
         self
     }
+
     /// Set the center zoom level.
     #[must_use]
     pub fn center_zoom(mut self, level: u8) -> Self {
         self.header.center_zoom = level;
         self
     }
+
     /// Set the center position.
     #[must_use]
     pub fn center(mut self, lon: f32, lat: f32) -> Self {
@@ -151,6 +162,7 @@ impl PmTilesWriter {
         self.header.center_longitude = lon;
         self
     }
+
     /// Set the metadata, which must contain a valid JSON object.
     ///
     /// If the tile type has a value of MVT Vector Tile, the object must contain a key of `vector_layers` as described in the `TileJSON` 3.0 specification.
@@ -159,6 +171,7 @@ impl PmTilesWriter {
         self.metadata = metadata.to_string();
         self
     }
+
     /// Create a new `PMTiles` writer.
     pub fn create<W: Write + Seek>(self, writer: W) -> PmtResult<PmTilesStreamWriter<W>> {
         let mut out = Counter::new(BufWriter::new(writer));
@@ -194,8 +207,10 @@ impl PmTilesWriter {
         Ok(writer)
     }
 }
+
 impl<W: Write + Seek> PmTilesStreamWriter<W> {
-    /// Add tile to writer
+    /// Add tile to writer.
+    ///
     /// Tiles are deduplicated and written to output.
     /// `tile_id` should be increasing.
     pub fn add_tile(&mut self, tile_id: u64, data: &[u8]) -> PmtResult<()> {
@@ -215,7 +230,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
 
         self.n_addressed_tiles += 1;
         if !is_first
-            && compare_blobs(&self.prev_tile_data, data)
+            && self.prev_tile_data == data
             && tile_id == last_entry.tile_id + u64::from(last_entry.run_length)
         {
             last_entry.run_length += 1;
@@ -285,6 +300,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
             leaf_size += leaf_size / 5; // go-pmtiles: leaf_size *= 1.2
         }
     }
+
     fn build_roots_leaves(&self, leaf_size: usize) -> PmtResult<(Directory, usize)> {
         let mut root_dir = Directory::with_capacity(self.entries.len() / leaf_size);
         let mut offset = 0;
@@ -302,6 +318,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
         let num_leaves = root_dir.entries().len();
         Ok((root_dir, num_leaves))
     }
+
     fn dir_size(&self, entries: &[DirEntry]) -> PmtResult<usize> {
         let dir = Directory::from_entries(entries);
         dir.compressed_size(self.header.internal_compression)
@@ -331,10 +348,6 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
 
         Ok(())
     }
-}
-
-fn compare_blobs(a: &[u8], b: &[u8]) -> bool {
-    a.len() == b.len() && a.iter().zip(b.iter()).all(|(a, b)| a == b)
 }
 
 fn into_u32(v: usize) -> PmtResult<u32> {
@@ -395,8 +408,14 @@ mod tests {
         assert_eq!(header_in.center_zoom, header_out.center_zoom);
         assert_eq!(header_in.center_latitude, header_out.center_latitude);
         assert_eq!(header_in.center_longitude, header_out.center_longitude);
-        assert_eq!(header_in.min_latitude, header_out.min_latitude);
-        assert_eq!(header_in.max_latitude, header_out.max_latitude);
+        assert_eq!(
+            header_in.min_latitude.round(),
+            header_out.min_latitude.round()
+        );
+        assert_eq!(
+            header_in.max_latitude.round(),
+            header_out.max_latitude.round()
+        );
         assert_eq!(header_in.min_longitude, header_out.min_longitude);
         assert_eq!(header_in.max_longitude, header_out.max_longitude);
         assert_eq!(header_in.clustered, header_out.clustered);

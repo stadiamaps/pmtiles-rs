@@ -24,14 +24,17 @@ impl Directory {
             entries: Vec::with_capacity(capacity),
         }
     }
+
     pub(crate) fn from_entries(entries: &[DirEntry]) -> Self {
         Self {
             entries: entries.to_vec(),
         }
     }
+
     pub(crate) fn entries(&self) -> &[DirEntry] {
         &self.entries
     }
+
     /// Find the directory entry for a given tile ID.
     #[must_use]
     pub fn find_tile_id(&self, tile_id: u64) -> Option<&DirEntry> {

@@ -21,7 +21,7 @@ test:
     cargo test
     RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 
-test_writer:
+test-writer:
     cargo test --features mmap-async-tokio
 
 # Run all tests and checks
