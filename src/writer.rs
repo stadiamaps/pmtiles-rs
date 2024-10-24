@@ -212,7 +212,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     /// Add tile to writer.
     ///
     /// Tiles are deduplicated and written to output.
-    /// `tile_id` should be increasing.
+    /// `tile_id` should be increasing for best read performance.
     pub fn add_tile(&mut self, tile_id: u64, data: &[u8]) -> PmtResult<()> {
         if data.is_empty() {
             // Ignore empty tiles, since the spec does not allow storing them
@@ -220,6 +220,9 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
         }
 
         let is_first = self.entries.is_empty();
+        if is_first && tile_id > 0 {
+            self.header.clustered = false;
+        }
         let mut first_entry = DirEntry {
             tile_id: 0,
             offset: 0,
@@ -241,6 +244,9 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
                 data.write_compressed_to_counted(&mut self.out, self.header.tile_compression)?;
             let length = into_u32(len)?;
             self.n_tile_contents += 1;
+            if tile_id != last_entry.tile_id + u64::from(last_entry.run_length) {
+                self.header.clustered = false;
+            }
 
             self.entries.push(DirEntry {
                 tile_id,
@@ -259,6 +265,11 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     /// Leaf directories are written to output.
     /// The root directory is returned.
     fn build_directories(&mut self) -> PmtResult<Directory> {
+        if !self.header.clustered {
+            // Spec does only say that leaf directories *should* be in ascending order,
+            // but sorted directories are better for readers anyway.
+            self.entries.sort_by_key(|entry| entry.tile_id);
+        }
         let (root_dir, num_leaves) = self.optimize_directories(MAX_INITIAL_BYTES - HEADER_SIZE)?;
         if num_leaves > 0 {
             // Write leaf directories
@@ -465,5 +476,17 @@ mod tests {
         let (root_dir, num_leaves) = gen_entries(20000);
         assert_eq!(num_leaves, 5);
         assert_eq!(root_dir.entries().len(), num_leaves);
+    }
+
+    #[test]
+    fn unclustered() {
+        let fname = get_temp_file_path("pmtiles").unwrap();
+        let file = File::create(fname).unwrap();
+        let mut writer = PmTilesWriter::new(TileType::Png).create(file).unwrap();
+        writer.add_tile(0, &[0, 1, 2, 3]).unwrap();
+        assert!(writer.header.clustered);
+        writer.add_tile(2, &[0, 1, 2, 3]).unwrap();
+        assert!(!writer.header.clustered);
+        writer.finish().unwrap();
     }
 }
