@@ -25,10 +25,8 @@ impl Directory {
         }
     }
 
-    pub(crate) fn from_entries(entries: &[DirEntry]) -> Self {
-        Self {
-            entries: entries.to_vec(),
-        }
+    pub(crate) fn from_entries(entries: Vec<DirEntry>) -> Self {
+        Self { entries }
     }
 
     pub(crate) fn entries(&self) -> &[DirEntry] {

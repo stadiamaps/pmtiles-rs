@@ -288,7 +288,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     fn optimize_directories(&self, target_root_len: usize) -> PmtResult<(Directory, usize)> {
         // Same logic as go-pmtiles optimizeDirectories
         if self.entries.len() < 16384 {
-            let root_dir = Directory::from_entries(&self.entries);
+            let root_dir = Directory::from_entries(self.entries.clone());
             let root_bytes = root_dir.compressed_size(self.header.internal_compression)?;
             // Case1: the entire directory fits into the target len
             if root_bytes <= target_root_len {
@@ -331,7 +331,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     }
 
     fn dir_size(&self, entries: &[DirEntry]) -> PmtResult<usize> {
-        let dir = Directory::from_entries(entries);
+        let dir = Directory::from_entries(entries.to_vec());
         dir.compressed_size(self.header.internal_compression)
     }
 
