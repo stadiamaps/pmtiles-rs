@@ -39,7 +39,7 @@ use std::fs::File;
 let file = File::create("tiles.pmtiles").unwrap();
 let mut writer = PmTilesWriter::new(TileType::Mvt).create(file).unwrap();
 writer.add_tile(0, &[/*...*/]).unwrap();
-writer.finish().unwrap();
+writer.finalize().unwrap();
 ```
 
 ## Development

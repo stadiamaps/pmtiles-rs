@@ -336,7 +336,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     }
 
     /// Finish writing the `PMTiles` file.
-    pub fn finish(mut self) -> PmtResult<()> {
+    pub fn finalize(mut self) -> PmtResult<()> {
         if let Some(last) = self.entries.last() {
             self.header.data_length = last.offset + u64::from(last.length);
             self.header.leaf_offset = self.header.data_offset + self.header.data_length;
@@ -401,7 +401,7 @@ mod tests {
             let tile = tiles_in.get_tile_by_id(id).await.unwrap().unwrap();
             writer.add_tile(id, &tile).unwrap();
         }
-        writer.finish().unwrap();
+        writer.finalize().unwrap();
 
         let backend = MmapBackend::try_from(&fname).await.unwrap();
         let tiles_out = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
@@ -487,6 +487,6 @@ mod tests {
         assert!(writer.header.clustered);
         writer.add_tile(2, &[0, 1, 2, 3]).unwrap();
         assert!(!writer.header.clustered);
-        writer.finish().unwrap();
+        writer.finalize().unwrap();
     }
 }
