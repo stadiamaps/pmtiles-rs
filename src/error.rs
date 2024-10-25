@@ -9,6 +9,7 @@ pub type PmtResult<T> = Result<T, PmtError>;
 
 /// Errors that can occur while reading `PMTiles` files.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PmtError {
     #[error("Invalid magic number")]
     InvalidMagicNumber,
