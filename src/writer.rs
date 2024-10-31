@@ -286,7 +286,8 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     }
 
     fn optimize_directories(&self, target_root_len: usize) -> PmtResult<(Directory, usize)> {
-        // Same logic as go-pmtiles optimizeDirectories
+        // Same logic as go-pmtiles (https://github.com/protomaps/go-pmtiles/blob/f1c24e6/pmtiles/directory.go#L368-L396)
+        // and planetiler (https://github.com/onthegomap/planetiler/blob/6b3e152/planetiler-core/src/main/java/com/onthegomap/planetiler/pmtiles/WriteablePmtiles.java#L96-L118)
         if self.entries.len() < 16384 {
             let root_dir = Directory::from_entries(self.entries.clone());
             let root_bytes = root_dir.compressed_size(self.header.internal_compression)?;
