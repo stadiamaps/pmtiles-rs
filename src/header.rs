@@ -50,7 +50,7 @@ pub enum Compression {
 
 impl Compression {
     #[must_use]
-    pub fn content_encoding(&self) -> Option<&'static str> {
+    pub fn content_encoding(self) -> Option<&'static str> {
         Some(match self {
             Compression::Gzip => "gzip",
             Compression::Brotli => "br",
@@ -118,7 +118,7 @@ pub enum TileType {
 
 impl TileType {
     #[must_use]
-    pub fn content_type(&self) -> &'static str {
+    pub fn content_type(self) -> &'static str {
         match self {
             TileType::Mvt => "application/vnd.mapbox-vector-tile",
             TileType::Png => "image/png",
