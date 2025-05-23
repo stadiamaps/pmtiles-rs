@@ -100,6 +100,11 @@ impl DirEntry {
     pub(crate) fn is_leaf(&self) -> bool {
         self.run_length == 0
     }
+
+    #[must_use]
+    pub fn xyz(&self) -> (u8, u64, u64) {
+        crate::tile::xyz(self.tile_id)
+    }
 }
 
 #[cfg(test)]

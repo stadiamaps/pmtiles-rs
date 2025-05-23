@@ -46,7 +46,7 @@ pub fn calc_tile_id(z: u8, x: u64, y: u64) -> u64 {
 }
 
 #[must_use]
-pub fn xyz(tile_id: u64) -> (u8, u64, u64) {
+pub(crate) fn xyz(tile_id: u64) -> (u8, u64, u64) {
     if tile_id == 0 {
         return (0, 0, 0);
     }
@@ -55,7 +55,7 @@ pub fn xyz(tile_id: u64) -> (u8, u64, u64) {
     let mut z = 0u8;
     for (zoom, &pyramid_size) in PYRAMID_SIZE_BY_ZOOM.iter().enumerate() {
         if tile_id < pyramid_size {
-            z = u8::try_from(zoom - 1).unwrap();
+            z = u8::try_from(zoom - 1).expect("malformed zoom level");
             break;
         }
     }
@@ -64,7 +64,7 @@ pub fn xyz(tile_id: u64) -> (u8, u64, u64) {
     if z == 0 && tile_id >= PYRAMID_SIZE_BY_ZOOM[PYRAMID_SIZE_BY_ZOOM.len() - 1] {
         let last_ind = PYRAMID_SIZE_BY_ZOOM.len() - 1;
         let mut current_pyramid_size = PYRAMID_SIZE_BY_ZOOM[last_ind];
-        z = u8::try_from(last_ind).unwrap();
+        z = u8::try_from(last_ind).expect("malformed zoom level");
 
         while tile_id >= current_pyramid_size {
             let tiles_at_zoom = 1_u64 << (z << 1);
