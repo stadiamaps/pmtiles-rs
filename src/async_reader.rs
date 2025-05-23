@@ -79,6 +79,17 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         Ok(Some(self.backend.read_exact(offset, length).await?))
     }
 
+    /// Fetches tile bytes from the archive.
+    /// If the tile is compressed, it will be decompressed.
+    pub async fn get_tile_decompressed(&self, z: u8, x: u64, y: u64) -> PmtResult<Option<Bytes>> {
+        let tile_bytes = self.get_tile(z, x, y).await?;
+        let Some(tile_bytes) = tile_bytes else {
+            return Ok(None);
+        };
+        let decompressed_bytes = Self::decompress(self.header.tile_compression, tile_bytes).await?;
+        Ok(Some(decompressed_bytes))
+    }
+
     /// Access header information.
     pub fn get_header(&self) -> &Header {
         &self.header
@@ -230,6 +241,10 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     async fn decompress(compression: Compression, bytes: Bytes) -> PmtResult<Bytes> {
+        if compression == Compression::None {
+            return Ok(bytes);
+        }
+
         let mut decompressed_bytes = Vec::with_capacity(bytes.len() * 2);
         match compression {
             Compression::Gzip => {
@@ -291,7 +306,7 @@ mod tests {
     async fn compare_tiles(z: u8, x: u64, y: u64, fixture_bytes: &[u8]) {
         let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
-        let tile = tiles.get_tile(z, x, y).await.unwrap().unwrap();
+        let tile = tiles.get_tile_decompressed(z, x, y).await.unwrap().unwrap();
 
         assert_eq!(
             tile.len(),
@@ -335,7 +350,17 @@ mod tests {
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let tile = tiles.get_tile(12, 2174, 1492).await;
-        assert!(tile.is_ok_and(|t| t.is_some()));
+        assert!(tile.as_ref().is_ok_and(|t| t.is_some()));
+        let tile = tile.unwrap().unwrap();
+
+        let tile_dec = tiles.get_tile_decompressed(12, 2174, 1492).await;
+        assert!(tile_dec.as_ref().is_ok_and(|t| t.is_some()));
+        let tile_dec = tile_dec.unwrap().unwrap();
+
+        assert!(
+            tile_dec.len() > tile.len(),
+            "Decompressed tile should be larger than compressed tile"
+        );
     }
 
     #[tokio::test]
