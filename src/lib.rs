@@ -16,7 +16,7 @@ mod directory;
 mod error;
 mod header;
 #[cfg(feature = "__async")]
-mod tile;
+pub mod tile;
 
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "__async-aws-s3")]

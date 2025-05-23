@@ -2,6 +2,7 @@
 //        so any file larger than 4GB, or an untrusted file with bad data may crash.
 #![allow(clippy::cast_possible_truncation)]
 
+use std::collections::VecDeque;
 use std::future::Future;
 
 use bytes::Bytes;
@@ -96,6 +97,33 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             Self::decompress(self.header.internal_compression, metadata).await?;
 
         Ok(String::from_utf8(decompressed_metadata.to_vec())?)
+    }
+
+    /// Return all tile entries in the archive. Directory entries are traversed, and not included in the result.
+    pub async fn entries(&self) -> PmtResult<Vec<DirEntry>> {
+        let mut all_entries = Vec::new();
+        let mut queue = VecDeque::new();
+
+        for entry in &self.root_directory.entries {
+            queue.push_back(entry.clone());
+        }
+
+        while let Some(entry) = queue.pop_front() {
+            if entry.is_leaf() {
+                let offset = (self.header.leaf_offset + entry.offset) as _;
+                let length = entry.length as usize;
+                let leaf_dir = self.read_directory(offset, length).await?;
+
+                // enqueue all of the entries in the leaf directory
+                for leaf_entry in leaf_dir.entries {
+                    queue.push_back(leaf_entry);
+                }
+            } else {
+                all_entries.push(entry);
+            }
+        }
+
+        Ok(all_entries)
     }
 
     #[cfg(feature = "tilejson")]
@@ -357,5 +385,15 @@ mod tests {
             let tile = tiles.get_tile(z, x, y).await.unwrap().unwrap();
             assert_eq!(tile, &contents[..]);
         }
+    }
+
+    #[tokio::test]
+    async fn test_entries() {
+        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+
+        let entries = tiles.entries().await.unwrap();
+        assert!(!entries.is_empty());
+        assert_eq!(entries.len(), 108);
     }
 }

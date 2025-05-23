@@ -7,7 +7,7 @@ use crate::error::PmtError;
 
 #[derive(Clone)]
 pub struct Directory {
-    entries: Vec<DirEntry>,
+    pub entries: Vec<DirEntry>,
 }
 
 impl Debug for Directory {
