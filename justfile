@@ -1,5 +1,7 @@
 #!/usr/bin/env just --justfile
 
+CRATE_NAME := "pmtiles"
+
 @_default:
     just --list
 
@@ -18,7 +20,7 @@ update:
 
 # Find unused dependencies. Install it with `cargo install cargo-udeps`
 udeps:
-    cargo +nightly udeps --all-targets --workspace --all-features
+    cargo +nightly udeps --all-targets --workspace
 
 # Check semver compatibility with prior published version. Install it with `cargo install cargo-semver-checks`
 semver *ARGS:
@@ -27,6 +29,13 @@ semver *ARGS:
 # Find the minimum supported Rust version (MSRV) using cargo-msrv extension, and update Cargo.toml
 msrv:
     cargo msrv find --write-msrv --ignore-lockfile
+
+# Get the minimum supported Rust version (MSRV) for the crate
+get-msrv: (get-crate-field "rust_version")
+
+# Get any package's field from the metadata
+get-crate-field field package=CRATE_NAME:
+    cargo metadata --format-version 1 | jq -r '.packages | map(select(.name == "{{package}}")) | first | .{{field}}'
 
 # Run cargo clippy to lint the code
 clippy: _add_tools
@@ -38,7 +47,7 @@ clippy: _add_tools
     cargo clippy --workspace --all-targets --features aws-s3-async
 
 # Run all tests and checks
-test-all: check fmt clippy
+test-all: check test-fmt clippy
 
 # Run cargo fmt and cargo clippy
 lint: fmt clippy
@@ -51,7 +60,7 @@ test-fmt:
 fmt: _add_tools
     #!/usr/bin/env bash
     set -euo pipefail
-    if command -v cargo +nightly &> /dev/null; then
+    if rustup component list --toolchain nightly | grep rustfmt &> /dev/null; then
         echo 'Reformatting Rust code using nightly Rust fmt to sort imports'
         cargo +nightly fmt --all -- --config imports_granularity=Module,group_imports=StdExternalCrate
     else
@@ -79,36 +88,45 @@ ci-coverage: && \
 
 # Run all tests
 test:
-    RUSTFLAGS='-D warnings' cargo test --features http-async
-    RUSTFLAGS='-D warnings' cargo test --features mmap-async-tokio
-    RUSTFLAGS='-D warnings' cargo test --features tilejson
-    RUSTFLAGS='-D warnings' cargo test --features s3-async-native
-    RUSTFLAGS='-D warnings' cargo test --features s3-async-rustls
-    RUSTFLAGS='-D warnings' cargo test --features aws-s3-async
-    RUSTFLAGS='-D warnings' cargo test
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export RUSTFLAGS='-D warnings'
+    cargo test --features http-async
+    cargo test --features mmap-async-tokio
+    cargo test --features tilejson
+    cargo test --features s3-async-native
+    cargo test --features s3-async-rustls
+    cargo test --features aws-s3-async
+    cargo test
 
 # Test documentation
 test-doc:
-    RUSTDOCFLAGS="-D warnings" cargo test --doc
-    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+    #!/usr/bin/env bash
+    set -euo pipefail
+    RUSTDOCFLAGS="-D warnings"
+    cargo test --doc
+    cargo doc --no-deps
 
-# Print Rust version information
-@rust-info:
+# Print environment info
+env-info:
+    @echo "Running on {{os()}} / {{arch()}}"
+    {{just_executable()}} --version
     rustc --version
     cargo --version
+    rustup --version
 
 # Run all tests as expected by CI
-ci-test: rust-info test-fmt clippy check test test-doc
+ci-test: env-info test-fmt clippy check test test-doc
 
 # Run minimal subset of tests to ensure compatibility with MSRV
-ci-test-msrv: rust-info check test
+ci-test-msrv: env-info check test
 
 # Verify that the current version of the crate is not the same as the one published on crates.io
 check-if-published:
     #!/usr/bin/env bash
-    LOCAL_VERSION="$(grep '^version =' Cargo.toml | sed -E 's/version = "([^"]*)".*/\1/')"
+    LOCAL_VERSION="$({{just_executable()}} get-crate-field version)"
     echo "Detected crate version:  $LOCAL_VERSION"
-    CRATE_NAME="$(grep '^name =' Cargo.toml | head -1 | sed -E 's/name = "(.*)"/\1/')"
+    CRATE_NAME="$({{just_executable()}} get-crate-field name)"
     echo "Detected crate name:     $CRATE_NAME"
     PUBLISHED_VERSION="$(cargo search ${CRATE_NAME} | grep "^${CRATE_NAME} =" | sed -E 's/.* = "(.*)".*/\1/')"
     echo "Published crate version: $PUBLISHED_VERSION"
