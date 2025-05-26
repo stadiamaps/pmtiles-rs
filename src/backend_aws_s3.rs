@@ -71,7 +71,8 @@ impl AsyncBackend for AwsS3Backend {
             .key(self.key.clone())
             .range(range)
             .send()
-            .await?;
+            .await
+            .map_err(Box::new)?;
 
         let response_bytes = obj
             .body
