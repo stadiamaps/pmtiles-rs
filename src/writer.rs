@@ -370,12 +370,14 @@ fn into_u32(v: usize) -> PmtResult<u32> {
 #[cfg(feature = "mmap-async-tokio")]
 #[allow(clippy::float_cmp)]
 mod tests {
+    use std::fs::File;
+
+    use tempfile::NamedTempFile;
+
     use crate::async_reader::AsyncPmTilesReader;
     use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
     use crate::tests::RASTER_FILE;
     use crate::{Compression, DirEntry, Directory, MmapBackend, PmTilesWriter, TileType};
-    use std::fs::File;
-    use tempfile::NamedTempFile;
 
     fn get_temp_file_path(suffix: &str) -> std::io::Result<String> {
         let temp_file = NamedTempFile::with_suffix(suffix)?;

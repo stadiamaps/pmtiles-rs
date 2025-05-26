@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Formatter};
-use std::{io, io::Write};
+use std::io;
+use std::io::Write;
 
 use bytes::{Buf, Bytes};
 use varint_rs::{VarintReader, VarintWriter};

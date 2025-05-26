@@ -1,6 +1,7 @@
+use std::io;
+use std::io::Write;
 use std::num::{NonZero, NonZeroU64};
 use std::panic::catch_unwind;
-use std::{io, io::Write};
 
 use bytes::{Buf, Bytes};
 
