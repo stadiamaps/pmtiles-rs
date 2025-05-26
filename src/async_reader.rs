@@ -64,7 +64,10 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
     /// Fetches tile bytes from the archive.
     pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> PmtResult<Option<Bytes>> {
-        let tile_id = calc_tile_id(z, x, y);
+        self.get_tile_by_id(calc_tile_id(z, x, y)).await
+    }
+
+    pub(crate) async fn get_tile_by_id(&self, tile_id: u64) -> PmtResult<Option<Bytes>> {
         let Some(entry) = self.find_tile_entry(tile_id).await? else {
             return Ok(None);
         };
