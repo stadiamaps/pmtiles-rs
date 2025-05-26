@@ -11,7 +11,7 @@ use crate::error::{PmtError, PmtResult};
 impl AsyncPmTilesReader<MmapBackend, NoCache> {
     /// Creates a new `PMTiles` reader from a file path using the async mmap backend.
     ///
-    /// Fails if [p] does not exist or is an invalid archive.
+    /// Fails if `path` does not exist or is an invalid archive.
     pub async fn new_with_path<P: AsRef<Path>>(path: P) -> PmtResult<Self> {
         Self::new_with_cached_path(NoCache, path).await
     }
@@ -20,7 +20,7 @@ impl AsyncPmTilesReader<MmapBackend, NoCache> {
 impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
     /// Creates a new cached `PMTiles` reader from a file path using the async mmap backend.
     ///
-    /// Fails if [p] does not exist or is an invalid archive.
+    /// Fails if `path` does not exist or is an invalid archive.
     pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> PmtResult<Self> {
         let backend = MmapBackend::try_from(path).await?;
 
