@@ -102,14 +102,20 @@ impl DirEntry {
     }
 
     #[must_use]
-    pub fn xyz(&self) -> (u8, u64, u64) {
-        crate::tile::xyz(self.tile_id)
+    pub fn xyz(&self) -> Vec<(u8, u64, u64)> {
+        // Create a vec of (z, x, y) tuples using run_length
+        let mut xyz = Vec::with_capacity(self.run_length as usize);
+        for i in 0..self.run_length {
+            xyz.push(crate::tile::xyz(self.tile_id + i as u64));
+        }
+        xyz
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::io::{BufReader, Read, Write};
+    use std::vec;
 
     use bytes::BytesMut;
 
@@ -147,10 +153,14 @@ mod tests {
             assert_eq!(directory.entries[nth].tile_id, nth as u64);
         }
 
-        // ...it breaks pattern on the 59th tile
+        assert_eq!(directory.entries[57].xyz(), vec![(3, 4, 6)]);
+
+        // ...it breaks pattern on the 59th tile, because it has a run length of 2
         assert_eq!(directory.entries[58].tile_id, 58);
         assert_eq!(directory.entries[58].run_length, 2);
         assert_eq!(directory.entries[58].offset, 422_070);
         assert_eq!(directory.entries[58].length, 850);
+        // that also means that it has two entries in xyz
+        assert_eq!(directory.entries[58].xyz(), vec![(3, 4, 7), (3, 5, 7)]);
     }
 }
