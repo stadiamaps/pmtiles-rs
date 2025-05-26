@@ -8,7 +8,6 @@ use bytes::Bytes;
 #[cfg(feature = "__async")]
 use tokio::io::AsyncReadExt;
 
-use crate::PmtError::UnsupportedCompression;
 use crate::cache::DirCacheResult;
 #[cfg(feature = "__async")]
 use crate::cache::{DirectoryCache, NoCache};
@@ -16,6 +15,7 @@ use crate::directory::{DirEntry, Directory};
 use crate::error::{PmtError, PmtResult};
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::tile::tile_id;
+use crate::PmtError::UnsupportedCompression;
 use crate::{Compression, Header};
 
 pub struct AsyncPmTilesReader<B, C = NoCache> {
@@ -245,8 +245,8 @@ pub trait AsyncBackend {
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
     use super::AsyncPmTilesReader;
-    use crate::MmapBackend;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
+    use crate::MmapBackend;
 
     #[tokio::test]
     async fn open_sanity_check() {

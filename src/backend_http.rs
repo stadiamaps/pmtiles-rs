@@ -2,10 +2,10 @@ use bytes::Bytes;
 use reqwest::header::{HeaderValue, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
 
-use crate::PmtError;
 use crate::async_reader::{AsyncBackend, AsyncPmTilesReader};
 use crate::cache::{DirectoryCache, NoCache};
 use crate::error::PmtResult;
+use crate::PmtError;
 
 impl AsyncPmTilesReader<HttpBackend, NoCache> {
     /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
