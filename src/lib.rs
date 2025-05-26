@@ -1,6 +1,4 @@
-#![allow(clippy::doc_markdown)]
-#![cfg_attr(all(feature = "default"), doc = include_str!("../README.md"))]
-#![forbid(unsafe_code)]
+#![cfg_attr(all(feature = "__all_non_conflicting"), doc = include_str!("../README.md"))]
 
 #[cfg(feature = "__async")]
 pub mod async_reader;
