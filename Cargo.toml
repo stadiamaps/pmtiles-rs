@@ -1,6 +1,6 @@
 [package]
 name = "pmtiles"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2021"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>", "Yuri Astrakhan <YuriAstrakhan@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -43,8 +43,8 @@ __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
 
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
-aws-sdk-s3 = { version = "1.49.0", optional = true }
 async-compression = { version = "0.4", features = ["gzip"] }
+aws-sdk-s3 = { version = "1.49.0", optional = true }
 bytes = "1"
 fmmap = { version = "0.4", default-features = false, optional = true }
 hilbert_2d = "1"

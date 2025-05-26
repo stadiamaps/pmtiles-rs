@@ -1,3 +1,5 @@
+#![allow(clippy::doc_markdown)]
+#![cfg_attr(all(feature = "default"), doc = include_str!("../README.md"))]
 #![forbid(unsafe_code)]
 
 #[cfg(feature = "__async")]

@@ -14,7 +14,7 @@ use crate::cache::{DirectoryCache, NoCache};
 use crate::directory::{DirEntry, Directory};
 use crate::error::{PmtError, PmtResult};
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
-use crate::tile::tile_id;
+use crate::tile::calc_tile_id;
 use crate::PmtError::UnsupportedCompression;
 use crate::{Compression, Header};
 
@@ -64,7 +64,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
     /// Fetches tile bytes from the archive.
     pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> PmtResult<Option<Bytes>> {
-        let tile_id = tile_id(z, x, y);
+        let tile_id = calc_tile_id(z, x, y);
         let Some(entry) = self.find_tile_entry(tile_id).await? else {
             return Ok(None);
         };
@@ -205,6 +205,9 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                 async_compression::tokio::bufread::GzipDecoder::new(&bytes[..])
                     .read_to_end(&mut decompressed_bytes)
                     .await?;
+            }
+            Compression::None => {
+                return Ok(bytes);
             }
             v => Err(UnsupportedCompression(v))?,
         }

@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Formatter};
 
 use bytes::{Buf, Bytes};
-use varint_rs::VarintReader;
+use varint_rs::VarintReader as _;
 
 use crate::error::PmtError;
 
