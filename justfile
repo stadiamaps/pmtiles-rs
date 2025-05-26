@@ -20,7 +20,7 @@ update:
 
 # Find unused dependencies. Install it with `cargo install cargo-udeps`
 udeps:
-    cargo +nightly udeps --all-targets --workspace
+    cargo +nightly udeps --all-targets --workspace --features __all_non_conflicting
 
 # Check semver compatibility with prior published version. Install it with `cargo install cargo-semver-checks`
 semver *ARGS:
@@ -28,7 +28,7 @@ semver *ARGS:
 
 # Find the minimum supported Rust version (MSRV) using cargo-msrv extension, and update Cargo.toml
 msrv:
-    cargo msrv find --write-msrv --ignore-lockfile
+    cargo msrv find --write-msrv --ignore-lockfile --features __all_non_conflicting
 
 # Get the minimum supported Rust version (MSRV) for the crate
 get-msrv: (get-crate-field "rust_version")
@@ -39,12 +39,8 @@ get-crate-field field package=CRATE_NAME:
 
 # Run cargo clippy to lint the code
 clippy: _add_tools
-    cargo clippy --workspace --all-targets --features http-async
-    cargo clippy --workspace --all-targets --features mmap-async-tokio
-    cargo clippy --workspace --all-targets --features tilejson
+    cargo clippy --workspace --all-targets --features __all_non_conflicting
     cargo clippy --workspace --all-targets --features s3-async-native
-    cargo clippy --workspace --all-targets --features s3-async-rustls
-    cargo clippy --workspace --all-targets --features aws-s3-async
 
 # Run all tests and checks
 test-all: check test-fmt clippy
@@ -70,15 +66,15 @@ fmt: _add_tools
 
 # Build and open code documentation
 docs:
-    cargo doc --no-deps --open
+    cargo doc --no-deps --open --features __all_non_conflicting
 
 # Quick compile without building a binary
 check:
-    RUSTFLAGS='-D warnings' cargo check --workspace --all-targets
+    RUSTFLAGS='-D warnings' cargo check --workspace --all-targets --features __all_non_conflicting
 
 # Generate code coverage report
 coverage *ARGS="--no-clean --open":
-    cargo llvm-cov --workspace --all-targets --include-build-script {{ARGS}}
+    cargo llvm-cov --workspace --all-targets --features __all_non_conflicting --include-build-script {{ARGS}}
 
 # Generate code coverage report to upload to codecov.io
 ci-coverage: && \
@@ -91,21 +87,18 @@ test:
     #!/usr/bin/env bash
     set -euo pipefail
     export RUSTFLAGS='-D warnings'
-    cargo test --features http-async
-    cargo test --features mmap-async-tokio
-    cargo test --features tilejson
+    cargo test --features __all_non_conflicting
     cargo test --features s3-async-native
-    cargo test --features s3-async-rustls
-    cargo test --features aws-s3-async
     cargo test
 
 # Test documentation
 test-doc:
     #!/usr/bin/env bash
     set -euo pipefail
-    RUSTDOCFLAGS="-D warnings"
-    cargo test --doc
-    cargo doc --no-deps
+    export RUSTDOCFLAGS="-D warnings"
+    cargo test --doc --features __all_non_conflicting
+    cargo test --doc --features s3-async-native
+    cargo doc --no-deps --features __all_non_conflicting
 
 # Print environment info
 env-info:

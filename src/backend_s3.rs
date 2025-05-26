@@ -10,7 +10,7 @@ impl AsyncPmTilesReader<S3Backend, NoCache> {
     /// Creates a new `PMTiles` reader from a bucket and path to the
     /// archive using the `rust-s3` backend.
     ///
-    /// Fails if [bucket] or [path] does not exist or is an invalid archive. (Note: S3 requests are made to validate it.)
+    /// Fails if `bucket` or `path` does not exist or is an invalid archive. (Note: S3 requests are made to validate it.)
     pub async fn new_with_bucket_path(bucket: Bucket, path: String) -> PmtResult<Self> {
         Self::new_with_cached_bucket_path(NoCache, bucket, path).await
     }
@@ -18,10 +18,10 @@ impl AsyncPmTilesReader<S3Backend, NoCache> {
 
 impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<S3Backend, C> {
     /// Creates a new `PMTiles` reader from a bucket and path to the
-    /// archive using the `rust-s3` backend with a given [cache] backend.
+    /// archive using the `rust-s3` backend with a given `cache` backend.
     ///
-    /// Fails if [bucket] or [path] does not exist or is an invalid archive. (Note: S3 requests are made to validate it.)
-    /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
+    /// Fails if `bucket` or `path` does not exist or is an invalid archive.
+    /// Note that S3 requests are made to validate it.
     pub async fn new_with_cached_bucket_path(
         cache: C,
         bucket: Bucket,
