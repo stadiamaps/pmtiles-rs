@@ -2,10 +2,10 @@ use bytes::Bytes;
 use s3::Bucket;
 
 use crate::{
+    PmtResult,
     async_reader::{AsyncBackend, AsyncPmTilesReader},
     cache::{DirectoryCache, NoCache},
     error::PmtError::ResponseBodyTooLong,
-    PmtResult,
 };
 
 impl AsyncPmTilesReader<S3Backend, NoCache> {

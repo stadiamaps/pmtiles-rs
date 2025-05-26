@@ -109,9 +109,9 @@ mod tests {
     use bytes::BytesMut;
 
     use super::Directory;
+    use crate::Header;
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
-    use crate::Header;
 
     #[test]
     fn read_root_directory() {

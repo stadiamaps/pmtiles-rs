@@ -1,7 +1,7 @@
 use crate::{
+    PmtError, PmtResult,
     async_reader::{AsyncBackend, AsyncPmTilesReader},
     cache::{DirectoryCache, NoCache},
-    PmtError, PmtResult,
 };
 use aws_sdk_s3::Client;
 use bytes::Bytes;

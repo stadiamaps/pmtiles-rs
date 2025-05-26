@@ -209,7 +209,7 @@ mod tests {
 
     use bytes::{Bytes, BytesMut};
 
-    use crate::header::{Header, TileType, HEADER_SIZE};
+    use crate::header::{HEADER_SIZE, Header, TileType};
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
 
     #[test]
