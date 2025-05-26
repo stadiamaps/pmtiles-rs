@@ -18,8 +18,7 @@ mod header;
 #[cfg(feature = "__async")]
 mod tile;
 
-//
-// Re-export crates exposed in our API to simplify dependency management
+/// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "__async-aws-s3")]
 pub use aws_sdk_s3;
 #[cfg(feature = "aws-s3-async")]
@@ -33,10 +32,13 @@ pub use backend_s3::S3Backend;
 pub use directory::{DirEntry, Directory};
 pub use error::{PmtError, PmtResult};
 pub use header::{Compression, Header, TileType};
+/// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "http-async")]
 pub use reqwest;
+/// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "__async-s3")]
 pub use s3;
+/// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "tilejson")]
 pub use tilejson;
 
