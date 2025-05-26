@@ -5,9 +5,6 @@ CRATE_NAME := "pmtiles"
 @_default:
     just --list
 
-_add_tools:
-    rustup component add clippy rustfmt
-
 # Clean all build artifacts
 clean:
     cargo clean
@@ -38,7 +35,7 @@ get-crate-field field package=CRATE_NAME:
     cargo metadata --format-version 1 | jq -r '.packages | map(select(.name == "{{package}}")) | first | .{{field}}'
 
 # Run cargo clippy to lint the code
-clippy: _add_tools
+clippy:
     cargo clippy --workspace --all-targets --features __all_non_conflicting
     cargo clippy --workspace --all-targets --features s3-async-native
 
@@ -53,7 +50,7 @@ test-fmt:
     cargo fmt --all -- --check
 
 # Reformat all code `cargo fmt`. If nightly is available, use it for better results
-fmt: _add_tools
+fmt:
     #!/usr/bin/env bash
     set -euo pipefail
     if rustup component list --toolchain nightly | grep rustfmt &> /dev/null; then
