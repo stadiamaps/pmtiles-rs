@@ -24,6 +24,7 @@ pub enum PmtError {
     InvalidHeader,
     #[error("Invalid metadata")]
     InvalidMetadata,
+    #[cfg(feature = "write")]
     #[error("Directory index element overflow")]
     IndexEntryOverflow,
     #[error("Invalid metadata UTF-8 encoding: {0}")]

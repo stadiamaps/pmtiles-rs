@@ -176,8 +176,8 @@ mod tests {
     use crate::tests::RASTER_FILE;
     use crate::Header;
 
-    fn read_root_directory(fname: &str) -> Directory {
-        let test_file = std::fs::File::open(fname).unwrap();
+    fn read_root_directory(file: &str) -> Directory {
+        let test_file = std::fs::File::open(file).unwrap();
         let mut reader = BufReader::new(test_file);
 
         let mut header_bytes = BytesMut::zeroed(HEADER_SIZE);
