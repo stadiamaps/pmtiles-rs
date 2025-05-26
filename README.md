@@ -31,7 +31,59 @@ PRs welcome!
 
 ## Usage examples
 
-### Writing a PMTiles file
+### Reading from a local PMTiles file
+
+```rust,no_run
+use bytes::Bytes;
+use pmtiles::async_reader::AsyncPmTilesReader;
+
+async fn get_tile(z: u8, x: u64, y: u64) -> Option<Bytes> {
+  let file = "example.pmtiles";
+  // Use `new_with_cached_path` for better performance
+  let reader = AsyncPmTilesReader::new_with_path(file).await.unwrap();
+  reader.get_tile(z, x, y).await.unwrap()
+}
+```
+
+### Reading from a URL with a simple directory cache
+
+This example uses a simple hashmap-based cache to optimize reads from a PMTiles source. The same caching is available for all other methods.  Note that `HashMapCache` is a rudimentary cache without eviction. You may want to build a more sophisticated cache for production use by implementing the `DirectoryCache` trait.
+
+```rust,no_run
+use bytes::Bytes;
+use pmtiles::async_reader::AsyncPmTilesReader;
+use pmtiles::cache::HashMapCache;
+use pmtiles::reqwest::Client;  // Re-exported Reqwest crate
+
+async fn get_tile(z: u8, x: u64, y: u64) -> Option<Bytes> {
+  let cache = HashMapCache::default();
+  let client = Client::builder().use_rustls_tls().build().unwrap();
+  let url = "https://protomaps.github.io/PMTiles/protomaps(vector)ODbL_firenze.pmtiles";
+  let reader = AsyncPmTilesReader::new_with_cached_url(cache, client, url).await.unwrap();
+  reader.get_tile(z, x, y).await.unwrap()
+}
+```
+
+### Reading from an S3 bucket with a directory cache
+
+AWS client configuration is fairly none-trivial to document here. See AWS SDK [documentation](https://crates.io/crates/aws-sdk-s3) for more details.
+
+```rust,no_run
+use bytes::Bytes;
+use pmtiles::async_reader::AsyncPmTilesReader;
+use pmtiles::aws_sdk_s3::Client; // Re-exported AWS SDK S3 client
+use pmtiles::cache::HashMapCache;
+
+async fn get_tile(client: Client, z: u8, x: u64, y: u64) -> Option<Bytes> {
+  let cache = HashMapCache::default();
+  let bucket = "https://s3.example.com".to_string();
+  let key = "example.pmtiles".to_string();
+  let reader = AsyncPmTilesReader::new_with_cached_client_bucket_and_path(cache, client, bucket, key).await.unwrap();
+  reader.get_tile(z, x, y).await.unwrap()
+}
+```
+
+### Writing to a PMTiles file
 
 ```rust,no_run
 use pmtiles::{PmTilesWriter, TileType};

@@ -39,9 +39,6 @@ clippy:
     cargo clippy --workspace --all-targets --features __all_non_conflicting
     cargo clippy --workspace --all-targets --features s3-async-native
 
-# Run all tests and checks
-test-all: check test-fmt clippy
-
 # Run cargo fmt and cargo clippy
 lint: fmt clippy
 
