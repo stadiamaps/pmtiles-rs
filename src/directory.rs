@@ -1,12 +1,11 @@
 use std::fmt::{Debug, Formatter};
-use std::io;
-use std::io::Write;
 
 use bytes::{Buf, Bytes};
-use varint_rs::{VarintReader, VarintWriter};
+use varint_rs::VarintReader as _;
+#[cfg(feature = "write")]
+use varint_rs::VarintWriter as _;
 
 use crate::error::PmtError;
-use crate::writer::WriteTo;
 
 #[derive(Default, Clone)]
 pub struct Directory {
@@ -20,18 +19,26 @@ impl Debug for Directory {
 }
 
 impl Directory {
+    #[cfg(feature = "write")]
     pub(crate) fn with_capacity(capacity: usize) -> Self {
         Self {
             entries: Vec::with_capacity(capacity),
         }
     }
 
+    #[cfg(feature = "write")]
     pub(crate) fn from_entries(entries: Vec<DirEntry>) -> Self {
         Self { entries }
     }
 
+    #[cfg(feature = "write")]
     pub(crate) fn entries(&self) -> &[DirEntry] {
         &self.entries
+    }
+
+    #[cfg(feature = "write")]
+    pub(crate) fn push(&mut self, entry: DirEntry) {
+        self.entries.push(entry);
     }
 
     /// Find the directory entry for a given tile ID.
@@ -59,10 +66,6 @@ impl Directory {
     #[must_use]
     pub fn get_approx_byte_size(&self) -> usize {
         self.entries.capacity() * size_of::<DirEntry>()
-    }
-
-    pub(crate) fn push(&mut self, entry: DirEntry) {
-        self.entries.push(entry);
     }
 }
 
@@ -109,8 +112,9 @@ impl TryFrom<Bytes> for Directory {
     }
 }
 
-impl WriteTo for Directory {
-    fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+#[cfg(feature = "write")]
+impl crate::writer::WriteTo for Directory {
+    fn write_to<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         // Write number of entries
         writer.write_usize_varint(self.entries.len())?;
 
@@ -165,12 +169,11 @@ impl DirEntry {
 mod tests {
     use std::io::{BufReader, Read, Write};
 
-    use bytes::{Bytes, BytesMut};
+    use bytes::BytesMut;
 
     use super::Directory;
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
-    use crate::writer::WriteTo;
     use crate::Header;
 
     fn read_root_directory(fname: &str) -> Directory {
@@ -210,11 +213,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "write")]
     fn write_directory() {
+        use crate::writer::WriteTo as _;
+
         let root_dir = read_root_directory(RASTER_FILE);
         let mut buf = vec![];
         root_dir.write_to(&mut buf).unwrap();
-        let dir = Directory::try_from(Bytes::from(buf)).unwrap();
+        let dir = Directory::try_from(bytes::Bytes::from(buf)).unwrap();
         assert!(root_dir
             .entries
             .iter()

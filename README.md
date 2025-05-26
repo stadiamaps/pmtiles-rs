@@ -34,12 +34,12 @@ PRs welcome!
 ### Writing a PMTiles file
 
 ```rust,no_run
-use pmtiles::{tile_id, PmTilesWriter, TileType};
+use pmtiles::{PmTilesWriter, TileType};
 use std::fs::File;
 
 let file = File::create("example.pmtiles").unwrap();
 let mut writer = PmTilesWriter::new(TileType::Mvt).create(file).unwrap();
-writer.add_tile(tile_id(0, 0, 0), &[/*...*/]).unwrap();
+writer.add_tile(0, 0, 0, &[/*...*/]).unwrap();
 writer.finalize().unwrap();
 ```
 

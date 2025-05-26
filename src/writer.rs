@@ -6,6 +6,7 @@ use flate2::write::GzEncoder;
 use crate::directory::{DirEntry, Directory};
 use crate::error::PmtResult;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
+use crate::tile::calc_tile_id;
 use crate::PmtError::{self, UnsupportedCompression};
 use crate::{Compression, Header, TileType};
 
@@ -209,11 +210,19 @@ impl PmTilesWriter {
 }
 
 impl<W: Write + Seek> PmTilesStreamWriter<W> {
-    /// Add tile to writer.
+    /// Add a tile to the writer.
     ///
     /// Tiles are deduplicated and written to output.
-    /// `tile_id` should be increasing for best read performance.
-    pub fn add_tile(&mut self, tile_id: u64, data: &[u8]) -> PmtResult<()> {
+    /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
+    pub fn add_tile(&mut self, z: u8, x: u64, y: u64, data: &[u8]) -> PmtResult<()> {
+        self.add_tile_by_id(calc_tile_id(z, x, y), data)
+    }
+
+    /// Add a tile to the writer.
+    ///
+    /// Tiles are deduplicated and written to output.
+    /// The `tile_id` should be increasing for best read performance.
+    fn add_tile_by_id(&mut self, tile_id: u64, data: &[u8]) -> PmtResult<()> {
         if data.is_empty() {
             // Ignore empty tiles, since the spec does not allow storing them
             return Ok(());
@@ -402,7 +411,7 @@ mod tests {
             .unwrap();
         for id in 0..num_tiles.into() {
             let tile = tiles_in.get_tile_by_id(id).await.unwrap().unwrap();
-            writer.add_tile(id, &tile).unwrap();
+            writer.add_tile_by_id(id, &tile).unwrap();
         }
         writer.finalize().unwrap();
 
@@ -483,12 +492,12 @@ mod tests {
 
     #[test]
     fn unclustered() {
-        let fname = get_temp_file_path("pmtiles").unwrap();
-        let file = File::create(fname).unwrap();
+        let file = get_temp_file_path("pmtiles").unwrap();
+        let file = File::create(file).unwrap();
         let mut writer = PmTilesWriter::new(TileType::Png).create(file).unwrap();
-        writer.add_tile(0, &[0, 1, 2, 3]).unwrap();
+        writer.add_tile_by_id(0, &[0, 1, 2, 3]).unwrap();
         assert!(writer.header.clustered);
-        writer.add_tile(2, &[0, 1, 2, 3]).unwrap();
+        writer.add_tile_by_id(2, &[0, 1, 2, 3]).unwrap();
         assert!(!writer.header.clustered);
         writer.finalize().unwrap();
     }

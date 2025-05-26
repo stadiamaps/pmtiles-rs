@@ -1,14 +1,13 @@
-use std::io;
-use std::io::Write;
-use std::num::{NonZero, NonZeroU64};
+use std::num::NonZeroU64;
 use std::panic::catch_unwind;
 
 use bytes::{Buf, Bytes};
 
 use crate::error::{PmtError, PmtResult};
-use crate::writer::WriteTo;
 
+#[cfg(any(feature = "__async", feature = "write"))]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
+#[cfg(any(test, feature = "__async", feature = "write"))]
 pub(crate) const HEADER_SIZE: usize = 127;
 
 #[allow(dead_code)]
@@ -201,9 +200,12 @@ impl Header {
     }
 }
 
-impl WriteTo for Header {
-    fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        // Write magic number
+#[cfg(feature = "write")]
+impl crate::writer::WriteTo for Header {
+    fn write_to<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        use std::num::NonZero;
+
+        // Write a magic number
         writer.write_all(V3_MAGIC.as_bytes())?;
 
         // Write header fields
@@ -236,9 +238,11 @@ impl WriteTo for Header {
         Ok(())
     }
 }
+
 impl Header {
+    #[cfg(feature = "write")]
     #[allow(clippy::cast_possible_truncation)]
-    fn write_coordinate_part<W: Write>(writer: &mut W, value: f32) -> io::Result<()> {
+    fn write_coordinate_part<W: std::io::Write>(writer: &mut W, value: f32) -> std::io::Result<()> {
         writer.write_all(&((value * 10_000_000.0) as i32).to_le_bytes())
     }
 }
@@ -254,7 +258,6 @@ mod tests {
 
     use crate::header::{Header, TileType, HEADER_SIZE};
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
-    use crate::writer::WriteTo;
 
     #[test]
     fn read_header() {
@@ -349,7 +352,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "write")]
     fn write_header() {
+        use crate::writer::WriteTo as _;
+
         let mut test = File::open(RASTER_FILE).unwrap();
         let mut header_bytes = [0; HEADER_SIZE];
         test.read_exact(header_bytes.as_mut_slice()).unwrap();

@@ -1,5 +1,5 @@
 #![allow(clippy::doc_markdown)]
-#![cfg_attr(feature = "default", doc = include_str!("../README.md"))]
+#![cfg_attr(all(feature = "default", feature = "write"), doc = include_str!("../README.md"))]
 #![forbid(unsafe_code)]
 
 #[cfg(feature = "__async")]
@@ -17,7 +17,9 @@ pub mod cache;
 mod directory;
 mod error;
 mod header;
+#[cfg(any(feature = "__async", feature = "write"))]
 mod tile;
+#[cfg(feature = "write")]
 mod writer;
 
 /// Re-export of crate exposed in our API to simplify dependency management
@@ -40,10 +42,10 @@ pub use reqwest;
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "__async-s3")]
 pub use s3;
-pub use tile::tile_id;
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "tilejson")]
 pub use tilejson;
+#[cfg(feature = "write")]
 pub use writer::{PmTilesStreamWriter, PmTilesWriter};
 
 #[cfg(test)]
