@@ -1,10 +1,9 @@
-use crate::{
-    async_reader::{AsyncBackend, AsyncPmTilesReader},
-    cache::{DirectoryCache, NoCache},
-    PmtError, PmtResult,
-};
 use aws_sdk_s3::Client;
 use bytes::Bytes;
+
+use crate::async_reader::{AsyncBackend, AsyncPmTilesReader};
+use crate::cache::{DirectoryCache, NoCache};
+use crate::{PmtError, PmtResult};
 
 impl AsyncPmTilesReader<AwsS3Backend, NoCache> {
     /// Creates a new `PMTiles` reader from a client, bucket and key to the
@@ -71,7 +70,8 @@ impl AsyncBackend for AwsS3Backend {
             .key(self.key.clone())
             .range(range)
             .send()
-            .await?;
+            .await
+            .map_err(Box::new)?;
 
         let response_bytes = obj
             .body

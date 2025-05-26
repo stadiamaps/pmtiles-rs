@@ -4,7 +4,8 @@
 [![crates.io version](https://img.shields.io/crates/v/pmtiles.svg)](https://crates.io/crates/pmtiles)
 [![docs.rs docs](https://docs.rs/pmtiles/badge.svg)](https://docs.rs/pmtiles)
 [![crates.io version](https://img.shields.io/crates/l/pmtiles.svg)](https://github.com/stadiamaps/pmtiles-rs/blob/main/LICENSE-APACHE)
-[![CI build](https://github.com/stadiamaps/pmtiles-rs/workflows/CI/badge.svg)](https://github.com/stadiamaps/pmtiles-rs/actions)
+[![CI build](https://github.com/stadiamaps/pmtiles-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/stadiamaps/pmtiles-rs/actions)
+[![Codecov](https://img.shields.io/codecov/c/github/stadiamaps/pmtiles-rs)](https://app.codecov.io/gh/stadiamaps/pmtiles-rs)
 
 This crate implements the [PMTiles v3 spec](https://github.com/protomaps/PMTiles/blob/master/spec/v3/spec.md),
 originally created by Brandon Liu for Protomaps.
@@ -32,18 +33,20 @@ PRs welcome!
 
 ### Writing a PMTiles file
 
-```rust
+```rust,no_run
 use pmtiles::{tile_id, PmTilesWriter, TileType};
 use std::fs::File;
 
-let file = File::create("tiles.pmtiles").unwrap();
+let file = File::create("example.pmtiles").unwrap();
 let mut writer = PmTilesWriter::new(TileType::Mvt).create(file).unwrap();
 writer.add_tile(tile_id(0, 0, 0), &[/*...*/]).unwrap();
 writer.finalize().unwrap();
 ```
 
 ## Development
-* This project is easier to develop with [just](https://github.com/casey/just#readme), a modern alternative to `make`. Install it with `cargo install just`.
+
+* This project is easier to develop with [just](https://github.com/casey/just#readme), a modern alternative to `make`.
+  Install it with `cargo install just`.
 * To get a list of available commands, run `just`.
 * To run tests, use `just test`.
 

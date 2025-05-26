@@ -60,6 +60,6 @@ pub enum PmtError {
     #[cfg(feature = "__async-aws-s3")]
     #[error(transparent)]
     AwsS3Request(
-        #[from] aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::get_object::GetObjectError>,
+        #[from] Box<aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::get_object::GetObjectError>>,
     ),
 }
