@@ -2,10 +2,12 @@ use std::fmt::{Debug, Formatter};
 
 use bytes::{Buf, Bytes};
 use varint_rs::VarintReader as _;
+#[cfg(feature = "write")]
+use varint_rs::VarintWriter as _;
 
 use crate::error::PmtError;
 
-#[derive(Clone)]
+#[derive(Default, Clone)]
 pub struct Directory {
     entries: Vec<DirEntry>,
 }
@@ -17,13 +19,35 @@ impl Debug for Directory {
 }
 
 impl Directory {
+    #[cfg(feature = "write")]
+    pub(crate) fn with_capacity(capacity: usize) -> Self {
+        Self {
+            entries: Vec::with_capacity(capacity),
+        }
+    }
+
+    #[cfg(feature = "write")]
+    pub(crate) fn from_entries(entries: Vec<DirEntry>) -> Self {
+        Self { entries }
+    }
+
+    #[cfg(feature = "write")]
+    pub(crate) fn entries(&self) -> &[DirEntry] {
+        &self.entries
+    }
+
+    #[cfg(feature = "write")]
+    pub(crate) fn push(&mut self, entry: DirEntry) {
+        self.entries.push(entry);
+    }
+
     /// Find the directory entry for a given tile ID.
     #[must_use]
     pub fn find_tile_id(&self, tile_id: u64) -> Option<&DirEntry> {
         match self.entries.binary_search_by(|e| e.tile_id.cmp(&tile_id)) {
             Ok(idx) => self.entries.get(idx),
             Err(next_id) => {
-                // Adapted from javascript code at
+                // Adapted from JavaScript code at
                 // https://github.com/protomaps/PMTiles/blob/9c7f298fb42290354b8ed0a9b2f50e5c0d270c40/js/index.ts#L210
                 if next_id > 0 {
                     let previous_tile = self.entries.get(next_id - 1)?;
@@ -88,6 +112,45 @@ impl TryFrom<Bytes> for Directory {
     }
 }
 
+#[cfg(feature = "write")]
+impl crate::writer::WriteTo for Directory {
+    fn write_to<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        // Write number of entries
+        writer.write_usize_varint(self.entries.len())?;
+
+        // Write tile IDs
+        let mut last_tile_id = 0;
+        for entry in &self.entries {
+            writer.write_u64_varint(entry.tile_id - last_tile_id)?;
+            last_tile_id = entry.tile_id;
+        }
+
+        // Write Run Lengths
+        for entry in &self.entries {
+            writer.write_u32_varint(entry.run_length)?;
+        }
+
+        // Write Lengths
+        for entry in &self.entries {
+            writer.write_u32_varint(entry.length)?;
+        }
+
+        // Write Offsets
+        let mut last_offset = 0;
+        for entry in &self.entries {
+            let offset_to_write = if entry.offset == last_offset + u64::from(entry.length) {
+                0
+            } else {
+                entry.offset + 1
+            };
+            writer.write_u64_varint(offset_to_write)?;
+            last_offset = entry.offset;
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Clone, Default, Debug)]
 pub struct DirEntry {
     pub(crate) tile_id: u64,
@@ -142,10 +205,29 @@ mod tests {
             assert_eq!(directory.entries[nth].tile_id, nth as u64);
         }
 
-        // ...it breaks pattern on the 59th tile
+        // ...it breaks the pattern on the 59th tile
         assert_eq!(directory.entries[58].tile_id, 58);
         assert_eq!(directory.entries[58].run_length, 2);
         assert_eq!(directory.entries[58].offset, 422_070);
         assert_eq!(directory.entries[58].length, 850);
+    }
+
+    #[test]
+    #[cfg(feature = "write")]
+    fn write_directory() {
+        use crate::writer::WriteTo as _;
+
+        let root_dir = read_root_directory(RASTER_FILE);
+        let mut buf = vec![];
+        root_dir.write_to(&mut buf).unwrap();
+        let dir = Directory::try_from(bytes::Bytes::from(buf)).unwrap();
+        assert!(root_dir
+            .entries
+            .iter()
+            .enumerate()
+            .all(|(idx, entry)| dir.entries[idx].tile_id == entry.tile_id
+                && dir.entries[idx].run_length == entry.run_length
+                && dir.entries[idx].offset == entry.offset
+                && dir.entries[idx].length == entry.length));
     }
 }

@@ -159,7 +159,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         depth: u8,
     ) -> PmtResult<Option<DirEntry>> {
         // the recursion is done as two functions because it is a bit cleaner,
-        // and it allows directory to be cached later without cloning it first.
+        // and it allows the directory to be cached later without cloning it first.
         let offset = (self.header.leaf_offset + entry.offset) as _;
 
         let entry = match self.cache.get_dir_entry(offset, tile_id).await {

@@ -18,11 +18,12 @@ originally created by Brandon Liu for Protomaps.
   - Async `mmap` (Tokio) for local files
   - Async `http` and `https` (Reqwuest + Tokio) for URLs
   - Async `s3` (Rust-S3 + Tokio) for S3-compatible buckets
+- Creating PMTile archives
 
 ## Plans & TODOs
 
 - [ ] Documentation and example code
-- [ ] Support writing and conversion to and from `MBTiles` + `x/y/z`
+- [ ] Support conversion to and from `MBTiles` + `x/y/z`
 - [ ] Support additional backends (sync `mmap` and `http` at least)
 - [ ] Support additional async styles (e.g., `async-std`)
 
@@ -80,6 +81,18 @@ async fn get_tile(client: Client, z: u8, x: u64, y: u64) -> Option<Bytes> {
   let reader = AsyncPmTilesReader::new_with_cached_client_bucket_and_path(cache, client, bucket, key).await.unwrap();
   reader.get_tile(z, x, y).await.unwrap()
 }
+```
+
+### Writing to a PMTiles file
+
+```rust,no_run
+use pmtiles::{PmTilesWriter, TileType};
+use std::fs::File;
+
+let file = File::create("example.pmtiles").unwrap();
+let mut writer = PmTilesWriter::new(TileType::Mvt).create(file).unwrap();
+writer.add_tile(0, 0, 0, &[/*...*/]).unwrap();
+writer.finalize().unwrap();
 ```
 
 ## Development
