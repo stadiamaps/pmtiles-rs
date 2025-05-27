@@ -11,6 +11,7 @@ pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
 pub(crate) const HEADER_SIZE: usize = 127;
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct Header {
     pub(crate) version: u8,
     pub(crate) root_offset: u64,
@@ -37,6 +38,40 @@ pub struct Header {
     pub center_zoom: u8,
     pub center_longitude: f32,
     pub center_latitude: f32,
+}
+
+impl Header {
+    #[cfg(feature = "write")]
+    pub(crate) fn new(tile_compression: Compression, tile_type: TileType) -> Self {
+        #[expect(clippy::excessive_precision)]
+        Self {
+            version: 3,
+            root_offset: HEADER_SIZE as u64,
+            root_length: 0,
+            metadata_offset: MAX_INITIAL_BYTES as u64,
+            metadata_length: 0,
+            leaf_offset: 0,
+            leaf_length: 0,
+            data_offset: 0,
+            data_length: 0,
+            n_addressed_tiles: None,
+            n_tile_entries: None,
+            n_tile_contents: None,
+            clustered: true,
+            internal_compression: Compression::Gzip,
+            tile_compression,
+            tile_type,
+            min_zoom: 0,
+            max_zoom: 22,
+            min_longitude: -180.0,
+            min_latitude: -85.051_129,
+            max_longitude: 180.0,
+            max_latitude: 85.051_129,
+            center_zoom: 0,
+            center_longitude: 0.0,
+            center_latitude: 0.0,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]

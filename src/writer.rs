@@ -77,34 +77,7 @@ impl PmTilesWriter {
             TileType::Mvt => Compression::Gzip,
             _ => Compression::None,
         };
-        #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
-        let header = Header {
-            version: 3,
-            root_offset: HEADER_SIZE as u64,
-            root_length: 0,
-            metadata_offset: MAX_INITIAL_BYTES as u64,
-            metadata_length: 0,
-            leaf_offset: 0,
-            leaf_length: 0,
-            data_offset: 0,
-            data_length: 0,
-            n_addressed_tiles: None,
-            n_tile_entries: None,
-            n_tile_contents: None,
-            clustered: true,
-            internal_compression: Compression::Gzip,
-            tile_compression,
-            tile_type,
-            min_zoom: 0,
-            max_zoom: 22,
-            min_longitude: -180.0,
-            min_latitude: -85.051129,
-            max_longitude: 180.0,
-            max_latitude: 85.051129,
-            center_zoom: 0,
-            center_longitude: 0.0,
-            center_latitude: 0.0,
-        };
+        let header = Header::new(tile_compression, tile_type);
         Self {
             header,
             metadata: "{}".to_string(),
@@ -185,7 +158,7 @@ impl PmTilesWriter {
         // +--------+----------------+----------+-----------+------------------+
         // This allows writing without temporary files. But it requires Seek support.
 
-        // Reserve space for header and root directory
+        // Reserve space for the header and root directory
         out.write_all(&[0u8; MAX_INITIAL_BYTES])?;
 
         let metadata_length = self
@@ -271,7 +244,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     }
 
     /// Build root and leaf directories from entries.
-    /// Leaf directories are written to output.
+    /// Leaf directories are written to the output.
     /// The root directory is returned.
     fn build_directories(&mut self) -> PmtResult<Directory> {
         if !self.header.clustered {
@@ -354,7 +327,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
             self.header.n_tile_entries = (self.entries.len() as u64).try_into().ok();
             self.header.n_tile_contents = self.n_tile_contents.try_into().ok();
         }
-        // Write leaf directories and get root directory
+        // Write leaf directories and get a root directory
         let root_dir = self.build_directories()?;
         // Determine compressed root directory length
         let mut root_dir_buf = vec![];
@@ -401,9 +374,9 @@ mod tests {
         let metadata_in = tiles_in.get_metadata().await.unwrap();
         let num_tiles = header_in.n_addressed_tiles.unwrap();
 
-        let fname = get_temp_file_path("pmtiles").unwrap();
-        // let fname = "test.pmtiles".to_string();
-        let file = File::create(fname.clone()).unwrap();
+        let path = get_temp_file_path("pmtiles").unwrap();
+        // let path = "test.pmtiles".to_string();
+        let file = File::create(path.clone()).unwrap();
         let mut writer = PmTilesWriter::new(header_in.tile_type)
             .max_zoom(header_in.max_zoom)
             .metadata(&metadata_in)
@@ -415,7 +388,7 @@ mod tests {
         }
         writer.finalize().unwrap();
 
-        let backend = MmapBackend::try_from(&fname).await.unwrap();
+        let backend = MmapBackend::try_from(&path).await.unwrap();
         let tiles_out = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         // Compare headers
@@ -456,8 +429,8 @@ mod tests {
     }
 
     fn gen_entries(num_tiles: u64) -> (Directory, usize) {
-        let fname = get_temp_file_path("pmtiles").unwrap();
-        let file = File::create(fname).unwrap();
+        let path = get_temp_file_path("pmtiles").unwrap();
+        let file = File::create(path).unwrap();
         let mut writer = PmTilesWriter::new(TileType::Png)
             // flate2 compression is extremely slow in debug mode
             .internal_compression(Compression::None)
