@@ -29,15 +29,12 @@ pub trait DirectoryCache {
     ) -> impl Future<Output = DirCacheResult> + Send;
 
     /// Insert a directory into the cache, using the offset as a key.
-    /// Note that cache must be internally mutable.
+    /// Note that the cache must be internally mutable.
     fn insert_dir(&self, offset: usize, directory: Directory) -> impl Future<Output = ()> + Send;
 }
 
 pub struct NoCache;
 
-// TODO: Remove #[allow] after switching to Rust/Clippy v1.78+ in CI
-//       See https://github.com/rust-lang/rust-clippy/pull/12323
-#[allow(clippy::no_effect_underscore_binding)]
 impl DirectoryCache for NoCache {
     #[inline]
     async fn get_dir_entry(&self, _offset: usize, _tile_id: u64) -> DirCacheResult {

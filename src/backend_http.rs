@@ -10,7 +10,7 @@ use crate::PmtError;
 impl AsyncPmTilesReader<HttpBackend, NoCache> {
     /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
     ///
-    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    /// Fails if `url` does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
     pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
         Self::new_with_cached_url(NoCache, client, url).await
     }
@@ -19,7 +19,7 @@ impl AsyncPmTilesReader<HttpBackend, NoCache> {
 impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
     /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
     ///
-    /// Fails if [url] does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    /// Fails if `url` does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
     pub async fn new_with_cached_url<U: IntoUrl>(
         cache: C,
         client: Client,

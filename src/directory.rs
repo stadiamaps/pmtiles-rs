@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Formatter};
 
 use bytes::{Buf, Bytes};
-use varint_rs::VarintReader;
+use varint_rs::VarintReader as _;
 
 use crate::error::PmtError;
 
@@ -113,9 +113,8 @@ mod tests {
     use crate::tests::RASTER_FILE;
     use crate::Header;
 
-    #[test]
-    fn read_root_directory() {
-        let test_file = std::fs::File::open(RASTER_FILE).unwrap();
+    fn read_root_directory(file: &str) -> Directory {
+        let test_file = std::fs::File::open(file).unwrap();
         let mut reader = BufReader::new(test_file);
 
         let mut header_bytes = BytesMut::zeroed(HEADER_SIZE);
@@ -131,8 +130,12 @@ mod tests {
             gunzip.write_all(&directory_bytes).unwrap();
         }
 
-        let directory = Directory::try_from(decompressed.freeze()).unwrap();
+        Directory::try_from(decompressed.freeze()).unwrap()
+    }
 
+    #[test]
+    fn root_directory() {
+        let directory = read_root_directory(RASTER_FILE);
         assert_eq!(directory.entries.len(), 84);
         // Note: this is not true for all tiles, just the first few...
         for nth in 0..10 {

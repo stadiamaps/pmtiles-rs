@@ -18,11 +18,11 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with: { tool: 'just,cargo-llvm-cov' }
-      - uses: actions/checkout@v4
       - if: github.event_name == 'release'
         name: Ensure this crate has not yet been published (on release)
         run: just check-if-published
@@ -49,15 +49,15 @@ jobs:
     name: Test MSRV
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with: { tool: just }
-      - uses: actions/checkout@v4
       - name: Read MSRV
         id: msrv
-        run: echo "value=$(sed -ne 's/rust-version *= *\"\(.*\)\"/\1/p' Cargo.toml)" >> $GITHUB_OUTPUT
-      - name: Install Rust
+        run: echo "value=$(just get-msrv)" >> $GITHUB_OUTPUT
+      - name: Install MSRV Rust ${{ steps.msrv.outputs.value }}
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ steps.msrv.outputs.value }}

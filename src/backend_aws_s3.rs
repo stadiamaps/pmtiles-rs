@@ -9,9 +9,8 @@ impl AsyncPmTilesReader<AwsS3Backend, NoCache> {
     /// Creates a new `PMTiles` reader from a client, bucket and key to the
     /// archive using the `aws-sdk-s3` backend.
     ///
-    /// Fails if the [bucket] or [key] does not exist or is an invalid
-    /// archive.
-    /// (Note: S3 requests are made to validate it.)
+    /// Fails if the `bucket` or `key` does not exist or is an invalid
+    /// archive. Note that S3 requests are made to validate it.
     pub async fn new_with_client_bucket_and_path(
         client: Client,
         bucket: String,
@@ -24,9 +23,9 @@ impl AsyncPmTilesReader<AwsS3Backend, NoCache> {
 impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<AwsS3Backend, C> {
     /// Creates a new `PMTiles` reader from a client, bucket and key to the
     /// archive using the `aws-sdk-s3` backend. Caches using the designated
-    /// [cache].
+    /// `cache`.
     ///
-    /// Fails if the [bucket] or [key] does not exist or is an invalid
+    /// Fails if the `bucket` or `key` does not exist or is an invalid
     /// archive.
     /// (Note: S3 requests are made to validate it.)
     pub async fn new_with_cached_client_bucket_and_path(
