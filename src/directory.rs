@@ -47,7 +47,7 @@ impl Directory {
         match self.entries.binary_search_by(|e| e.tile_id.cmp(&tile_id)) {
             Ok(idx) => self.entries.get(idx),
             Err(next_id) => {
-                // Adapted from javascript code at
+                // Adapted from JavaScript code at
                 // https://github.com/protomaps/PMTiles/blob/9c7f298fb42290354b8ed0a9b2f50e5c0d270c40/js/index.ts#L210
                 if next_id > 0 {
                     let previous_tile = self.entries.get(next_id - 1)?;
@@ -205,7 +205,7 @@ mod tests {
             assert_eq!(directory.entries[nth].tile_id, nth as u64);
         }
 
-        // ...it breaks pattern on the 59th tile
+        // ...it breaks the pattern on the 59th tile
         assert_eq!(directory.entries[58].tile_id, 58);
         assert_eq!(directory.entries[58].run_length, 2);
         assert_eq!(directory.entries[58].offset, 422_070);
