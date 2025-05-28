@@ -36,10 +36,10 @@ __all_non_conflicting = [
     "tilejson",
 ]
 __async = [
-  "dep:tokio",
+  "async-compression/tokio",
   "dep:async-stream",
   "dep:futures-util",
-  "async-compression/tokio"
+  "dep:tokio",
 ]
 __async-s3 = ["__async", "dep:rust-s3"]
 __async-s3-nativetls = ["rust-s3?/use-tokio-native-tls"]
