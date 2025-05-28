@@ -7,7 +7,7 @@ use crate::error::PmtError;
 
 #[derive(Clone)]
 pub struct Directory {
-    entries: Vec<DirEntry>,
+    pub(crate) entries: Vec<DirEntry>,
 }
 
 impl Debug for Directory {
@@ -100,11 +100,39 @@ impl DirEntry {
     pub(crate) fn is_leaf(&self) -> bool {
         self.run_length == 0
     }
+
+    #[must_use]
+    pub fn iter_coords(&self) -> DirEntryCoordsIter<'_> {
+        DirEntryCoordsIter {
+            entry: self,
+            current: 0,
+        }
+    }
+}
+
+pub struct DirEntryCoordsIter<'a> {
+    entry: &'a DirEntry,
+    current: u32,
+}
+impl<'a> Iterator for DirEntryCoordsIter<'a> {
+    type Item = (u8, u64, u64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current < self.entry.run_length {
+            let coords =
+                crate::tile::calc_tile_coords(self.entry.tile_id + u64::from(self.current));
+            self.current += 1;
+            Some(coords)
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::io::{BufReader, Read, Write};
+    use std::vec;
 
     use bytes::BytesMut;
 
@@ -142,10 +170,20 @@ mod tests {
             assert_eq!(directory.entries[nth].tile_id, nth as u64);
         }
 
-        // ...it breaks pattern on the 59th tile
+        assert_eq!(
+            directory.entries[57].iter_coords().collect::<Vec<_>>(),
+            vec![(3, 4, 6)]
+        );
+
+        // ...it breaks pattern on the 59th tile, because it has a run length of 2
         assert_eq!(directory.entries[58].tile_id, 58);
         assert_eq!(directory.entries[58].run_length, 2);
         assert_eq!(directory.entries[58].offset, 422_070);
         assert_eq!(directory.entries[58].length, 850);
+        // that also means that it has two entries in xyz
+        assert_eq!(
+            directory.entries[58].iter_coords().collect::<Vec<_>>(),
+            vec![(3, 4, 7), (3, 5, 7)]
+        );
     }
 }

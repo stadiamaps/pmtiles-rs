@@ -35,7 +35,12 @@ __all_non_conflicting = [
     "s3-async-rustls",
     "tilejson",
 ]
-__async = ["dep:tokio", "async-compression/tokio"]
+__async = [
+  "async-compression/tokio",
+  "dep:async-stream",
+  "dep:futures-util",
+  "dep:tokio",
+]
 __async-s3 = ["__async", "dep:rust-s3"]
 __async-s3-nativetls = ["rust-s3?/use-tokio-native-tls"]
 __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]
@@ -44,9 +49,11 @@ __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
 async-compression = { version = "0.4", features = ["gzip"] }
+async-stream = { version = "0.3", optional = true }
 aws-sdk-s3 = { version = "1.49.0", optional = true }
 bytes = "1"
 fmmap = { version = "0.4", default-features = false, optional = true }
+futures-util = { version = "0.3", optional = true }
 hilbert_2d = "1"
 reqwest = { version = "0.12.4", default-features = false, optional = true }
 rust-s3 = { version = "0.35.1", optional = true, default-features = false, features = ["fail-on-err"] }
