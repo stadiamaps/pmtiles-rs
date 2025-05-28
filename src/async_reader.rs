@@ -5,8 +5,7 @@
 #[cfg(feature = "__async")]
 use async_stream::try_stream;
 use bytes::Bytes;
-#[cfg(feature = "__async")]
-use futures_util::Stream;
+use futures_util::stream::BoxStream;
 use std::collections::VecDeque;
 use std::future::Future;
 #[cfg(feature = "__async")]
@@ -122,22 +121,25 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// use std::sync::Arc;
     /// use pmtiles::async_reader::AsyncPmTilesReader;
     /// use pmtiles::MmapBackend;
-    /// use futures_util::{pin_mut, TryStreamExt};
+    /// use futures_util::TryStreamExt;
     /// #[tokio::main(flavor="current_thread")]
     /// async fn main() -> Result<(), pmtiles::PmtError> {
     ///     let backend = MmapBackend::try_from("fixtures/protomaps(vector)ODbL_firenze.pmtiles").await?;
     ///     let reader = AsyncPmTilesReader::try_from_source(backend).await?;
     ///     let reader = Arc::new(reader);
-    ///     let entries = reader.entries();
-    ///     pin_mut!(entries);
+    ///     let mut entries = reader.entries();
     ///     while let Some(entry) = entries.try_next().await? {
     ///        // ... do something with entry ...
     ///     }
     ///     Ok(())
     /// }
     /// ```
-    pub fn entries(self: Arc<Self>) -> impl Stream<Item = PmtResult<DirEntry>> {
-        try_stream! {
+    pub fn entries<'a>(self: Arc<Self>) -> BoxStream<'a, PmtResult<DirEntry>>
+    where
+        B: 'a,
+        C: 'a,
+    {
+        Box::pin(try_stream! {
             let mut queue = VecDeque::new();
 
             for entry in &self.root_directory.entries {
@@ -157,7 +159,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                     yield entry;
                 }
             }
-        }
+        })
     }
 
     #[cfg(feature = "tilejson")]
@@ -319,7 +321,7 @@ mod tests {
     use super::AsyncPmTilesReader;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::MmapBackend;
-    use futures_util::{pin_mut, TryStreamExt};
+    use futures_util::TryStreamExt;
     use std::sync::Arc;
 
     #[tokio::test]
@@ -444,7 +446,6 @@ mod tests {
 
         let tiles = Arc::new(tiles);
         let entries = tiles.entries();
-        pin_mut!(entries);
 
         let all_entries: Vec<_> = entries.try_collect().await.unwrap();
         assert_eq!(all_entries.len(), 108);
