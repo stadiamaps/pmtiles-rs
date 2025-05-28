@@ -102,8 +102,30 @@ impl DirEntry {
     }
 
     #[must_use]
-    pub fn iter_coords(&self) -> impl Iterator<Item = (u8, u64, u64)> + '_ {
-        (0..self.run_length).map(|i| crate::tile::calc_tile_coords(self.tile_id + u64::from(i)))
+    pub fn iter_coords(&self) -> DirEntryCoordsIter<'_> {
+        DirEntryCoordsIter {
+            entry: self,
+            current: 0,
+        }
+    }
+}
+
+pub struct DirEntryCoordsIter<'a> {
+    entry: &'a DirEntry,
+    current: u32,
+}
+impl<'a> Iterator for DirEntryCoordsIter<'a> {
+    type Item = (u8, u64, u64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current < self.entry.run_length {
+            let coords =
+                crate::tile::calc_tile_coords(self.entry.tile_id + u64::from(self.current));
+            self.current += 1;
+            Some(coords)
+        } else {
+            None
+        }
     }
 }
 
