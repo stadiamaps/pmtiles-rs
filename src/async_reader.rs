@@ -87,12 +87,11 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// Fetches tile bytes from the archive.
     /// If the tile is compressed, it will be decompressed.
     pub async fn get_tile_decompressed(&self, z: u8, x: u64, y: u64) -> PmtResult<Option<Bytes>> {
-        let tile_bytes = self.get_tile(z, x, y).await?;
-        let Some(tile_bytes) = tile_bytes else {
-            return Ok(None);
-        };
-        let decompressed_bytes = Self::decompress(self.header.tile_compression, tile_bytes).await?;
-        Ok(Some(decompressed_bytes))
+        Ok(if let Some(data) = self.get_tile(z, x, y).await? {
+            Some(Self::decompress(self.header.tile_compression, data).await?)
+        } else {
+            None
+        })
     }
 
     /// Access header information.
@@ -159,6 +158,48 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                 }
             }
         }
+    }
+
+    #[cfg(feature = "tilejson")]
+    pub async fn parse_tilejson(&self, sources: Vec<String>) -> PmtResult<tilejson::TileJSON> {
+        use serde_json::Value;
+
+        let meta = self.get_metadata().await?;
+        let meta: Value = serde_json::from_str(&meta).map_err(|_| PmtError::InvalidMetadata)?;
+        let Value::Object(meta) = meta else {
+            return Err(PmtError::InvalidMetadata);
+        };
+
+        let mut tj = self.header.get_tilejson(sources);
+        for (key, value) in meta {
+            if let Value::String(v) = value {
+                if key == "description" {
+                    tj.description = Some(v);
+                } else if key == "attribution" {
+                    tj.attribution = Some(v);
+                } else if key == "legend" {
+                    tj.legend = Some(v);
+                } else if key == "name" {
+                    tj.name = Some(v);
+                } else if key == "version" {
+                    tj.version = Some(v);
+                } else if key == "minzoom" || key == "maxzoom" {
+                    // We already have the correct values from the header, so just drop these
+                    // attributes from the metadata silently, don't overwrite known-good values.
+                } else {
+                    tj.other.insert(key, Value::String(v));
+                }
+            } else if key == "vector_layers" {
+                if let Ok(v) = serde_json::from_value::<Vec<tilejson::VectorLayer>>(value) {
+                    tj.vector_layers = Some(v);
+                } else {
+                    return Err(PmtError::InvalidMetadata);
+                }
+            } else {
+                tj.other.insert(key, value);
+            }
+        }
+        Ok(tj)
     }
 
     /// Recursively locates a tile in the archive.

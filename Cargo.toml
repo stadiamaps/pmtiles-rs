@@ -49,9 +49,11 @@ __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
 async-compression = { version = "0.4", features = ["gzip"] }
+async-stream = { version = "0.3", optional = true }
 aws-sdk-s3 = { version = "1.49.0", optional = true }
 bytes = "1"
 fmmap = { version = "0.4", default-features = false, optional = true }
+futures-util = { version = "0.3", optional = true }
 hilbert_2d = "1"
 reqwest = { version = "0.12.4", default-features = false, optional = true }
 rust-s3 = { version = "0.35.1", optional = true, default-features = false, features = ["fail-on-err"] }
@@ -60,8 +62,6 @@ serde_json = { version = "1", optional = true }
 thiserror = "2"
 tilejson = { version = "0.4", optional = true }
 tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
-async-stream = { version = "0.3", optional = true }
-futures-util = { version = "0.3", optional = true }
 varint-rs = "2"
 
 [dev-dependencies]

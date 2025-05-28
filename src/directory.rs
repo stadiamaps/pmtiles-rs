@@ -7,7 +7,7 @@ use crate::error::PmtError;
 
 #[derive(Clone)]
 pub struct Directory {
-    pub entries: Vec<DirEntry>,
+    pub(crate) entries: Vec<DirEntry>,
 }
 
 impl Debug for Directory {
@@ -102,13 +102,8 @@ impl DirEntry {
     }
 
     #[must_use]
-    pub fn xyz(&self) -> Vec<(u8, u64, u64)> {
-        // Create a vec of (z, x, y) tuples using run_length
-        let mut xyz = Vec::with_capacity(self.run_length as usize);
-        for i in 0..self.run_length {
-            xyz.push(crate::tile::xyz(self.tile_id + u64::from(i)));
-        }
-        xyz
+    pub fn iter_coords(&self) -> impl Iterator<Item = (u8, u64, u64)> + '_ {
+        (0..self.run_length).map(|i| crate::tile::calc_tile_coords(self.tile_id + u64::from(i)))
     }
 }
 
@@ -153,7 +148,10 @@ mod tests {
             assert_eq!(directory.entries[nth].tile_id, nth as u64);
         }
 
-        assert_eq!(directory.entries[57].xyz(), vec![(3, 4, 6)]);
+        assert_eq!(
+            directory.entries[57].iter_coords().collect::<Vec<_>>(),
+            vec![(3, 4, 6)]
+        );
 
         // ...it breaks pattern on the 59th tile, because it has a run length of 2
         assert_eq!(directory.entries[58].tile_id, 58);
@@ -161,6 +159,9 @@ mod tests {
         assert_eq!(directory.entries[58].offset, 422_070);
         assert_eq!(directory.entries[58].length, 850);
         // that also means that it has two entries in xyz
-        assert_eq!(directory.entries[58].xyz(), vec![(3, 4, 7), (3, 5, 7)]);
+        assert_eq!(
+            directory.entries[58].iter_coords().collect::<Vec<_>>(),
+            vec![(3, 4, 7), (3, 5, 7)]
+        );
     }
 }

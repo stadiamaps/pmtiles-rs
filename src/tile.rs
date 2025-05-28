@@ -24,6 +24,19 @@ const PYRAMID_SIZE_BY_ZOOM: [u64; 21] = [
     /* 20 */ 366503875925,
 ];
 
+fn base_id_for_zoom(z: u8) -> u64 {
+    if z == 0 {
+        return 0;
+    }
+    let z_ind = usize::from(z);
+    if z_ind < PYRAMID_SIZE_BY_ZOOM.len() {
+        PYRAMID_SIZE_BY_ZOOM[z_ind]
+    } else {
+        let last_ind = PYRAMID_SIZE_BY_ZOOM.len() - 1;
+        PYRAMID_SIZE_BY_ZOOM[last_ind] + (last_ind..z_ind).map(|i| 1_u64 << (i << 1)).sum::<u64>()
+    }
+}
+
 /// Compute the tile id for a given zoom level and tile coordinates.
 #[must_use]
 pub fn calc_tile_id(z: u8, x: u64, y: u64) -> u64 {
@@ -32,21 +45,13 @@ pub fn calc_tile_id(z: u8, x: u64, y: u64) -> u64 {
         return 0;
     }
 
-    let z_ind = usize::from(z);
-    let base_id = if z_ind < PYRAMID_SIZE_BY_ZOOM.len() {
-        PYRAMID_SIZE_BY_ZOOM[z_ind]
-    } else {
-        let last_ind = PYRAMID_SIZE_BY_ZOOM.len() - 1;
-        PYRAMID_SIZE_BY_ZOOM[last_ind] + (last_ind..z_ind).map(|i| 1_u64 << (i << 1)).sum::<u64>()
-    };
-
     let tile_id = hilbert_2d::u64::xy2h_discrete(x, y, z.into(), hilbert_2d::Variant::Hilbert);
 
-    base_id + tile_id
+    base_id_for_zoom(z) + tile_id
 }
 
 #[must_use]
-pub(crate) fn xyz(tile_id: u64) -> (u8, u64, u64) {
+pub(crate) fn calc_tile_coords(tile_id: u64) -> (u8, u64, u64) {
     if tile_id == 0 {
         return (0, 0, 0);
     }
@@ -54,7 +59,10 @@ pub(crate) fn xyz(tile_id: u64) -> (u8, u64, u64) {
     // Find the zoom level by comparing against pyramid sizes
     let mut z = 0u8;
     for (zoom, &pyramid_size) in PYRAMID_SIZE_BY_ZOOM.iter().enumerate() {
+        // zoom is in the range 0..=20
         if tile_id < pyramid_size {
+            // the lowest value of pyramid_size is 0, so we know that zoom - 1 is at least 0
+            // and we can safely convert it to u8
             z = u8::try_from(zoom - 1).expect("malformed zoom level");
             break;
         }
@@ -64,6 +72,7 @@ pub(crate) fn xyz(tile_id: u64) -> (u8, u64, u64) {
     if z == 0 && tile_id >= PYRAMID_SIZE_BY_ZOOM[PYRAMID_SIZE_BY_ZOOM.len() - 1] {
         let last_ind = PYRAMID_SIZE_BY_ZOOM.len() - 1;
         let mut current_pyramid_size = PYRAMID_SIZE_BY_ZOOM[last_ind];
+        // last_ind is 20 here
         z = u8::try_from(last_ind).expect("malformed zoom level");
 
         while tile_id >= current_pyramid_size {
@@ -76,17 +85,8 @@ pub(crate) fn xyz(tile_id: u64) -> (u8, u64, u64) {
         }
     }
 
-    // Calculate base_id for this zoom level
-    let z_ind = usize::from(z);
-    let base_id = if z_ind < PYRAMID_SIZE_BY_ZOOM.len() {
-        PYRAMID_SIZE_BY_ZOOM[z_ind]
-    } else {
-        let last_ind = PYRAMID_SIZE_BY_ZOOM.len() - 1;
-        PYRAMID_SIZE_BY_ZOOM[last_ind] + (last_ind..z_ind).map(|i| 1_u64 << (i << 1)).sum::<u64>()
-    };
-
     // Extract the Hilbert curve index
-    let hilbert_index = tile_id - base_id;
+    let hilbert_index = tile_id - base_id_for_zoom(z);
 
     // Convert back to x, y coordinates using inverse Hilbert curve
     let (x, y) =
@@ -97,10 +97,10 @@ pub(crate) fn xyz(tile_id: u64) -> (u8, u64, u64) {
 
 #[cfg(test)]
 mod test {
-    use super::{calc_tile_id, xyz};
+    use super::{calc_tile_coords, calc_tile_id};
 
     #[test]
-    fn test_tile_id() {
+    fn test_calc_tile_id() {
         assert_eq!(calc_tile_id(0, 0, 0), 0);
         assert_eq!(calc_tile_id(1, 1, 0), 4);
         assert_eq!(calc_tile_id(2, 1, 3), 11);
@@ -118,7 +118,7 @@ mod test {
     }
 
     #[test]
-    fn test_xyz() {
+    fn test_calc_tile_coords() {
         // Test round-trip conversion
         let test_cases = [
             (0, 0, 0),
@@ -138,7 +138,7 @@ mod test {
 
         for (z, x, y) in test_cases {
             let id = calc_tile_id(z, x, y);
-            let (z_back, x_back, y_back) = xyz(id);
+            let (z_back, x_back, y_back) = calc_tile_coords(id);
             assert_eq!(
                 (z, x, y),
                 (z_back, x_back, y_back),
