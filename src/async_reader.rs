@@ -2,10 +2,15 @@
 //        so any file larger than 4GB, or an untrusted file with bad data may crash.
 #![allow(clippy::cast_possible_truncation)]
 
+#[cfg(feature = "__async")]
+use async_stream::try_stream;
+use bytes::Bytes;
+#[cfg(feature = "__async")]
+use futures_util::Stream;
 use std::collections::VecDeque;
 use std::future::Future;
-
-use bytes::Bytes;
+#[cfg(feature = "__async")]
+use std::sync::Arc;
 #[cfg(feature = "__async")]
 use tokio::io::AsyncReadExt;
 
@@ -110,73 +115,50 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         Ok(String::from_utf8(decompressed_metadata.to_vec())?)
     }
 
-    /// Return all tile entries in the archive. Directory entries are traversed, and not included in the result.
-    pub async fn entries(&self) -> PmtResult<Vec<DirEntry>> {
-        let mut all_entries = Vec::new();
-        let mut queue = VecDeque::new();
+    /// Return an async stream over all tile entries in the archive. Directory entries are traversed, and not included in the result.
+    /// Because this function requires the reader for the duration of the stream, you need to wrap the reader in an `Arc`.
+    ///
+    /// Example:
+    /// ```
+    /// use std::sync::Arc;
+    /// use pmtiles::async_reader::AsyncPmTilesReader;
+    /// use pmtiles::MmapBackend;
+    /// use futures_util::{pin_mut, TryStreamExt};
+    /// #[tokio::main(flavor="current_thread")]
+    /// async fn main() -> Result<(), pmtiles::PmtError> {
+    ///     let backend = MmapBackend::try_from("fixtures/protomaps(vector)ODbL_firenze.pmtiles").await?;
+    ///     let reader = AsyncPmTilesReader::try_from_source(backend).await?;
+    ///     let reader = Arc::new(reader);
+    ///     let entries = reader.entries();
+    ///     pin_mut!(entries);
+    ///     while let Some(entry) = entries.try_next().await? {
+    ///        // ... do something with entry ...
+    ///     }
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn entries(self: Arc<Self>) -> impl Stream<Item = PmtResult<DirEntry>> {
+        try_stream! {
+            let mut queue = VecDeque::new();
 
-        for entry in &self.root_directory.entries {
-            queue.push_back(entry.clone());
-        }
+            for entry in &self.root_directory.entries {
+                queue.push_back(entry.clone());
+            }
 
-        while let Some(entry) = queue.pop_front() {
-            if entry.is_leaf() {
-                let offset = (self.header.leaf_offset + entry.offset) as _;
-                let length = entry.length as usize;
-                let leaf_dir = self.read_directory(offset, length).await?;
-
-                // enqueue all of the entries in the leaf directory
-                for leaf_entry in leaf_dir.entries {
-                    queue.push_back(leaf_entry);
+            while let Some(entry) = queue.pop_front() {
+                if entry.is_leaf() {
+                    let offset = (self.header.leaf_offset + entry.offset) as _;
+                    let length = entry.length as usize;
+                    let leaf_dir = self.read_directory(offset, length).await?;
+                    // enqueue all of the entries in the leaf directory
+                    for leaf_entry in leaf_dir.entries {
+                        queue.push_back(leaf_entry);
+                    }
+                } else {
+                    yield entry;
                 }
-            } else {
-                all_entries.push(entry);
             }
         }
-
-        Ok(all_entries)
-    }
-
-    #[cfg(feature = "tilejson")]
-    pub async fn parse_tilejson(&self, sources: Vec<String>) -> PmtResult<tilejson::TileJSON> {
-        use serde_json::Value;
-
-        let meta = self.get_metadata().await?;
-        let meta: Value = serde_json::from_str(&meta).map_err(|_| PmtError::InvalidMetadata)?;
-        let Value::Object(meta) = meta else {
-            return Err(PmtError::InvalidMetadata);
-        };
-
-        let mut tj = self.header.get_tilejson(sources);
-        for (key, value) in meta {
-            if let Value::String(v) = value {
-                if key == "description" {
-                    tj.description = Some(v);
-                } else if key == "attribution" {
-                    tj.attribution = Some(v);
-                } else if key == "legend" {
-                    tj.legend = Some(v);
-                } else if key == "name" {
-                    tj.name = Some(v);
-                } else if key == "version" {
-                    tj.version = Some(v);
-                } else if key == "minzoom" || key == "maxzoom" {
-                    // We already have the correct values from the header, so just drop these
-                    // attributes from the metadata silently, don't overwrite known-good values.
-                } else {
-                    tj.other.insert(key, Value::String(v));
-                }
-            } else if key == "vector_layers" {
-                if let Ok(v) = serde_json::from_value::<Vec<tilejson::VectorLayer>>(value) {
-                    tj.vector_layers = Some(v);
-                } else {
-                    return Err(PmtError::InvalidMetadata);
-                }
-            } else {
-                tj.other.insert(key, value);
-            }
-        }
-        Ok(tj)
     }
 
     /// Recursively locates a tile in the archive.
@@ -296,6 +278,8 @@ mod tests {
     use super::AsyncPmTilesReader;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::MmapBackend;
+    use futures_util::{pin_mut, TryStreamExt};
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn open_sanity_check() {
@@ -417,8 +401,11 @@ mod tests {
         let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
-        let entries = tiles.entries().await.unwrap();
-        assert!(!entries.is_empty());
-        assert_eq!(entries.len(), 108);
+        let tiles = Arc::new(tiles);
+        let entries = tiles.entries();
+        pin_mut!(entries);
+
+        let all_entries: Vec<_> = entries.try_collect().await.unwrap();
+        assert_eq!(all_entries.len(), 108);
     }
 }

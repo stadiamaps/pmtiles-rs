@@ -35,7 +35,12 @@ __all_non_conflicting = [
     "s3-async-rustls",
     "tilejson",
 ]
-__async = ["dep:tokio", "async-compression/tokio"]
+__async = [
+  "dep:tokio", 
+  "dep:async-stream", 
+  "dep:futures-util", 
+  "async-compression/tokio"
+]
 __async-s3 = ["__async", "dep:rust-s3"]
 __async-s3-nativetls = ["rust-s3?/use-tokio-native-tls"]
 __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]
@@ -55,6 +60,8 @@ serde_json = { version = "1", optional = true }
 thiserror = "2"
 tilejson = { version = "0.4", optional = true }
 tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
+async-stream = { version = "0.3", optional = true }
+futures-util = { version = "0.3", optional = true }
 varint-rs = "2"
 
 [dev-dependencies]

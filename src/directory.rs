@@ -106,7 +106,7 @@ impl DirEntry {
         // Create a vec of (z, x, y) tuples using run_length
         let mut xyz = Vec::with_capacity(self.run_length as usize);
         for i in 0..self.run_length {
-            xyz.push(crate::tile::xyz(self.tile_id + i as u64));
+            xyz.push(crate::tile::xyz(self.tile_id + u64::from(i)));
         }
         xyz
     }
