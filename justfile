@@ -5,46 +5,63 @@ CRATE_NAME := "pmtiles"
 @_default:
     just --list
 
+# Quick compile without building a binary
+check:
+    RUSTFLAGS='-D warnings' cargo check --workspace --all-targets --features __all_non_conflicting
+
+# Verify that the current version of the crate is not the same as the one published on crates.io
+check-if-published:
+    #!/usr/bin/env bash
+    LOCAL_VERSION="$({{just_executable()}} get-crate-field version)"
+    echo "Detected crate version:  $LOCAL_VERSION"
+    CRATE_NAME="$({{just_executable()}} get-crate-field name)"
+    echo "Detected crate name:     $CRATE_NAME"
+    PUBLISHED_VERSION="$(cargo search ${CRATE_NAME} | grep "^${CRATE_NAME} =" | sed -E 's/.* = "(.*)".*/\1/')"
+    echo "Published crate version: $PUBLISHED_VERSION"
+    if [ "$LOCAL_VERSION" = "$PUBLISHED_VERSION" ]; then
+        echo "ERROR: The current crate version has already been published."
+        exit 1
+    else
+        echo "The current crate version has not yet been published."
+    fi
+
+# Generate code coverage report to upload to codecov.io
+ci-coverage: && \
+            (coverage '--codecov --output-path target/llvm-cov/codecov.info')
+    # ATTENTION: the full file path above is used in the CI workflow
+    mkdir -p target/llvm-cov
+
+# Run all tests as expected by CI
+ci-test: env-info test-fmt clippy check test test-doc
+
+# Run minimal subset of tests to ensure compatibility with MSRV
+ci-test-msrv: env-info check test
+
 # Clean all build artifacts
 clean:
     cargo clean
     rm -f Cargo.lock
-
-# Update all dependencies, including breaking changes. Requires nightly toolchain (install with `rustup install nightly`)
-update:
-    cargo +nightly -Z unstable-options update --breaking
-    cargo update
-
-# Find unused dependencies. Install it with `cargo install cargo-udeps`
-udeps:
-    cargo +nightly udeps --all-targets --workspace --features __all_non_conflicting
-
-# Check semver compatibility with prior published version. Install it with `cargo install cargo-semver-checks`
-semver *ARGS:
-    cargo semver-checks {{ARGS}}
-
-# Find the minimum supported Rust version (MSRV) using cargo-msrv extension, and update Cargo.toml
-msrv:
-    cargo msrv find --write-msrv --ignore-lockfile --features __all_non_conflicting
-
-# Get the minimum supported Rust version (MSRV) for the crate
-get-msrv: (get-crate-field "rust_version")
-
-# Get any package's field from the metadata
-get-crate-field field package=CRATE_NAME:
-    cargo metadata --format-version 1 | jq -r '.packages | map(select(.name == "{{package}}")) | first | .{{field}}'
 
 # Run cargo clippy to lint the code
 clippy:
     cargo clippy --workspace --all-targets --features __all_non_conflicting
     cargo clippy --workspace --all-targets --features s3-async-native
 
-# Run cargo fmt and cargo clippy
-lint: fmt clippy
+# Generate code coverage report
+coverage *ARGS="--no-clean --open":
+    cargo llvm-cov --workspace --all-targets --features __all_non_conflicting --include-build-script {{ARGS}}
 
-# Test code formatting
-test-fmt:
-    cargo fmt --all -- --check
+# Build and open code documentation
+docs:
+    cargo doc --no-deps --open --features __all_non_conflicting
+
+# Print environment info
+env-info:
+    @echo "Running on {{os()}} / {{arch()}}"
+    {{just_executable()}} --version
+    rustc --version
+    cargo --version
+    rustup --version
 
 # Reformat all code `cargo fmt`. If nightly is available, use it for better results
 fmt:
@@ -58,23 +75,23 @@ fmt:
         cargo fmt --all
     fi
 
-# Build and open code documentation
-docs:
-    cargo doc --no-deps --open --features __all_non_conflicting
+# Get any package's field from the metadata
+get-crate-field field package=CRATE_NAME:
+    cargo metadata --format-version 1 | jq -r '.packages | map(select(.name == "{{package}}")) | first | .{{field}}'
 
-# Quick compile without building a binary
-check:
-    RUSTFLAGS='-D warnings' cargo check --workspace --all-targets --features __all_non_conflicting
+# Get the minimum supported Rust version (MSRV) for the crate
+get-msrv: (get-crate-field "rust_version")
 
-# Generate code coverage report
-coverage *ARGS="--no-clean --open":
-    cargo llvm-cov --workspace --all-targets --features __all_non_conflicting --include-build-script {{ARGS}}
+# Run cargo fmt and cargo clippy
+lint: fmt clippy
 
-# Generate code coverage report to upload to codecov.io
-ci-coverage: && \
-            (coverage '--codecov --output-path target/llvm-cov/codecov.info')
-    # ATTENTION: the full file path above is used in the CI workflow
-    mkdir -p target/llvm-cov
+# Find the minimum supported Rust version (MSRV) using cargo-msrv extension, and update Cargo.toml
+msrv:
+    cargo msrv find --write-msrv --ignore-lockfile --features __all_non_conflicting
+
+# Check semver compatibility with prior published version. Install it with `cargo install cargo-semver-checks`
+semver *ARGS:
+    cargo semver-checks {{ARGS}}
 
 # Run all tests
 test:
@@ -94,32 +111,15 @@ test-doc:
     cargo test --doc --features s3-async-native
     cargo doc --no-deps --features __all_non_conflicting
 
-# Print environment info
-env-info:
-    @echo "Running on {{os()}} / {{arch()}}"
-    {{just_executable()}} --version
-    rustc --version
-    cargo --version
-    rustup --version
+# Test code formatting
+test-fmt:
+    cargo fmt --all -- --check
 
-# Run all tests as expected by CI
-ci-test: env-info test-fmt clippy check test test-doc
+# Find unused dependencies. Install it with `cargo install cargo-udeps`
+udeps:
+    cargo +nightly udeps --all-targets --workspace --features __all_non_conflicting
 
-# Run minimal subset of tests to ensure compatibility with MSRV
-ci-test-msrv: env-info check test
-
-# Verify that the current version of the crate is not the same as the one published on crates.io
-check-if-published:
-    #!/usr/bin/env bash
-    LOCAL_VERSION="$({{just_executable()}} get-crate-field version)"
-    echo "Detected crate version:  $LOCAL_VERSION"
-    CRATE_NAME="$({{just_executable()}} get-crate-field name)"
-    echo "Detected crate name:     $CRATE_NAME"
-    PUBLISHED_VERSION="$(cargo search ${CRATE_NAME} | grep "^${CRATE_NAME} =" | sed -E 's/.* = "(.*)".*/\1/')"
-    echo "Published crate version: $PUBLISHED_VERSION"
-    if [ "$LOCAL_VERSION" = "$PUBLISHED_VERSION" ]; then
-        echo "ERROR: The current crate version has already been published."
-        exit 1
-    else
-        echo "The current crate version has not yet been published."
-    fi
+# Update all dependencies, including breaking changes. Requires nightly toolchain (install with `rustup install nightly`)
+update:
+    cargo +nightly -Z unstable-options update --breaking
+    cargo update
