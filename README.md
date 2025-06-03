@@ -18,7 +18,7 @@ originally created by Brandon Liu for Protomaps.
   - Async `mmap` (Tokio) for local files
   - Async `http` and `https` (Reqwuest + Tokio) for URLs
   - Async `s3` (Rust-S3 + Tokio) for S3-compatible buckets
-- Creating PMTile archives
+- Creating `PMTile` archives
 
 ## Plans & TODOs
 
@@ -83,7 +83,7 @@ async fn get_tile(client: Client, z: u8, x: u64, y: u64) -> Option<Bytes> {
 }
 ```
 
-### Writing to a PMTiles file
+### Writing to a `PMTiles` file
 
 ```rust,no_run
 use pmtiles::{PmTilesWriter, TileType};
@@ -110,13 +110,13 @@ Licensed under either of
 * MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
   at your option.
 
+### Test Data License
+
+Some `PMTile` fixtures copied from official [PMTiles repository](https://github.com/protomaps/PMTiles/commit/257b41dd0497e05d1d686aa92ce2f742b6251644).
+
 ### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally
 submitted for inclusion in the work by you, as defined in the
 Apache-2.0 license, shall be dual licensed as above, without any
 additional terms or conditions.
-
-## Test Data License
-
-Some `PMTile` fixtures copied from official [PMTiles repository](https://github.com/protomaps/PMTiles/commit/257b41dd0497e05d1d686aa92ce2f742b6251644).
