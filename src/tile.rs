@@ -58,7 +58,6 @@ mod test {
         assert_eq!(calc_tile_id(20, 0, 0), 366503875925);
         assert_eq!(calc_tile_id(21, 0, 0), 1466015503701);
         assert_eq!(calc_tile_id(22, 0, 0), 5864062014805);
-        assert_eq!(calc_tile_id(22, 0, 0), 5864062014805);
         assert_eq!(calc_tile_id(23, 0, 0), 23456248059221);
         assert_eq!(calc_tile_id(24, 0, 0), 93824992236885);
         assert_eq!(calc_tile_id(25, 0, 0), 375299968947541);

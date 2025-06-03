@@ -5,12 +5,13 @@ use bytes::{Buf, Bytes};
 
 use crate::error::{PmtError, PmtResult};
 
-#[cfg(feature = "__async")]
+#[cfg(any(feature = "__async", feature = "write"))]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
-#[cfg(any(test, feature = "__async"))]
+#[cfg(any(test, feature = "__async", feature = "write"))]
 pub(crate) const HEADER_SIZE: usize = 127;
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct Header {
     pub(crate) version: u8,
     pub(crate) root_offset: u64,
@@ -37,6 +38,40 @@ pub struct Header {
     pub center_zoom: u8,
     pub center_longitude: f32,
     pub center_latitude: f32,
+}
+
+impl Header {
+    #[cfg(feature = "write")]
+    pub(crate) fn new(tile_compression: Compression, tile_type: TileType) -> Self {
+        #[expect(clippy::excessive_precision)]
+        Self {
+            version: 3,
+            root_offset: HEADER_SIZE as u64,
+            root_length: 0,
+            metadata_offset: MAX_INITIAL_BYTES as u64,
+            metadata_length: 0,
+            leaf_offset: 0,
+            leaf_length: 0,
+            data_offset: 0,
+            data_length: 0,
+            n_addressed_tiles: None,
+            n_tile_entries: None,
+            n_tile_contents: None,
+            clustered: true,
+            internal_compression: Compression::Gzip,
+            tile_compression,
+            tile_type,
+            min_zoom: 0,
+            max_zoom: 22,
+            min_longitude: -180.0,
+            min_latitude: -85.051_129,
+            max_longitude: 180.0,
+            max_latitude: 85.051_129,
+            center_zoom: 0,
+            center_longitude: 0.0,
+            center_latitude: 0.0,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -200,6 +235,53 @@ impl Header {
     }
 }
 
+#[cfg(feature = "write")]
+impl crate::writer::WriteTo for Header {
+    fn write_to<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        use std::num::NonZero;
+
+        // Write a magic number
+        writer.write_all(V3_MAGIC.as_bytes())?;
+
+        // Write header fields
+        writer.write_all(&[self.version])?;
+        writer.write_all(&self.root_offset.to_le_bytes())?;
+        writer.write_all(&self.root_length.to_le_bytes())?;
+        writer.write_all(&self.metadata_offset.to_le_bytes())?;
+        writer.write_all(&self.metadata_length.to_le_bytes())?;
+        writer.write_all(&self.leaf_offset.to_le_bytes())?;
+        writer.write_all(&self.leaf_length.to_le_bytes())?;
+        writer.write_all(&self.data_offset.to_le_bytes())?;
+        writer.write_all(&self.data_length.to_le_bytes())?;
+        writer.write_all(&self.n_addressed_tiles.map_or(0, NonZero::get).to_le_bytes())?;
+        writer.write_all(&self.n_tile_entries.map_or(0, NonZero::get).to_le_bytes())?;
+        writer.write_all(&self.n_tile_contents.map_or(0, NonZero::get).to_le_bytes())?;
+        writer.write_all(&[u8::from(self.clustered)])?;
+        writer.write_all(&[self.internal_compression as u8])?;
+        writer.write_all(&[self.tile_compression as u8])?;
+        writer.write_all(&[self.tile_type as u8])?;
+        writer.write_all(&[self.min_zoom])?;
+        writer.write_all(&[self.max_zoom])?;
+        Self::write_coordinate_part(writer, self.min_longitude)?;
+        Self::write_coordinate_part(writer, self.min_latitude)?;
+        Self::write_coordinate_part(writer, self.max_longitude)?;
+        Self::write_coordinate_part(writer, self.max_latitude)?;
+        writer.write_all(&[self.center_zoom])?;
+        Self::write_coordinate_part(writer, self.center_longitude)?;
+        Self::write_coordinate_part(writer, self.center_latitude)?;
+
+        Ok(())
+    }
+}
+
+impl Header {
+    #[cfg(feature = "write")]
+    #[allow(clippy::cast_possible_truncation)]
+    fn write_coordinate_part<W: std::io::Write>(writer: &mut W, value: f32) -> std::io::Result<()> {
+        writer.write_all(&((value * 10_000_000.0) as i32).to_le_bytes())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unreadable_literal, clippy::float_cmp)]
@@ -302,5 +384,35 @@ mod tests {
                 43.832542419433594
             ))
         );
+    }
+
+    #[test]
+    #[cfg(feature = "write")]
+    fn write_header() {
+        use crate::writer::WriteTo as _;
+
+        let mut test = File::open(RASTER_FILE).unwrap();
+        let mut header_bytes = [0; HEADER_SIZE];
+        test.read_exact(header_bytes.as_mut_slice()).unwrap();
+        let header = Header::try_from_bytes(Bytes::copy_from_slice(&header_bytes)).unwrap();
+
+        let mut buf = vec![];
+        header.write_to(&mut buf).unwrap();
+        let out = Header::try_from_bytes(Bytes::from(buf)).unwrap();
+        assert_eq!(header.version, out.version);
+        assert_eq!(header.tile_type, out.tile_type);
+        assert_eq!(header.n_addressed_tiles, out.n_addressed_tiles);
+        assert_eq!(header.n_tile_entries, out.n_tile_entries);
+        assert_eq!(header.n_tile_contents, out.n_tile_contents);
+        assert_eq!(header.min_zoom, out.min_zoom);
+        assert_eq!(header.max_zoom, out.max_zoom);
+        assert_eq!(header.center_zoom, out.center_zoom);
+        assert_eq!(header.center_latitude, out.center_latitude);
+        assert_eq!(header.center_longitude, out.center_longitude);
+        assert_eq!(header.min_latitude, out.min_latitude);
+        assert_eq!(header.max_latitude, out.max_latitude);
+        assert_eq!(header.min_longitude, out.min_longitude);
+        assert_eq!(header.max_longitude, out.max_longitude);
+        assert_eq!(header.clustered, out.clustered);
     }
 }
