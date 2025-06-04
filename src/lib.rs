@@ -15,7 +15,10 @@ pub mod cache;
 mod directory;
 mod error;
 mod header;
+#[cfg(any(feature = "__async", feature = "write"))]
 mod tile;
+#[cfg(feature = "write")]
+mod writer;
 
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "__async-aws-s3")]
@@ -40,6 +43,8 @@ pub use s3;
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "tilejson")]
 pub use tilejson;
+#[cfg(feature = "write")]
+pub use writer::{PmTilesStreamWriter, PmTilesWriter};
 
 #[cfg(test)]
 mod tests {
