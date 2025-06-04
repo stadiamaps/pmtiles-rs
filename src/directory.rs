@@ -177,7 +177,8 @@ pub struct DirEntryCoordsIter<'a> {
     entry: &'a DirEntry,
     current: u32,
 }
-impl<'a> Iterator for DirEntryCoordsIter<'a> {
+
+impl Iterator for DirEntryCoordsIter<'_> {
     type Item = (u8, u64, u64);
 
     fn next(&mut self) -> Option<Self::Item> {
