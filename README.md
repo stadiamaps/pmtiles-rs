@@ -16,7 +16,7 @@ originally created by Brandon Liu for Protomaps.
 - Querying tiles
 - Backends supported:
   - Async `mmap` (Tokio) for local files
-  - Async `http` and `https` (Reqwuest + Tokio) for URLs
+  - Async `http` and `https` (Reqwest + Tokio) for URLs
   - Async `s3` (Rust-S3 + Tokio) for S3-compatible buckets
 - Creating `PMTile` archives
 
