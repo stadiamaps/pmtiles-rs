@@ -1,10 +1,10 @@
 # `PMTiles` (for Rust)
 
-[![GitHub](https://img.shields.io/badge/github-stadiamaps/pmtiles--rs-8da0cb?logo=github)](https://github.com/stadiamaps/pmtiles-rs)
+[![GitHub repo](https://img.shields.io/badge/github-stadiamaps/pmtiles--rs-8da0cb?logo=github)](https://github.com/stadiamaps/pmtiles-rs)
 [![crates.io version](https://img.shields.io/crates/v/pmtiles)](https://crates.io/crates/pmtiles)
-[![docs.rs](https://img.shields.io/docsrs/pmtiles)](https://docs.rs/pmtiles)
+[![docs.rs status](https://img.shields.io/docsrs/pmtiles)](https://docs.rs/pmtiles)
 [![crates.io license](https://img.shields.io/crates/l/pmtiles)](https://github.com/stadiamaps/pmtiles-rs/blob/main/LICENSE-APACHE)
-[![CI build](https://github.com/stadiamaps/pmtiles-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/stadiamaps/pmtiles-rs/actions)
+[![CI build status](https://github.com/stadiamaps/pmtiles-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/stadiamaps/pmtiles-rs/actions)
 [![Codecov](https://img.shields.io/codecov/c/github/stadiamaps/pmtiles-rs)](https://app.codecov.io/gh/stadiamaps/pmtiles-rs)
 
 This crate implements the [PMTiles v3 spec](https://github.com/protomaps/PMTiles/blob/master/spec/v3/spec.md),

@@ -23,7 +23,7 @@ check:
     cargo check --workspace --all-targets {{features_flag}}
 
 # Verify that the current version of the crate is not the same as the one published on crates.io
-check-if-published package=main_crate:  (assert-cmd 'jq')
+check-if-published package=main_crate:
     #!/usr/bin/env bash
     set -euo pipefail
     LOCAL_VERSION="$({{just_executable()}} get-crate-field version {{package}})"
@@ -90,7 +90,7 @@ fmt:
     fi
 
 # Get any package's field from the metadata
-get-crate-field field package=main_crate:
+get-crate-field field package=main_crate:  (assert-cmd 'jq')
     cargo metadata --format-version 1 | jq -e -r '.packages | map(select(.name == "{{package}}")) | first | .{{field}} | select(. != null)'
 
 # Get the minimum supported Rust version (MSRV) for the crate
