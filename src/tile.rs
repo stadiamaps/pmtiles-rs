@@ -1,6 +1,17 @@
 #![allow(clippy::unreadable_literal)]
 
-const PYRAMID_SIZE_BY_ZOOM: [u64; 21] = [
+/// The pre-computed sizes of the tile pyramid for each zoom level.
+///
+/// ```
+/// # use crate::pmtiles::PYRAMID_SIZE_BY_ZOOM;
+/// let mut size_at_level = 0_u64;
+/// for z in 0..PYRAMID_SIZE_BY_ZOOM.len() {
+///     assert_eq!(PYRAMID_SIZE_BY_ZOOM[z], size_at_level, "Invalid value at zoom {z}");
+///     // add number of tiles at this zoom level
+///     size_at_level += 4_u64.pow(z as u32);
+/// }
+/// ```
+pub const PYRAMID_SIZE_BY_ZOOM: [u64; 33] = [
     /*  0 */ 0,
     /*  1 */ 1,
     /*  2 */ 5,
@@ -22,25 +33,31 @@ const PYRAMID_SIZE_BY_ZOOM: [u64; 21] = [
     /* 18 */ 22906492245,
     /* 19 */ 91625968981,
     /* 20 */ 366503875925,
+    /* 21 */ 1466015503701,
+    /* 22 */ 5864062014805,
+    /* 23 */ 23456248059221,
+    /* 24 */ 93824992236885,
+    /* 25 */ 375299968947541,
+    /* 26 */ 1501199875790165,
+    /* 27 */ 6004799503160661,
+    /* 28 */ 24019198012642645,
+    /* 29 */ 96076792050570581,
+    /* 30 */ 384307168202282325,
+    /* 31 */ 1537228672809129301,
+    // this is the largest possible value because at z32 (base + 4^32) will overflow u64
+    /* 32 */ 6148914691236517205,
 ];
 
-fn base_id_for_zoom(z: u8) -> u64 {
-    if z == 0 {
-        return 0;
-    }
-    let z_ind = usize::from(z);
-    if z_ind < PYRAMID_SIZE_BY_ZOOM.len() {
-        PYRAMID_SIZE_BY_ZOOM[z_ind]
-    } else {
-        let last_ind = PYRAMID_SIZE_BY_ZOOM.len() - 1;
-        PYRAMID_SIZE_BY_ZOOM[last_ind] + (last_ind..z_ind).map(|i| 1_u64 << (i << 1)).sum::<u64>()
-    }
+/// Given a zoom level, get the base id for that zoom level.
+/// The base id is the starting point for tile ids at that zoom level.
+pub fn base_id_for_zoom(z: u8) -> Option<u64> {
+    PYRAMID_SIZE_BY_ZOOM.get(usize::from(z)).copied()
 }
 
 /// Compute the tile id for a given zoom level and tile coordinates.
 #[cfg(any(feature = "__async", feature = "write"))]
 #[must_use]
-pub(crate) fn calc_tile_id(z: u8, x: u64, y: u64) -> u64 {
+pub(crate) fn calc_tile_id(z: u8, x: u64, y: u64) -> Option<u64> {
     // The 0/0/0 case is not needed for the base id computation, but it will fail hilbert_2d::u64::xy2h_discrete
     if z == 0 {
         return 0;
@@ -48,46 +65,30 @@ pub(crate) fn calc_tile_id(z: u8, x: u64, y: u64) -> u64 {
 
     let tile_id = hilbert_2d::u64::xy2h_discrete(x, y, z.into(), hilbert_2d::Variant::Hilbert);
 
-    base_id_for_zoom(z) + tile_id
+    base_id_for_zoom(z)? + tile_id
 }
 
 #[must_use]
-pub(crate) fn calc_tile_coords(tile_id: u64) -> (u8, u64, u64) {
+pub(crate) fn calc_tile_coords(tile_id: u64) -> Option<(u8, u64, u64)> {
     if tile_id == 0 {
-        return (0, 0, 0);
+        return Some((0, 0, 0));
     }
 
     // Find the zoom level by comparing against pyramid sizes
-    let mut z = 0u8;
+    let (z, base) = PYRAMID_SIZE_BY_ZOOM.iter().enumerate().find(|(_, &size)| 
+        tile_id <= size
+    )?;
+
     for (zoom, &pyramid_size) in PYRAMID_SIZE_BY_ZOOM.iter().enumerate() {
-        // zoom is in the range 0..=20
-        if tile_id < pyramid_size {
-            // the lowest value of pyramid_size is 0, so we know that zoom - 1 is at least 0
-            // and we can safely convert it to u8
-            z = u8::try_from(zoom - 1).expect("malformed zoom level");
+        if tile_id <= pyramid_size {
+            z = zoom as u8;
+            base = pyramid_size;
             break;
         }
     }
 
-    // If we didn't find it in the precomputed array, calculate for higher zoom levels
-    if z == 0 && tile_id >= PYRAMID_SIZE_BY_ZOOM[PYRAMID_SIZE_BY_ZOOM.len() - 1] {
-        let last_ind = PYRAMID_SIZE_BY_ZOOM.len() - 1;
-        let mut current_pyramid_size = PYRAMID_SIZE_BY_ZOOM[last_ind];
-        // last_ind is 20 here
-        z = u8::try_from(last_ind).expect("malformed zoom level");
-
-        while tile_id >= current_pyramid_size {
-            let tiles_at_zoom = 1_u64 << (z << 1);
-            if tile_id < current_pyramid_size + tiles_at_zoom {
-                break;
-            }
-            current_pyramid_size += tiles_at_zoom;
-            z += 1;
-        }
-    }
-
     // Extract the Hilbert curve index
-    let hilbert_index = tile_id - base_id_for_zoom(z);
+    let hilbert_index = tile_id - base_id_for_zoom(z).unwrap();
 
     // Convert back to x, y coordinates using inverse Hilbert curve
     let (x, y) =

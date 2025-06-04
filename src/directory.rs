@@ -6,6 +6,7 @@ use varint_rs::VarintReader as _;
 use varint_rs::VarintWriter as _;
 
 use crate::error::PmtError;
+use crate::tile::calc_tile_coords;
 
 #[derive(Default, Clone)]
 pub struct Directory {
@@ -183,8 +184,7 @@ impl Iterator for DirEntryCoordsIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.current < self.entry.run_length {
-            let coords =
-                crate::tile::calc_tile_coords(self.entry.tile_id + u64::from(self.current));
+            let coords = calc_tile_coords(self.entry.tile_id + u64::from(self.current));
             self.current += 1;
             Some(coords)
         } else {
@@ -196,7 +196,6 @@ impl Iterator for DirEntryCoordsIter<'_> {
 #[cfg(test)]
 mod tests {
     use std::io::{BufReader, Read, Write};
-    use std::vec;
 
     use bytes::BytesMut;
 

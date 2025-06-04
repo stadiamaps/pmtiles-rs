@@ -44,6 +44,7 @@ pub use s3;
 pub use tilejson;
 #[cfg(feature = "write")]
 pub use writer::{PmTilesStreamWriter, PmTilesWriter};
+pub use tile::{PYRAMID_SIZE_BY_ZOOM, base_id_for_zoom};
 
 #[cfg(test)]
 mod tests {
