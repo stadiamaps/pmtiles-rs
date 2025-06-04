@@ -38,8 +38,9 @@ fn base_id_for_zoom(z: u8) -> u64 {
 }
 
 /// Compute the tile id for a given zoom level and tile coordinates.
+#[cfg(any(feature = "__async", feature = "write"))]
 #[must_use]
-pub fn calc_tile_id(z: u8, x: u64, y: u64) -> u64 {
+pub(crate) fn calc_tile_id(z: u8, x: u64, y: u64) -> u64 {
     // The 0/0/0 case is not needed for the base id computation, but it will fail hilbert_2d::u64::xy2h_discrete
     if z == 0 {
         return 0;
@@ -108,7 +109,6 @@ mod test {
         assert_eq!(calc_tile_id(20, 0, 0), 366503875925);
         assert_eq!(calc_tile_id(21, 0, 0), 1466015503701);
         assert_eq!(calc_tile_id(22, 0, 0), 5864062014805);
-        assert_eq!(calc_tile_id(22, 0, 0), 5864062014805);
         assert_eq!(calc_tile_id(23, 0, 0), 23456248059221);
         assert_eq!(calc_tile_id(24, 0, 0), 93824992236885);
         assert_eq!(calc_tile_id(25, 0, 0), 375299968947541);
@@ -142,10 +142,7 @@ mod test {
             assert_eq!(
                 (z, x, y),
                 (z_back, x_back, y_back),
-                "Failed round-trip for z={}, x={}, y={}",
-                z,
-                x,
-                y
+                "Failed round-trip for z={z}, x={x}, y={y}",
             );
         }
     }

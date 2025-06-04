@@ -2,14 +2,15 @@
 //        so any file larger than 4GB, or an untrusted file with bad data may crash.
 #![allow(clippy::cast_possible_truncation)]
 
-#[cfg(feature = "__async")]
-use async_stream::try_stream;
-use bytes::Bytes;
-use futures_util::stream::BoxStream;
 use std::collections::VecDeque;
 use std::future::Future;
 #[cfg(feature = "__async")]
 use std::sync::Arc;
+
+#[cfg(feature = "__async")]
+use async_stream::try_stream;
+use bytes::Bytes;
+use futures_util::stream::BoxStream;
 #[cfg(feature = "__async")]
 use tokio::io::AsyncReadExt;
 
@@ -223,7 +224,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         depth: u8,
     ) -> PmtResult<Option<DirEntry>> {
         // the recursion is done as two functions because it is a bit cleaner,
-        // and it allows directory to be cached later without cloning it first.
+        // and it allows the directory to be cached later without cloning it first.
         let offset = (self.header.leaf_offset + entry.offset) as _;
 
         let entry = match self.cache.get_dir_entry(offset, tile_id).await {
@@ -318,11 +319,13 @@ pub trait AsyncBackend {
 #[cfg(test)]
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
+    use std::sync::Arc;
+
+    use futures_util::TryStreamExt;
+
     use super::AsyncPmTilesReader;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::MmapBackend;
-    use futures_util::TryStreamExt;
-    use std::sync::Arc;
 
     #[tokio::test]
     async fn open_sanity_check() {
@@ -377,11 +380,11 @@ mod tests {
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let tile = tiles.get_tile(12, 2174, 1492).await;
-        assert!(tile.as_ref().is_ok_and(|t| t.is_some()));
+        assert!(tile.as_ref().is_ok_and(Option::is_some));
         let tile = tile.unwrap().unwrap();
 
         let tile_dec = tiles.get_tile_decompressed(12, 2174, 1492).await;
-        assert!(tile_dec.as_ref().is_ok_and(|t| t.is_some()));
+        assert!(tile_dec.as_ref().is_ok_and(Option::is_some));
         let tile_dec = tile_dec.unwrap().unwrap();
 
         assert!(
