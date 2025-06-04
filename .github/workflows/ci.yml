@@ -63,8 +63,6 @@ jobs:
         run: just ci-coverage
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
-        # TODO: remove this once codecov token has been set up properly
-        continue-on-error: true
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: target/llvm-cov/codecov.info
