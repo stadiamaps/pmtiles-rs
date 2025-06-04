@@ -5,7 +5,7 @@ use varint_rs::VarintReader as _;
 #[cfg(feature = "write")]
 use varint_rs::VarintWriter as _;
 
-use crate::error::PmtError;
+use crate::{PmtError, TileId};
 
 #[derive(Default, Clone)]
 pub struct Directory {
@@ -43,8 +43,11 @@ impl Directory {
 
     /// Find the directory entry for a given tile ID.
     #[must_use]
-    pub fn find_tile_id(&self, tile_id: u64) -> Option<&DirEntry> {
-        match self.entries.binary_search_by(|e| e.tile_id.cmp(&tile_id)) {
+    pub fn find_tile_id(&self, tile_id: TileId) -> Option<&DirEntry> {
+        match self
+            .entries
+            .binary_search_by(|e| e.tile_id.cmp(&tile_id.value()))
+        {
             Ok(idx) => self.entries.get(idx),
             Err(next_id) => {
                 // Adapted from JavaScript code at
@@ -52,7 +55,8 @@ impl Directory {
                 if next_id > 0 {
                     let previous_tile = self.entries.get(next_id - 1)?;
                     if previous_tile.is_leaf()
-                        || tile_id - previous_tile.tile_id < u64::from(previous_tile.run_length)
+                        || (tile_id.value() - previous_tile.tile_id)
+                            < u64::from(previous_tile.run_length)
                     {
                         return Some(previous_tile);
                     }
@@ -171,10 +175,9 @@ mod tests {
 
     use bytes::BytesMut;
 
-    use super::Directory;
-    use crate::Header;
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
+    use crate::{Directory, Header};
 
     fn read_root_directory(file: &str) -> Directory {
         let test_file = std::fs::File::open(file).unwrap();

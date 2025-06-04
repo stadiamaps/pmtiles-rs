@@ -4,11 +4,8 @@ use countio::Counter;
 use flate2::write::GzEncoder;
 
 use crate::PmtError::{self, UnsupportedCompression};
-use crate::directory::{DirEntry, Directory};
-use crate::error::PmtResult;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
-use crate::tile::calc_tile_id;
-use crate::{Compression, Header, TileType};
+use crate::{Compression, DirEntry, Directory, Header, PmtResult, TileCoord, TileId, TileType};
 
 /// Builder for creating a new writer.
 pub struct PmTilesWriter {
@@ -187,20 +184,21 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     ///
     /// Tiles are deduplicated and written to output.
     /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
-    pub fn add_tile(&mut self, z: u8, x: u64, y: u64, data: &[u8]) -> PmtResult<()> {
-        self.add_tile_by_id(calc_tile_id(z, x, y), data)
+    pub fn add_tile(&mut self, coord: TileCoord, data: &[u8]) -> PmtResult<()> {
+        self.add_tile_by_id(coord.into(), data)
     }
 
     /// Add a tile to the writer.
     ///
     /// Tiles are deduplicated and written to output.
     /// The `tile_id` should be increasing for best read performance.
-    fn add_tile_by_id(&mut self, tile_id: u64, data: &[u8]) -> PmtResult<()> {
+    fn add_tile_by_id(&mut self, tile_id: TileId, data: &[u8]) -> PmtResult<()> {
         if data.is_empty() {
             // Ignore empty tiles, since the spec does not allow storing them
             return Ok(());
         }
 
+        let tile_id = tile_id.value();
         let is_first = self.entries.is_empty();
         if is_first && tile_id > 0 {
             self.header.clustered = false;
@@ -350,16 +348,18 @@ fn into_u32(v: usize) -> PmtResult<u32> {
 
 #[cfg(test)]
 #[cfg(feature = "mmap-async-tokio")]
-#[allow(clippy::float_cmp)]
+#[expect(clippy::float_cmp)]
 mod tests {
     use std::fs::File;
 
     use tempfile::NamedTempFile;
 
-    use crate::async_reader::AsyncPmTilesReader;
     use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
     use crate::tests::RASTER_FILE;
-    use crate::{Compression, DirEntry, Directory, MmapBackend, PmTilesWriter, TileType};
+    use crate::{
+        AsyncPmTilesReader, Compression, DirEntry, Directory, MmapBackend, PmTilesWriter,
+        TileCoord, TileId, TileType,
+    };
 
     fn get_temp_file_path(suffix: &str) -> std::io::Result<String> {
         let temp_file = NamedTempFile::with_suffix(suffix)?;
@@ -383,7 +383,8 @@ mod tests {
             .create(file)
             .unwrap();
         for id in 0..num_tiles.into() {
-            let tile = tiles_in.get_tile_by_id(id).await.unwrap().unwrap();
+            let id = TileId::new(id).unwrap();
+            let tile = tiles_in.get_tile(id).await.unwrap().unwrap();
             writer.add_tile_by_id(id, &tile).unwrap();
         }
         writer.finalize().unwrap();
@@ -422,8 +423,9 @@ mod tests {
 
         // Compare tiles
         for (z, x, y) in [(0, 0, 0), (2, 2, 2), (3, 4, 5)] {
-            let tile_in = tiles_in.get_tile(z, x, y).await.unwrap().unwrap();
-            let tile_out = tiles_out.get_tile(z, x, y).await.unwrap().unwrap();
+            let coord = TileCoord::new(z, x, y).unwrap();
+            let tile_in = tiles_in.get_tile(coord).await.unwrap().unwrap();
+            let tile_out = tiles_out.get_tile(coord).await.unwrap().unwrap();
             assert_eq!(tile_in.len(), tile_out.len());
         }
     }
@@ -468,10 +470,15 @@ mod tests {
         let file = get_temp_file_path("pmtiles").unwrap();
         let file = File::create(file).unwrap();
         let mut writer = PmTilesWriter::new(TileType::Png).create(file).unwrap();
-        writer.add_tile_by_id(0, &[0, 1, 2, 3]).unwrap();
+
+        let id = TileId::new(0).unwrap();
+        writer.add_tile_by_id(id, &[0, 1, 2, 3]).unwrap();
         assert!(writer.header.clustered);
-        writer.add_tile_by_id(2, &[0, 1, 2, 3]).unwrap();
+
+        let id = TileId::new(2).unwrap();
+        writer.add_tile_by_id(id, &[0, 1, 2, 3]).unwrap();
         assert!(!writer.header.clustered);
+
         writer.finalize().unwrap();
     }
 }

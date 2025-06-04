@@ -1,10 +1,8 @@
 use bytes::Bytes;
 use s3::Bucket;
 
-use crate::PmtResult;
-use crate::async_reader::{AsyncBackend, AsyncPmTilesReader};
-use crate::cache::{DirectoryCache, NoCache};
-use crate::error::PmtError::ResponseBodyTooLong;
+use crate::PmtError::ResponseBodyTooLong;
+use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCache, NoCache, PmtResult};
 
 impl AsyncPmTilesReader<S3Backend, NoCache> {
     /// Creates a new `PMTiles` reader from a bucket and path to the
