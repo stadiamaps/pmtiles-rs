@@ -1,9 +1,9 @@
 # `PMTiles` (for Rust)
 
 [![GitHub](https://img.shields.io/badge/github-stadiamaps/pmtiles--rs-8da0cb?logo=github)](https://github.com/stadiamaps/pmtiles-rs)
-[![crates.io version](https://img.shields.io/crates/v/pmtiles.svg)](https://crates.io/crates/pmtiles)
-[![docs.rs docs](https://docs.rs/pmtiles/badge.svg)](https://docs.rs/pmtiles)
-[![crates.io version](https://img.shields.io/crates/l/pmtiles.svg)](https://github.com/stadiamaps/pmtiles-rs/blob/main/LICENSE-APACHE)
+[![crates.io version](https://img.shields.io/crates/v/pmtiles)](https://crates.io/crates/pmtiles)
+[![docs.rs](https://img.shields.io/docsrs/pmtiles)](https://docs.rs/pmtiles)
+[![crates.io license](https://img.shields.io/crates/l/pmtiles)](https://github.com/stadiamaps/pmtiles-rs/blob/main/LICENSE-APACHE)
 [![CI build](https://github.com/stadiamaps/pmtiles-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/stadiamaps/pmtiles-rs/actions)
 [![Codecov](https://img.shields.io/codecov/c/github/stadiamaps/pmtiles-rs)](https://app.codecov.io/gh/stadiamaps/pmtiles-rs)
 
