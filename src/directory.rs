@@ -201,9 +201,9 @@ mod tests {
     use bytes::BytesMut;
 
     use super::Directory;
+    use crate::Header;
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
-    use crate::Header;
 
     fn read_root_directory(file: &str) -> Directory {
         let test_file = std::fs::File::open(file).unwrap();
@@ -260,13 +260,15 @@ mod tests {
         let mut buf = vec![];
         root_dir.write_to(&mut buf).unwrap();
         let dir = Directory::try_from(bytes::Bytes::from(buf)).unwrap();
-        assert!(root_dir
-            .entries
-            .iter()
-            .enumerate()
-            .all(|(idx, entry)| dir.entries[idx].tile_id == entry.tile_id
-                && dir.entries[idx].run_length == entry.run_length
-                && dir.entries[idx].offset == entry.offset
-                && dir.entries[idx].length == entry.length));
+        assert!(
+            root_dir
+                .entries
+                .iter()
+                .enumerate()
+                .all(|(idx, entry)| dir.entries[idx].tile_id == entry.tile_id
+                    && dir.entries[idx].run_length == entry.run_length
+                    && dir.entries[idx].offset == entry.offset
+                    && dir.entries[idx].length == entry.length)
+        );
     }
 }

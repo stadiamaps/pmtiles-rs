@@ -14,6 +14,7 @@ use futures_util::stream::BoxStream;
 #[cfg(feature = "__async")]
 use tokio::io::AsyncReadExt;
 
+use crate::PmtError::UnsupportedCompression;
 use crate::cache::DirCacheResult;
 #[cfg(feature = "__async")]
 use crate::cache::{DirectoryCache, NoCache};
@@ -21,7 +22,6 @@ use crate::directory::{DirEntry, Directory};
 use crate::error::{PmtError, PmtResult};
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::tile::calc_tile_id;
-use crate::PmtError::UnsupportedCompression;
 use crate::{Compression, Header};
 
 pub struct AsyncPmTilesReader<B, C = NoCache> {
@@ -324,8 +324,8 @@ mod tests {
     use futures_util::TryStreamExt;
 
     use super::AsyncPmTilesReader;
-    use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::MmapBackend;
+    use crate::tests::{RASTER_FILE, VECTOR_FILE};
 
     #[tokio::test]
     async fn open_sanity_check() {
