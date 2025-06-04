@@ -23,8 +23,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with: { tool: just }
-      - if: github.event_name == 'release'
-        name: Ensure this crate has not yet been published (on release)
+      - name: Ensure this crate has not yet been published
         run: just check-if-published
       - run: just ci-test
       - name: Check semver

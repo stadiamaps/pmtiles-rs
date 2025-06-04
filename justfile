@@ -26,7 +26,7 @@ check:
 check-if-published package=main_crate:  (assert-cmd 'jq')
     #!/usr/bin/env bash
     set -euo pipefail
-    LOCAL_VERSION="$({{just_executable()}} get-crate-field version package)"
+    LOCAL_VERSION="$({{just_executable()}} get-crate-field version {{package}})"
     echo "Detected crate {{package}} version:  '$LOCAL_VERSION'"
     PUBLISHED_VERSION="$(cargo search --quiet {{package}} | grep "^{{package}} =" | sed -E 's/.* = "(.*)".*/\1/')"
     echo "Published crate version: '$PUBLISHED_VERSION'"
@@ -91,7 +91,7 @@ fmt:
 
 # Get any package's field from the metadata
 get-crate-field field package=main_crate:
-    cargo metadata --format-version 1 | jq -r '.packages | map(select(.name == "{{package}}")) | first | .{{field}}'
+    cargo metadata --format-version 1 | jq -e -r '.packages | map(select(.name == "{{package}}")) | first | .{{field}} | select(. != null)'
 
 # Get the minimum supported Rust version (MSRV) for the crate
 get-msrv package=main_crate:  (get-crate-field 'rust_version' package)
