@@ -22,30 +22,17 @@ jobs:
       - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
-        with: { tool: 'just,cargo-llvm-cov' }
-      - if: github.event_name == 'release'
-        name: Ensure this crate has not yet been published (on release)
+        with: { tool: just }
+      - name: Ensure this crate has not yet been published
         run: just check-if-published
-      - run: RUST_BACKTRACE=1 just ci-test
+      - run: just ci-test
       - name: Check semver
         uses: obi1kenobi/cargo-semver-checks-action@v2
         with:
           feature-group: only-explicit-features
-          features: "http-async,mmap-async-tokio,tilejson,s3-async-rustls,aws-s3-async"
-      - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
-        name: Generate code coverage
-        run: just ci-coverage
-      - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
-        name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        # TODO: remove this once codecov token has been set up properly
-        continue-on-error: true
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: target/llvm-cov/codecov.info
-          fail_ci_if_error: true
+          features: __all_non_conflicting
 
-  msrv:
+  test-msrv:
     name: Test MSRV
     runs-on: ubuntu-latest
     steps:
@@ -61,12 +48,41 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ steps.msrv.outputs.value }}
-      - run: just ci-test-msrv
+      - run: just ci_mode=0 ci-test-msrv  # Ignore warnings in MSRV
 
-  publish:
-    if: startsWith(github.ref, 'refs/tags/')
+  coverage:
+    name: Code Coverage
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with: { tool: 'just,cargo-llvm-cov' }
+      - name: Generate code coverage
+        run: just ci-coverage
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: target/llvm-cov/codecov.info
+          fail_ci_if_error: true
+
+  # This job checks if any of the previous jobs failed or were canceled.
+  # This approach also allows some jobs to be skipped if they are not needed.
+  ci-passed:
+    if: always()
+    needs: [ test, test-msrv ]
+    runs-on: ubuntu-latest
+    steps:
+      - if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: exit 1
+
+  release:
+    # Some dependencies of the `ci-passed` job might be skipped, but we still want to run if the `ci-passed` job succeeded.
+    if: always() && startsWith(github.ref, 'refs/tags/') && needs.ci-passed.result == 'success'
     name: Publish to crates.io
-    needs: [ test, msrv ]
+    needs: [ ci-passed ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
