@@ -1,14 +1,14 @@
 [package]
 name = "pmtiles"
-version = "0.14.1"
-edition = "2021"
+version = "0.15.0"
+edition = "2024"
 authors = ["Luke Seelenbinder <luke.seelenbinder@stadiamaps.com>", "Yuri Astrakhan <YuriAstrakhan@gmail.com>"]
 license = "MIT OR Apache-2.0"
 description = "Implementation of the PMTiles v3 spec with multiple sync and async backends."
 repository = "https://github.com/stadiamaps/pmtiles-rs"
 keywords = ["pmtiles", "gis", "geo"]
-rust-version = "1.82.0"
 categories = ["science::geo"]
+rust-version = "1.85"
 
 [features]
 default = []

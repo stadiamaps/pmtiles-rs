@@ -3,11 +3,11 @@ use std::io::{BufWriter, Seek, Write};
 use countio::Counter;
 use flate2::write::GzEncoder;
 
+use crate::PmtError::{self, UnsupportedCompression};
 use crate::directory::{DirEntry, Directory};
 use crate::error::PmtResult;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::tile::calc_tile_id;
-use crate::PmtError::{self, UnsupportedCompression};
 use crate::{Compression, Header, TileType};
 
 /// Builder for creating a new writer.
