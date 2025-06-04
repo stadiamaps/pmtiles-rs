@@ -28,7 +28,8 @@ reqwest-rustls-tls-native-roots = ["reqwest?/rustls-tls-native-roots"]
 reqwest-rustls-tls-webpki-roots = ["reqwest?/rustls-tls-webpki-roots"]
 
 #### These features are for the internal usage only
-# This is a list of features we use in docs.rs and other places where we want everything
+# This is a list of features we use in docs.rs and other places where we want everything.
+# This list excludes these conflicting features: s3-async-native
 __all_non_conflicting = [
     "aws-s3-async",
     "http-async",

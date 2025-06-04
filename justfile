@@ -104,12 +104,18 @@ msrv:  (cargo-install 'cargo-msrv')
 semver *args:  (cargo-install 'cargo-semver-checks')
     cargo semver-checks {{features_flag}} {{args}}
 
-# Run all tests
+# Run all unit and integration tests
 test:
     cargo test --workspace --all-targets {{features_flag}}
-    cargo test --workspace --all-targets --features s3-async-native
     cargo test --workspace --doc {{features_flag}}
-    cargo test --workspace --doc --features s3-async-native
+    @echo "--------------  Testing individual crate features"
+    cargo test --workspace --all-targets --features aws-s3-async
+    cargo test --workspace --all-targets --features http-async
+    cargo test --workspace --all-targets --features mmap-async-tokio
+    cargo test --workspace --all-targets --features s3-async-native
+    cargo test --workspace --all-targets --features s3-async-rustls
+    cargo test --workspace --all-targets --features tilejson
+    cargo test --workspace --all-targets --features write
 
 # Test documentation generation
 test-doc:  (docs '')

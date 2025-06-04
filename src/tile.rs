@@ -96,7 +96,7 @@ pub(crate) fn calc_tile_coords(tile_id: u64) -> (u8, u64, u64) {
     (z, x, y)
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "__async", feature = "write")))]
 mod test {
     use super::{calc_tile_coords, calc_tile_id};
 
