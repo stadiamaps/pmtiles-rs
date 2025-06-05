@@ -127,7 +127,6 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// Return an async stream over all tile entries in the archive. Directory entries are traversed, and not included in the result.
     /// Because this function requires the reader for the duration of the stream, you need to wrap the reader in an `Arc`.
     ///
-    /// Example:
     /// ```
     /// # use std::sync::Arc;
     /// # use pmtiles::{AsyncPmTilesReader, MmapBackend};
