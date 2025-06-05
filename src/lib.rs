@@ -37,9 +37,9 @@ pub use backend_http::HttpBackend;
 pub use backend_mmap::MmapBackend;
 #[cfg(feature = "__async-s3")]
 pub use backend_s3::S3Backend;
-pub use directory::{DirEntry,  Directory};
 #[cfg(feature = "iter-async")]
 pub use directory::DirEntryCoordsIter;
+pub use directory::{DirEntry, Directory};
 pub use error::{PmtError, PmtResult};
 pub use header::{Compression, Header, TileType};
 /// Re-export of crate exposed in our API to simplify dependency management
