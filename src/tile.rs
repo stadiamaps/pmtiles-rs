@@ -8,13 +8,14 @@ use hilbert_2d::u64::{h2xy_discrete, xy2h_discrete};
 /// # use pmtiles::PYRAMID_SIZE_BY_ZOOM;
 /// let mut size_at_level = 0_u64;
 /// for z in 0..PYRAMID_SIZE_BY_ZOOM.len() {
+///     assert_eq!(PYRAMID_SIZE_BY_ZOOM[z], size_at_level, "Invalid value at zoom {z}");
 ///     // add number of tiles at this zoom level
 ///     size_at_level += 4_u64.pow(z as u32);
-///     assert_eq!(PYRAMID_SIZE_BY_ZOOM[z], size_at_level, "Invalid value at zoom {z}");
 /// }
 /// ```
 #[expect(clippy::unreadable_literal)]
-pub const PYRAMID_SIZE_BY_ZOOM: [u64; 31] = [
+pub const PYRAMID_SIZE_BY_ZOOM: [u64; 32] = [
+    /*  0 */ 0,
     /*  1 */ 1,
     /*  2 */ 5,
     /*  3 */ 21,
@@ -45,20 +46,10 @@ pub const PYRAMID_SIZE_BY_ZOOM: [u64; 31] = [
     /* 28 */ 24019198012642645,
     /* 29 */ 96076792050570581,
     /* 30 */ 384307168202282325,
-    /* 31 */ 1537228672809129301,
-    // /* 32 */ 6148914691236517205,
+    /* 31 */
+    1537228672809129301,
+    // The next value would be 6148914691236517205, but combined with 4^32 tiles it would overflow u64.
 ];
-
-/// Maximum valid Tile ID in the `PMTiles` format.
-///
-/// ```
-/// # use pmtiles::MAX_TILE_ID;
-/// assert_eq!(MAX_TILE_ID, 6148914691236517204);
-/// ```
-#[expect(clippy::cast_possible_truncation)]
-pub const MAX_TILE_ID: u64 = PYRAMID_SIZE_BY_ZOOM[PYRAMID_SIZE_BY_ZOOM.len() - 1]
-    + 4_u64.pow(PYRAMID_SIZE_BY_ZOOM.len() as u32)
-    - 1;
 
 /// Maximum valid Tile Zoom level in the `PMTiles` format.
 ///
@@ -67,7 +58,16 @@ pub const MAX_TILE_ID: u64 = PYRAMID_SIZE_BY_ZOOM[PYRAMID_SIZE_BY_ZOOM.len() - 1
 /// assert_eq!(MAX_ZOOM, 31);
 /// ```
 #[expect(clippy::cast_possible_truncation)]
-pub const MAX_ZOOM: u8 = PYRAMID_SIZE_BY_ZOOM.len() as u8;
+pub const MAX_ZOOM: u8 = PYRAMID_SIZE_BY_ZOOM.len() as u8 - 1;
+
+/// Maximum valid Tile ID in the `PMTiles` format.
+///
+/// ```
+/// # use pmtiles::MAX_TILE_ID;
+/// assert_eq!(MAX_TILE_ID, 6148914691236517204);
+/// ```
+pub const MAX_TILE_ID: u64 =
+    PYRAMID_SIZE_BY_ZOOM[PYRAMID_SIZE_BY_ZOOM.len() - 1] + 4_u64.pow(MAX_ZOOM as u32) - 1;
 
 /// Represents a tile coordinate in the `PMTiles` format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -138,8 +138,7 @@ impl From<TileId> for u64 {
 impl From<TileId> for TileCoord {
     #[expect(clippy::cast_possible_truncation)]
     fn from(id: TileId) -> Self {
-        let id = id.0;
-
+        let id = id.value();
         let mut z = 0;
         let mut size = 0;
         for (idx, &val) in PYRAMID_SIZE_BY_ZOOM.iter().enumerate() {
@@ -148,7 +147,7 @@ impl From<TileId> for TileCoord {
                 // The ID has been verified to be <= MAX_TILE_ID, so this is safe.
                 break;
             }
-            z = (idx as u8) + 1;
+            z = idx as u8;
             size = val;
         }
 
@@ -165,17 +164,17 @@ impl From<TileId> for TileCoord {
 impl From<TileCoord> for TileId {
     fn from(coord: TileCoord) -> Self {
         let TileCoord { z, x, y } = coord;
-
-        // The 0/0/0 case will fail xy2h_discrete()
         if z == 0 {
-            return TileId(0);
-        }
-        let base = PYRAMID_SIZE_BY_ZOOM
-            .get(usize::from(z - 1))
-            .expect("Invalid zoom level");
-        let tile_id = xy2h_discrete(x, y, z.into(), Hilbert);
+            // The 0/0/0 case would fail xy2h_discrete()
+            TileId(0)
+        } else {
+            let base = PYRAMID_SIZE_BY_ZOOM
+                .get(usize::from(z))
+                .expect("TileCoord should be valid"); // see TileCoord::new
+            let tile_id = xy2h_discrete(x, y, z.into(), Hilbert);
 
-        TileId(base + tile_id)
+            TileId(base + tile_id)
+        }
     }
 }
 
