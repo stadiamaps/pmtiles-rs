@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, RwLock};
 
-use crate::directory::{DirEntry, Directory};
+use crate::{DirEntry, Directory, TileId};
 
 pub enum DirCacheResult {
     NotCached,
@@ -25,7 +25,7 @@ pub trait DirectoryCache {
     fn get_dir_entry(
         &self,
         offset: usize,
-        tile_id: u64,
+        tile_id: TileId,
     ) -> impl Future<Output = DirCacheResult> + Send;
 
     /// Insert a directory into the cache, using the offset as a key.
@@ -37,7 +37,7 @@ pub struct NoCache;
 
 impl DirectoryCache for NoCache {
     #[inline]
-    async fn get_dir_entry(&self, _offset: usize, _tile_id: u64) -> DirCacheResult {
+    async fn get_dir_entry(&self, _offset: usize, _tile_id: TileId) -> DirCacheResult {
         DirCacheResult::NotCached
     }
 
@@ -52,9 +52,9 @@ pub struct HashMapCache {
 }
 
 impl DirectoryCache for HashMapCache {
-    async fn get_dir_entry(&self, offset: usize, tile_id: u64) -> DirCacheResult {
+    async fn get_dir_entry(&self, offset: usize, tile_id: TileId) -> DirCacheResult {
         // Panic if the lock is poisoned is not something the user can handle
-        #[allow(clippy::unwrap_used)]
+        #[expect(clippy::unwrap_used)]
         if let Some(dir) = self.cache.read().unwrap().get(&offset) {
             return dir.find_tile_id(tile_id).into();
         }
@@ -63,7 +63,7 @@ impl DirectoryCache for HashMapCache {
 
     async fn insert_dir(&self, offset: usize, directory: Directory) {
         // Panic if the lock is poisoned is not something the user can handle
-        #[allow(clippy::unwrap_used)]
+        #[expect(clippy::unwrap_used)]
         self.cache.write().unwrap().insert(offset, directory);
     }
 }

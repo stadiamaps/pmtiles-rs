@@ -1,6 +1,6 @@
 // FIXME: This seems like a bug - there are lots of u64 to usize conversions in this file,
 //        so any file larger than 4GB, or an untrusted file with bad data may crash.
-#![allow(clippy::cast_possible_truncation)]
+#![expect(clippy::cast_possible_truncation)]
 
 use std::future::Future;
 
@@ -9,14 +9,12 @@ use bytes::Bytes;
 use tokio::io::AsyncReadExt;
 
 use crate::PmtError::UnsupportedCompression;
-use crate::cache::DirCacheResult;
-#[cfg(feature = "__async")]
-use crate::cache::{DirectoryCache, NoCache};
-use crate::directory::{DirEntry, Directory};
-use crate::error::{PmtError, PmtResult};
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
-use crate::tile::calc_tile_id;
-use crate::{Compression, Header};
+use crate::{
+    Compression, DirCacheResult, DirEntry, Directory, Header, PmtError, PmtResult, TileId,
+};
+#[cfg(feature = "__async")]
+use crate::{DirectoryCache, NoCache};
 
 pub struct AsyncPmTilesReader<B, C = NoCache> {
     backend: B,
@@ -62,13 +60,22 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         })
     }
 
-    /// Fetches tile bytes from the archive.
-    pub async fn get_tile(&self, z: u8, x: u64, y: u64) -> PmtResult<Option<Bytes>> {
-        self.get_tile_by_id(calc_tile_id(z, x, y)).await
-    }
-
-    pub(crate) async fn get_tile_by_id(&self, tile_id: u64) -> PmtResult<Option<Bytes>> {
-        let Some(entry) = self.find_tile_entry(tile_id).await? else {
+    /// Fetches tile data using either [`TileCoord`](crate::TileCoord) or [`TileId`] to locate the tile.
+    ///
+    /// ```no_run
+    /// # async fn test() {
+    /// #     let backend = pmtiles::MmapBackend::try_from("").await.unwrap();
+    /// #     let reader = pmtiles::AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+    /// // Using a tile (z, x, y) coordinate to fetch a tile
+    /// let coord = pmtiles::TileCoord::new(0, 0, 0).unwrap();
+    /// let tile = reader.get_tile(coord).await.unwrap();
+    /// // Using a tile ID to fetch a tile
+    /// let tile_id = pmtiles::TileId::from(coord);
+    /// let tile = reader.get_tile(tile_id).await.unwrap();
+    /// # }
+    /// ```
+    pub async fn get_tile<ID: Into<TileId>>(&self, tile_id: ID) -> PmtResult<Option<Bytes>> {
+        let Some(entry) = self.find_tile_entry(tile_id.into()).await? else {
             return Ok(None);
         };
 
@@ -141,7 +148,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     /// Recursively locates a tile in the archive.
-    async fn find_tile_entry(&self, tile_id: u64) -> PmtResult<Option<DirEntry>> {
+    async fn find_tile_entry(&self, tile_id: TileId) -> PmtResult<Option<DirEntry>> {
         let entry = self.root_directory.find_tile_id(tile_id);
         if let Some(entry) = entry {
             if entry.is_leaf() {
@@ -154,7 +161,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
     async fn find_entry_rec(
         &self,
-        tile_id: u64,
+        tile_id: TileId,
         entry: &DirEntry,
         depth: u8,
     ) -> PmtResult<Option<DirEntry>> {
@@ -250,9 +257,12 @@ pub trait AsyncBackend {
 #[cfg(test)]
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
-    use super::AsyncPmTilesReader;
-    use crate::MmapBackend;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
+    use crate::{AsyncPmTilesReader, MmapBackend, TileCoord};
+
+    fn id(z: u8, x: u64, y: u64) -> TileCoord {
+        TileCoord::new(z, x, y).unwrap()
+    }
 
     #[tokio::test]
     async fn open_sanity_check() {
@@ -263,7 +273,7 @@ mod tests {
     async fn compare_tiles(z: u8, x: u64, y: u64, fixture_bytes: &[u8]) {
         let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
-        let tile = tiles.get_tile(z, x, y).await.unwrap().unwrap();
+        let tile = tiles.get_tile(id(z, x, y)).await.unwrap().unwrap();
 
         assert_eq!(
             tile.len(),
@@ -296,7 +306,7 @@ mod tests {
         let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
-        let tile = tiles.get_tile(6, 31, 23).await;
+        let tile = tiles.get_tile(id(6, 31, 23)).await;
         assert!(tile.is_ok());
         assert!(tile.unwrap().is_none());
     }
@@ -306,7 +316,7 @@ mod tests {
         let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
-        let tile = tiles.get_tile(12, 2174, 1492).await;
+        let tile = tiles.get_tile(id(12, 2174, 1492)).await;
         assert!(tile.is_ok_and(|t| t.is_some()));
     }
 
@@ -354,7 +364,7 @@ mod tests {
             (b"3", 1, 1, 1),
             (b"4", 1, 1, 0),
         ] {
-            let tile = tiles.get_tile(z, x, y).await.unwrap().unwrap();
+            let tile = tiles.get_tile(id(z, x, y)).await.unwrap().unwrap();
             assert_eq!(tile, &contents[..]);
         }
     }

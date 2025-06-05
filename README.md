@@ -35,13 +35,14 @@ PRs welcome!
 
 ```rust,no_run
 use bytes::Bytes;
-use pmtiles::async_reader::AsyncPmTilesReader;
+use pmtiles::{AsyncPmTilesReader, TileCoord};
 
 async fn get_tile(z: u8, x: u64, y: u64) -> Option<Bytes> {
   let file = "example.pmtiles";
   // Use `new_with_cached_path` for better performance
   let reader = AsyncPmTilesReader::new_with_path(file).await.unwrap();
-  reader.get_tile(z, x, y).await.unwrap()
+  let coord = TileCoord::new(z, x, y).unwrap();
+  reader.get_tile(coord).await.unwrap()
 }
 ```
 
@@ -51,8 +52,7 @@ This example uses a simple hashmap-based cache to optimize reads from a `PMTiles
 
 ```rust,no_run
 use bytes::Bytes;
-use pmtiles::async_reader::AsyncPmTilesReader;
-use pmtiles::cache::HashMapCache;
+use pmtiles::{AsyncPmTilesReader, HashMapCache, TileCoord};
 use pmtiles::reqwest::Client;  // Re-exported Reqwest crate
 
 async fn get_tile(z: u8, x: u64, y: u64) -> Option<Bytes> {
@@ -60,7 +60,8 @@ async fn get_tile(z: u8, x: u64, y: u64) -> Option<Bytes> {
   let client = Client::builder().use_rustls_tls().build().unwrap();
   let url = "https://protomaps.github.io/PMTiles/protomaps(vector)ODbL_firenze.pmtiles";
   let reader = AsyncPmTilesReader::new_with_cached_url(cache, client, url).await.unwrap();
-  reader.get_tile(z, x, y).await.unwrap()
+  let coord = TileCoord::new(z, x, y).unwrap();
+  reader.get_tile(coord).await.unwrap()
 }
 ```
 
@@ -70,28 +71,29 @@ AWS client configuration is fairly none-trivial to document here. See AWS SDK [d
 
 ```rust,no_run
 use bytes::Bytes;
-use pmtiles::async_reader::AsyncPmTilesReader;
+use pmtiles::{AsyncPmTilesReader, HashMapCache, TileCoord};
 use pmtiles::aws_sdk_s3::Client; // Re-exported AWS SDK S3 client
-use pmtiles::cache::HashMapCache;
 
 async fn get_tile(client: Client, z: u8, x: u64, y: u64) -> Option<Bytes> {
   let cache = HashMapCache::default();
   let bucket = "https://s3.example.com".to_string();
   let key = "example.pmtiles".to_string();
   let reader = AsyncPmTilesReader::new_with_cached_client_bucket_and_path(cache, client, bucket, key).await.unwrap();
-  reader.get_tile(z, x, y).await.unwrap()
+  let coord = TileCoord::new(z, x, y).unwrap();
+  reader.get_tile(coord).await.unwrap()
 }
 ```
 
 ### Writing to a `PMTiles` file
 
 ```rust,no_run
-use pmtiles::{PmTilesWriter, TileType};
+use pmtiles::{PmTilesWriter, TileType, TileCoord};
 use std::fs::File;
 
 let file = File::create("example.pmtiles").unwrap();
 let mut writer = PmTilesWriter::new(TileType::Mvt).create(file).unwrap();
-writer.add_tile(0, 0, 0, &[/*...*/]).unwrap();
+let coord = TileCoord::new(0, 0, 0).unwrap();
+writer.add_tile(coord, &[/*...*/]).unwrap();
 writer.finalize().unwrap();
 ```
 

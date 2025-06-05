@@ -1,7 +1,10 @@
 #![cfg_attr(all(feature = "__all_non_conflicting"), doc = include_str!("../README.md"))]
 
 #[cfg(feature = "__async")]
-pub mod async_reader;
+mod async_reader;
+#[cfg(feature = "__async")]
+pub use async_reader::{AsyncBackend, AsyncPmTilesReader};
+
 #[cfg(feature = "__async-aws-s3")]
 mod backend_aws_s3;
 #[cfg(feature = "http-async")]
@@ -10,12 +13,15 @@ mod backend_http;
 mod backend_mmap;
 #[cfg(feature = "__async-s3")]
 mod backend_s3;
+
 #[cfg(feature = "__async")]
-pub mod cache;
+mod cache;
+#[cfg(feature = "__async")]
+pub use cache::{DirCacheResult, DirectoryCache, HashMapCache, NoCache};
+
 mod directory;
 mod error;
 mod header;
-#[cfg(any(feature = "__async", feature = "write"))]
 mod tile;
 #[cfg(feature = "write")]
 mod writer;
@@ -40,6 +46,7 @@ pub use reqwest;
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "__async-s3")]
 pub use s3;
+pub use tile::{MAX_TILE_ID, MAX_ZOOM, PYRAMID_SIZE_BY_ZOOM, TileCoord, TileId};
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "tilejson")]
 pub use tilejson;
