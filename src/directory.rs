@@ -5,8 +5,7 @@ use varint_rs::VarintReader as _;
 #[cfg(feature = "write")]
 use varint_rs::VarintWriter as _;
 
-use crate::error::PmtError;
-use crate::tile::calc_tile_coords;
+use crate::{PmtError, TileId};
 
 #[derive(Default, Clone)]
 pub struct Directory {
@@ -44,8 +43,11 @@ impl Directory {
 
     /// Find the directory entry for a given tile ID.
     #[must_use]
-    pub fn find_tile_id(&self, tile_id: u64) -> Option<&DirEntry> {
-        match self.entries.binary_search_by(|e| e.tile_id.cmp(&tile_id)) {
+    pub fn find_tile_id(&self, tile_id: TileId) -> Option<&DirEntry> {
+        match self
+            .entries
+            .binary_search_by(|e| e.tile_id.cmp(&tile_id.value()))
+        {
             Ok(idx) => self.entries.get(idx),
             Err(next_id) => {
                 // Adapted from JavaScript code at
@@ -53,7 +55,8 @@ impl Directory {
                 if next_id > 0 {
                     let previous_tile = self.entries.get(next_id - 1)?;
                     if previous_tile.is_leaf()
-                        || tile_id - previous_tile.tile_id < u64::from(previous_tile.run_length)
+                        || (tile_id.value() - previous_tile.tile_id)
+                            < u64::from(previous_tile.run_length)
                     {
                         return Some(previous_tile);
                     }
@@ -180,13 +183,13 @@ pub struct DirEntryCoordsIter<'a> {
 }
 
 impl Iterator for DirEntryCoordsIter<'_> {
-    type Item = (u8, u64, u64);
+    type Item = TileId;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.current < self.entry.run_length {
-            let coords = calc_tile_coords(self.entry.tile_id + u64::from(self.current));
+            let current = u64::from(self.current);
             self.current += 1;
-            Some(coords)
+            Some(TileId::new(self.entry.tile_id + current).expect("invalid entry data"))
         } else {
             None
         }
@@ -199,10 +202,10 @@ mod tests {
 
     use bytes::BytesMut;
 
-    use super::Directory;
-    use crate::Header;
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
+    use crate::tile::test::coord;
+    use crate::{Directory, Header};
 
     fn read_root_directory(file: &str) -> Directory {
         let test_file = std::fs::File::open(file).unwrap();
@@ -235,7 +238,7 @@ mod tests {
 
         assert_eq!(
             directory.entries[57].iter_coords().collect::<Vec<_>>(),
-            vec![(3, 4, 6)]
+            vec![coord(3, 4, 6).into()]
         );
 
         // ...it breaks the pattern on the 59th tile, because it has a run length of 2
@@ -243,10 +246,11 @@ mod tests {
         assert_eq!(directory.entries[58].run_length, 2);
         assert_eq!(directory.entries[58].offset, 422_070);
         assert_eq!(directory.entries[58].length, 850);
+
         // that also means that it has two entries in xyz
         assert_eq!(
             directory.entries[58].iter_coords().collect::<Vec<_>>(),
-            vec![(3, 4, 7), (3, 5, 7)]
+            vec![coord(3, 4, 7).into(), coord(3, 5, 7).into()]
         );
     }
 

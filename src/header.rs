@@ -3,15 +3,15 @@ use std::panic::catch_unwind;
 
 use bytes::{Buf, Bytes};
 
-use crate::error::{PmtError, PmtResult};
+use crate::{PmtError, PmtResult};
 
 #[cfg(any(feature = "__async", feature = "write"))]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
 #[cfg(any(test, feature = "__async", feature = "write"))]
 pub(crate) const HEADER_SIZE: usize = 127;
 
-#[allow(dead_code)]
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Header {
     pub(crate) version: u8,
     pub(crate) root_offset: u64,
@@ -183,7 +183,7 @@ static V3_MAGIC: &str = "PMTiles";
 static V2_MAGIC: &str = "PM";
 
 impl Header {
-    #[allow(clippy::cast_precision_loss)]
+    #[expect(clippy::cast_precision_loss)]
     fn read_coordinate_part<B: Buf>(mut buf: B) -> f32 {
         // TODO: would it be more precise to do `((value as f64) / 10_000_000.) as f32` ?
         buf.get_i32_le() as f32 / 10_000_000.
@@ -276,7 +276,7 @@ impl crate::writer::WriteTo for Header {
 
 impl Header {
     #[cfg(feature = "write")]
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_possible_truncation)]
     fn write_coordinate_part<W: std::io::Write>(writer: &mut W, value: f32) -> std::io::Result<()> {
         writer.write_all(&((value * 10_000_000.0) as i32).to_le_bytes())
     }
@@ -284,15 +284,17 @@ impl Header {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unreadable_literal, clippy::float_cmp)]
+    #![expect(clippy::unreadable_literal, clippy::float_cmp)]
+
     use std::fs::File;
     use std::io::Read;
     use std::num::NonZeroU64;
 
     use bytes::{Bytes, BytesMut};
 
-    use crate::header::{HEADER_SIZE, Header, TileType};
+    use crate::header::HEADER_SIZE;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
+    use crate::{Header, TileType};
 
     #[test]
     fn read_header() {

@@ -21,6 +21,14 @@ build:
 # Quick compile without building a binary
 check:
     cargo check --workspace --all-targets {{features_flag}}
+    @echo "--------------  Checking individual crate features"
+    cargo check --workspace --all-targets --features aws-s3-async
+    cargo check --workspace --all-targets --features http-async
+    cargo check --workspace --all-targets --features mmap-async-tokio
+    cargo check --workspace --all-targets --features s3-async-native
+    cargo check --workspace --all-targets --features s3-async-rustls
+    cargo check --workspace --all-targets --features tilejson
+    cargo check --workspace --all-targets --features write
 
 # Verify that the current version of the crate is not the same as the one published on crates.io
 check-if-published package=main_crate:

@@ -1,9 +1,11 @@
-#![allow(clippy::unreadable_literal)]
+use hilbert_2d::Variant::Hilbert;
+use hilbert_2d::u64::{h2xy_discrete, xy2h_discrete};
 
 /// The pre-computed sizes of the tile pyramid for each zoom level.
+/// The size at zoom level `z` (array index) is equal to the number of tiles before that zoom level.
 ///
 /// ```
-/// # use crate::pmtiles::PYRAMID_SIZE_BY_ZOOM;
+/// # use pmtiles::PYRAMID_SIZE_BY_ZOOM;
 /// let mut size_at_level = 0_u64;
 /// for z in 0..PYRAMID_SIZE_BY_ZOOM.len() {
 ///     assert_eq!(PYRAMID_SIZE_BY_ZOOM[z], size_at_level, "Invalid value at zoom {z}");
@@ -11,7 +13,8 @@
 ///     size_at_level += 4_u64.pow(z as u32);
 /// }
 /// ```
-pub const PYRAMID_SIZE_BY_ZOOM: [u64; 33] = [
+#[expect(clippy::unreadable_literal)]
+pub const PYRAMID_SIZE_BY_ZOOM: [u64; 32] = [
     /*  0 */ 0,
     /*  1 */ 1,
     /*  2 */ 5,
@@ -44,78 +47,227 @@ pub const PYRAMID_SIZE_BY_ZOOM: [u64; 33] = [
     /* 29 */ 96076792050570581,
     /* 30 */ 384307168202282325,
     /* 31 */ 1537228672809129301,
-    // this is the largest possible value because at z32 (base + 4^32) will overflow u64
-    /* 32 */ 6148914691236517205,
 ];
 
-/// Given a zoom level, get the base id for that zoom level.
-/// The base id is the starting point for tile ids at that zoom level.
-pub fn base_id_for_zoom(z: u8) -> Option<u64> {
-    PYRAMID_SIZE_BY_ZOOM.get(usize::from(z)).copied()
+/// Maximum valid Tile Zoom level in the `PMTiles` format.
+///
+/// ```
+/// # use pmtiles::MAX_ZOOM;
+/// assert_eq!(MAX_ZOOM, 31);
+/// ```
+#[expect(clippy::cast_possible_truncation)]
+pub const MAX_ZOOM: u8 = PYRAMID_SIZE_BY_ZOOM.len() as u8 - 1;
+
+/// Maximum valid Tile ID in the `PMTiles` format.
+///
+/// ```
+/// # use pmtiles::MAX_TILE_ID;
+/// assert_eq!(MAX_TILE_ID, 6148914691236517204);
+/// ```
+pub const MAX_TILE_ID: u64 =
+    PYRAMID_SIZE_BY_ZOOM[PYRAMID_SIZE_BY_ZOOM.len() - 1] + 4_u64.pow(MAX_ZOOM as u32) - 1;
+
+/// Represents a tile coordinate in the `PMTiles` format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TileCoord {
+    z: u8,
+    x: u64,
+    y: u64,
 }
 
-/// Compute the tile id for a given zoom level and tile coordinates.
-#[cfg(any(feature = "__async", feature = "write"))]
-#[must_use]
-pub(crate) fn calc_tile_id(z: u8, x: u64, y: u64) -> Option<u64> {
-    // The 0/0/0 case is not needed for the base id computation, but it will fail hilbert_2d::u64::xy2h_discrete
-    if z == 0 {
-        return 0;
+impl TileCoord {
+    /// Create a new coordinate with the given zoom level and tile coordinates, or return `None` if the values are invalid.
+    ///
+    /// ```
+    /// # use pmtiles::TileCoord;
+    /// let coord = TileCoord::new(18, 235085, 122323).unwrap();
+    /// assert_eq!(coord.z(), 18);
+    /// assert_eq!(coord.x(), 235085);
+    /// assert_eq!(coord.y(), 122323);
+    /// assert!(TileCoord::new(32, 1, 3).is_none()); // Invalid zoom level
+    /// assert!(TileCoord::new(2, 4, 0).is_none()); // Invalid x coordinate
+    /// assert!(TileCoord::new(2, 0, 4).is_none()); // Invalid y coordinate
+    /// ```
+    #[must_use]
+    #[expect(clippy::cast_sign_loss)]
+    pub fn new(z: u8, x: u64, y: u64) -> Option<Self> {
+        if z > MAX_ZOOM || x >= ((1 << z) as u64) || y >= ((1 << z) as u64) {
+            return None;
+        }
+        Some(Self { z, x, y })
     }
 
-    let tile_id = hilbert_2d::u64::xy2h_discrete(x, y, z.into(), hilbert_2d::Variant::Hilbert);
+    /// Get the zoom level of this coordinate.
+    #[must_use]
+    pub fn z(&self) -> u8 {
+        self.z
+    }
 
-    base_id_for_zoom(z)? + tile_id
+    /// Get the x coordinate of this tile.
+    #[must_use]
+    pub fn x(&self) -> u64 {
+        self.x
+    }
+
+    /// Get the y coordinate of this tile.
+    #[must_use]
+    pub fn y(&self) -> u64 {
+        self.y
+    }
 }
 
-#[must_use]
-pub(crate) fn calc_tile_coords(tile_id: u64) -> Option<(u8, u64, u64)> {
-    if tile_id == 0 {
-        return Some((0, 0, 0));
-    }
+/// Represents a unique identifier for a tile in the `PMTiles` format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct TileId(u64);
 
-    // Find the zoom level by comparing against pyramid sizes
-    let (z, base) = PYRAMID_SIZE_BY_ZOOM.iter().enumerate().find(|(_, &size)| 
-        tile_id <= size
-    )?;
-
-    for (zoom, &pyramid_size) in PYRAMID_SIZE_BY_ZOOM.iter().enumerate() {
-        if tile_id <= pyramid_size {
-            z = zoom as u8;
-            base = pyramid_size;
-            break;
+impl TileId {
+    /// Create a new `TileId` from the u64 value, or return `None` if the value is invalid.
+    ///
+    /// ```
+    /// # use pmtiles::TileId;
+    /// assert_eq!(TileId::new(0).unwrap().value(), 0);
+    /// assert!(TileId::new(6148914691236517204).is_some());
+    /// assert!(TileId::new(6148914691236517205).is_none());
+    /// ```
+    #[must_use]
+    pub fn new(id: u64) -> Option<Self> {
+        if id <= MAX_TILE_ID {
+            Some(Self(id))
+        } else {
+            None
         }
     }
 
-    // Extract the Hilbert curve index
-    let hilbert_index = tile_id - base_id_for_zoom(z).unwrap();
-
-    // Convert back to x, y coordinates using inverse Hilbert curve
-    let (x, y) =
-        hilbert_2d::u64::h2xy_discrete(hilbert_index, z.into(), hilbert_2d::Variant::Hilbert);
-
-    (z, x, y)
+    /// Get the underlying u64 value of this `TileId`.
+    #[must_use]
+    pub fn value(self) -> u64 {
+        self.0
+    }
 }
 
-#[cfg(all(test, any(feature = "__async", feature = "write")))]
-mod test {
-    use super::{calc_tile_coords, calc_tile_id};
+impl From<TileId> for u64 {
+    fn from(tile_id: TileId) -> Self {
+        tile_id.0
+    }
+}
+
+impl From<TileId> for TileCoord {
+    #[expect(clippy::cast_possible_truncation)]
+    fn from(id: TileId) -> Self {
+        let id = id.value();
+        let mut z = 0;
+        let mut size = 0;
+        for (idx, &val) in PYRAMID_SIZE_BY_ZOOM.iter().enumerate() {
+            if id < val {
+                // If we never break, it means the id is for the last zoom level.
+                // The ID has been verified to be <= MAX_TILE_ID, so this is safe.
+                break;
+            }
+            z = idx as u8;
+            size = val;
+        }
+
+        if z > 0 {
+            // Extract the Hilbert curve index and convert it to tile coordinates
+            let (x, y) = h2xy_discrete(id - size, z.into(), Hilbert);
+            TileCoord { z, x, y }
+        } else {
+            TileCoord { z: 0, x: 0, y: 0 }
+        }
+    }
+}
+
+impl From<TileCoord> for TileId {
+    fn from(coord: TileCoord) -> Self {
+        let TileCoord { z, x, y } = coord;
+        if z == 0 {
+            // The 0/0/0 case would fail xy2h_discrete()
+            TileId(0)
+        } else {
+            let base = PYRAMID_SIZE_BY_ZOOM
+                .get(usize::from(z))
+                .expect("TileCoord should be valid"); // see TileCoord::new
+            let tile_id = xy2h_discrete(x, y, z.into(), Hilbert);
+
+            TileId(base + tile_id)
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test {
+    use crate::{MAX_TILE_ID, PYRAMID_SIZE_BY_ZOOM, TileCoord, TileId};
+
+    pub fn coord(z: u8, x: u64, y: u64) -> TileCoord {
+        TileCoord::new(z, x, y).unwrap()
+    }
+
+    pub fn coord_to_id(z: u8, x: u64, y: u64) -> u64 {
+        TileId::from(coord(z, x, y)).value()
+    }
+
+    pub fn id_to_coord(id: u64) -> (u8, u64, u64) {
+        let coord = TileCoord::from(TileId::new(id).unwrap());
+        (coord.z(), coord.x(), coord.y())
+    }
 
     #[test]
-    fn test_calc_tile_id() {
-        assert_eq!(calc_tile_id(0, 0, 0), 0);
-        assert_eq!(calc_tile_id(1, 1, 0), 4);
-        assert_eq!(calc_tile_id(2, 1, 3), 11);
-        assert_eq!(calc_tile_id(3, 3, 0), 26);
-        assert_eq!(calc_tile_id(20, 0, 0), 366503875925);
-        assert_eq!(calc_tile_id(21, 0, 0), 1466015503701);
-        assert_eq!(calc_tile_id(22, 0, 0), 5864062014805);
-        assert_eq!(calc_tile_id(23, 0, 0), 23456248059221);
-        assert_eq!(calc_tile_id(24, 0, 0), 93824992236885);
-        assert_eq!(calc_tile_id(25, 0, 0), 375299968947541);
-        assert_eq!(calc_tile_id(26, 0, 0), 1501199875790165);
-        assert_eq!(calc_tile_id(27, 0, 0), 6004799503160661);
-        assert_eq!(calc_tile_id(28, 0, 0), 24019198012642645);
+    #[expect(clippy::unreadable_literal)]
+    fn test_tile_id() {
+        assert_eq!(TileId::new(0).unwrap().value(), 0);
+        assert_eq!(TileId::new(MAX_TILE_ID + 1), None);
+        assert_eq!(TileId::new(MAX_TILE_ID).unwrap().value(), MAX_TILE_ID);
+
+        assert_eq!(coord_to_id(0, 0, 0), 0);
+        assert_eq!(coord_to_id(1, 1, 0), 4);
+        assert_eq!(coord_to_id(2, 1, 3), 11);
+        assert_eq!(coord_to_id(3, 3, 0), 26);
+        assert_eq!(coord_to_id(20, 0, 0), 366503875925);
+        assert_eq!(coord_to_id(21, 0, 0), 1466015503701);
+        assert_eq!(coord_to_id(22, 0, 0), 5864062014805);
+        assert_eq!(coord_to_id(23, 0, 0), 23456248059221);
+        assert_eq!(coord_to_id(24, 0, 0), 93824992236885);
+        assert_eq!(coord_to_id(25, 0, 0), 375299968947541);
+        assert_eq!(coord_to_id(26, 0, 0), 1501199875790165);
+        assert_eq!(coord_to_id(27, 0, 0), 6004799503160661);
+        assert_eq!(coord_to_id(28, 0, 0), 24019198012642645);
+        assert_eq!(coord_to_id(31, 0, 0), 1537228672809129301);
+        let max_v = (1 << 31) - 1;
+        assert_eq!(coord_to_id(31, max_v, max_v), 4611686018427387903);
+        assert_eq!(coord_to_id(31, 0, max_v), 3074457345618258602);
+        assert_eq!(coord_to_id(31, max_v, 0), 6148914691236517204);
+    }
+
+    #[test]
+    fn round_trip_ids() {
+        const LAST_PYRAMID_IDX: usize = PYRAMID_SIZE_BY_ZOOM.len() - 1;
+        for id in [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            PYRAMID_SIZE_BY_ZOOM[LAST_PYRAMID_IDX],
+            PYRAMID_SIZE_BY_ZOOM[LAST_PYRAMID_IDX] - 1,
+            PYRAMID_SIZE_BY_ZOOM[LAST_PYRAMID_IDX] + 1,
+            MAX_TILE_ID - 1,
+            MAX_TILE_ID,
+        ] {
+            test_id(id);
+        }
+        for id in 0..1000 {
+            test_id(id);
+        }
+    }
+
+    fn test_id(id: u64) {
+        let id1 = TileId::new(id).unwrap();
+        let coord1 = TileCoord::from(id1);
+        let coord2 = TileCoord::new(coord1.z, coord1.x, coord1.y).unwrap();
+        let id2 = TileId::from(coord2);
+        assert_eq!(id, id2.value(), "Failed round-trip for id={id}");
     }
 
     #[test]
@@ -138,11 +290,10 @@ mod test {
         ];
 
         for (z, x, y) in test_cases {
-            let id = calc_tile_id(z, x, y);
-            let (z_back, x_back, y_back) = calc_tile_coords(id);
+            let (z2, x2, y2) = id_to_coord(coord_to_id(z, x, y));
             assert_eq!(
                 (z, x, y),
-                (z_back, x_back, y_back),
+                (z2, x2, y2),
                 "Failed round-trip for z={z}, x={x}, y={y}",
             );
         }
