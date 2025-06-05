@@ -46,9 +46,7 @@ pub const PYRAMID_SIZE_BY_ZOOM: [u64; 32] = [
     /* 28 */ 24019198012642645,
     /* 29 */ 96076792050570581,
     /* 30 */ 384307168202282325,
-    /* 31 */
-    1537228672809129301,
-    // The next value would be 6148914691236517205, but combined with 4^32 tiles it would overflow u64.
+    /* 31 */ 1537228672809129301,
 ];
 
 /// Maximum valid Tile Zoom level in the `PMTiles` format.
