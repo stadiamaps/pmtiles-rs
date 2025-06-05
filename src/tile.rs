@@ -77,6 +77,17 @@ pub struct TileCoord {
 
 impl TileCoord {
     /// Create a new coordinate with the given zoom level and tile coordinates, or return `None` if the values are invalid.
+    ///
+    /// ```
+    /// # use pmtiles::TileCoord;
+    /// let coord = TileCoord::new(18, 235085, 122323).unwrap();
+    /// assert_eq!(coord.z(), 18);
+    /// assert_eq!(coord.x(), 235085);
+    /// assert_eq!(coord.y(), 122323);
+    /// assert!(TileCoord::new(32, 1, 3).is_none()); // Invalid zoom level
+    /// assert!(TileCoord::new(2, 4, 0).is_none()); // Invalid x coordinate
+    /// assert!(TileCoord::new(2, 0, 4).is_none()); // Invalid y coordinate
+    /// ```
     #[must_use]
     #[expect(clippy::cast_sign_loss)]
     pub fn new(z: u8, x: u64, y: u64) -> Option<Self> {
@@ -110,7 +121,14 @@ impl TileCoord {
 pub struct TileId(u64);
 
 impl TileId {
-    /// Create a new `TileId` from a u64 value, or return `None` if the value is invalid.
+    /// Create a new `TileId` from the u64 value, or return `None` if the value is invalid.
+    ///
+    /// ```
+    /// # use pmtiles::TileId;
+    /// assert_eq!(TileId::new(0).unwrap().value(), 0);
+    /// assert!(TileId::new(6148914691236517204).is_some());
+    /// assert!(TileId::new(6148914691236517205).is_none());
+    /// ```
     #[must_use]
     pub fn new(id: u64) -> Option<Self> {
         if id <= MAX_TILE_ID {
