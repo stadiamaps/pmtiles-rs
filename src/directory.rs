@@ -168,6 +168,7 @@ impl DirEntry {
         self.run_length == 0
     }
 
+    #[cfg(feature = "iter-async")]
     #[must_use]
     pub fn iter_coords(&self) -> DirEntryCoordsIter<'_> {
         DirEntryCoordsIter {
@@ -177,11 +178,13 @@ impl DirEntry {
     }
 }
 
+#[cfg(feature = "iter-async")]
 pub struct DirEntryCoordsIter<'a> {
     entry: &'a DirEntry,
     current: u32,
 }
 
+#[cfg(feature = "iter-async")]
 impl Iterator for DirEntryCoordsIter<'_> {
     type Item = TileId;
 
@@ -204,6 +207,7 @@ mod tests {
 
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
+    #[cfg(feature = "iter-async")]
     use crate::tile::test::coord;
     use crate::{Directory, Header};
 
@@ -236,6 +240,7 @@ mod tests {
             assert_eq!(directory.entries[nth].tile_id, nth as u64);
         }
 
+        #[cfg(feature = "iter-async")]
         assert_eq!(
             directory.entries[57].iter_coords().collect::<Vec<_>>(),
             vec![coord(3, 4, 6).into()]
@@ -248,6 +253,7 @@ mod tests {
         assert_eq!(directory.entries[58].length, 850);
 
         // that also means that it has two entries in xyz
+        #[cfg(feature = "iter-async")]
         assert_eq!(
             directory.entries[58].iter_coords().collect::<Vec<_>>(),
             vec![coord(3, 4, 7).into(), coord(3, 5, 7).into()]

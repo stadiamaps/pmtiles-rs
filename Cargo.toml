@@ -14,6 +14,7 @@ rust-version = "1.85"
 default = []
 aws-s3-async = ["__async-aws-s3"]
 http-async = ["__async", "dep:reqwest"]
+iter-async = ["__async", "dep:async-stream", "dep:futures-util"]
 mmap-async-tokio = ["__async", "dep:fmmap", "fmmap?/tokio"]
 s3-async-native = ["__async-s3", "__async-s3-nativetls"]
 s3-async-rustls = ["__async-s3", "__async-s3-rustls"]
@@ -33,17 +34,13 @@ reqwest-rustls-tls-webpki-roots = ["reqwest?/rustls-tls-webpki-roots"]
 __all_non_conflicting = [
     "aws-s3-async",
     "http-async",
+    "iter-async",
     "mmap-async-tokio",
     "s3-async-rustls",
     "tilejson",
     "write",
 ]
-__async = [
-  "async-compression/tokio",
-  "dep:async-stream",
-  "dep:futures-util",
-  "dep:tokio",
-]
+__async = ["dep:tokio", "async-compression/tokio"]
 __async-s3 = ["__async", "dep:rust-s3"]
 __async-s3-nativetls = ["rust-s3?/use-tokio-native-tls"]
 __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]

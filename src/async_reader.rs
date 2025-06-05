@@ -2,17 +2,17 @@
 //        so any file larger than 4GB, or an untrusted file with bad data may crash.
 #![expect(clippy::cast_possible_truncation)]
 
-use std::collections::VecDeque;
 use std::future::Future;
-#[cfg(feature = "__async")]
+#[cfg(feature = "iter-async")]
 use std::sync::Arc;
 
-#[cfg(feature = "__async")]
+#[cfg(feature = "iter-async")]
 use async_stream::try_stream;
 use bytes::Bytes;
+#[cfg(feature = "iter-async")]
 use futures_util::stream::BoxStream;
 #[cfg(feature = "__async")]
-use tokio::io::AsyncReadExt;
+use tokio::io::AsyncReadExt as _;
 
 use crate::PmtError::UnsupportedCompression;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
@@ -144,13 +144,14 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ///     Ok(())
     /// }
     /// ```
+    #[cfg(feature = "iter-async")]
     pub fn entries<'a>(self: Arc<Self>) -> BoxStream<'a, PmtResult<DirEntry>>
     where
         B: 'a,
         C: 'a,
     {
         Box::pin(try_stream! {
-            let mut queue = VecDeque::new();
+            let mut queue = std::collections::VecDeque::new();
 
             for entry in &self.root_directory.entries {
                 queue.push_back(entry.clone());
@@ -328,10 +329,6 @@ pub trait AsyncBackend {
 #[cfg(test)]
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
-    use std::sync::Arc;
-
-    use futures_util::TryStreamExt;
-
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::{AsyncPmTilesReader, MmapBackend, TileCoord};
 
@@ -392,6 +389,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_leaf_tile() {
+        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+
+        let tile = tiles.get_tile(id(12, 2174, 1492)).await;
+        assert!(tile.is_ok_and(|t| t.is_some()));
+    }
+
+    #[tokio::test]
+    async fn test_leaf_tile_compressed() {
         let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let coord = id(12, 2174, 1492);
@@ -460,12 +466,14 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(feature = "iter-async")]
     async fn test_entries() {
+        use futures_util::TryStreamExt as _;
+
         let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
-        let tiles = Arc::new(tiles);
-        let entries = tiles.entries();
+        let entries = std::sync::Arc::new(tiles).entries();
 
         let all_entries: Vec<_> = entries.try_collect().await.unwrap();
         assert_eq!(all_entries.len(), 108);
