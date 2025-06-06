@@ -37,7 +37,7 @@ PRs welcome!
 use bytes::Bytes;
 use pmtiles::{AsyncPmTilesReader, TileCoord};
 
-async fn get_tile(z: u8, x: u64, y: u64) -> Option<Bytes> {
+async fn get_tile(z: u8, x: u32, y: u32) -> Option<Bytes> {
   let file = "example.pmtiles";
   // Use `new_with_cached_path` for better performance
   let reader = AsyncPmTilesReader::new_with_path(file).await.unwrap();
@@ -55,7 +55,7 @@ use bytes::Bytes;
 use pmtiles::{AsyncPmTilesReader, HashMapCache, TileCoord};
 use pmtiles::reqwest::Client;  // Re-exported Reqwest crate
 
-async fn get_tile(z: u8, x: u64, y: u64) -> Option<Bytes> {
+async fn get_tile(z: u8, x: u32, y: u32) -> Option<Bytes> {
   let cache = HashMapCache::default();
   let client = Client::builder().use_rustls_tls().build().unwrap();
   let url = "https://protomaps.github.io/PMTiles/protomaps(vector)ODbL_firenze.pmtiles";
@@ -74,7 +74,7 @@ use bytes::Bytes;
 use pmtiles::{AsyncPmTilesReader, HashMapCache, TileCoord};
 use pmtiles::aws_sdk_s3::Client; // Re-exported AWS SDK S3 client
 
-async fn get_tile(client: Client, z: u8, x: u64, y: u64) -> Option<Bytes> {
+async fn get_tile(client: Client, z: u8, x: u32, y: u32) -> Option<Bytes> {
   let cache = HashMapCache::default();
   let bucket = "https://s3.example.com".to_string();
   let key = "example.pmtiles".to_string();

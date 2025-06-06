@@ -71,8 +71,8 @@ pub const MAX_TILE_ID: u64 =
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TileCoord {
     z: u8,
-    x: u64,
-    y: u64,
+    x: u32,
+    y: u32,
 }
 
 impl TileCoord {
@@ -89,9 +89,8 @@ impl TileCoord {
     /// assert!(TileCoord::new(2, 0, 4).is_none()); // Invalid y coordinate
     /// ```
     #[must_use]
-    #[expect(clippy::cast_sign_loss)]
-    pub fn new(z: u8, x: u64, y: u64) -> Option<Self> {
-        if z > MAX_ZOOM || x >= ((1 << z) as u64) || y >= ((1 << z) as u64) {
+    pub fn new(z: u8, x: u32, y: u32) -> Option<Self> {
+        if z > MAX_ZOOM || x >= (1 << z) || y >= (1 << z) {
             return None;
         }
         Some(Self { z, x, y })
@@ -105,13 +104,13 @@ impl TileCoord {
 
     /// Get the x coordinate of this tile.
     #[must_use]
-    pub fn x(&self) -> u64 {
+    pub fn x(&self) -> u32 {
         self.x
     }
 
     /// Get the y coordinate of this tile.
     #[must_use]
-    pub fn y(&self) -> u64 {
+    pub fn y(&self) -> u32 {
         self.y
     }
 }
@@ -170,7 +169,11 @@ impl From<TileId> for TileCoord {
         if z > 0 {
             // Extract the Hilbert curve index and convert it to tile coordinates
             let (x, y) = h2xy_discrete(id - size, z.into(), Hilbert);
-            TileCoord { z, x, y }
+            TileCoord {
+                z,
+                x: x as u32,
+                y: y as u32,
+            }
         } else {
             TileCoord { z: 0, x: 0, y: 0 }
         }
@@ -187,7 +190,7 @@ impl From<TileCoord> for TileId {
             let base = PYRAMID_SIZE_BY_ZOOM
                 .get(usize::from(z))
                 .expect("TileCoord should be valid"); // see TileCoord::new
-            let tile_id = xy2h_discrete(x, y, z.into(), Hilbert);
+            let tile_id = xy2h_discrete(u64::from(x), u64::from(y), z.into(), Hilbert);
 
             TileId(base + tile_id)
         }
@@ -198,11 +201,11 @@ impl From<TileCoord> for TileId {
 mod test {
     use crate::{MAX_TILE_ID, PYRAMID_SIZE_BY_ZOOM, TileCoord, TileId};
 
-    fn coord_to_id(z: u8, x: u64, y: u64) -> u64 {
+    fn coord_to_id(z: u8, x: u32, y: u32) -> u64 {
         TileId::from(TileCoord::new(z, x, y).unwrap()).value()
     }
 
-    fn id_to_coord(id: u64) -> (u8, u64, u64) {
+    fn id_to_coord(id: u64) -> (u8, u32, u32) {
         let coord = TileCoord::from(TileId::new(id).unwrap());
         (coord.z(), coord.x(), coord.y())
     }
