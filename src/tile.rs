@@ -1,5 +1,4 @@
-use hilbert_2d::Variant::Hilbert;
-use hilbert_2d::u64::{h2xy_discrete, xy2h_discrete};
+use fast_hilbert::{h2xy, xy2h};
 
 /// The pre-computed sizes of the tile pyramid for each zoom level.
 /// The size at zoom level `z` (array index) is equal to the number of tiles before that zoom level.
@@ -168,12 +167,8 @@ impl From<TileId> for TileCoord {
 
         if z > 0 {
             // Extract the Hilbert curve index and convert it to tile coordinates
-            let (x, y) = h2xy_discrete(id - size, z.into(), Hilbert);
-            TileCoord {
-                z,
-                x: x as u32,
-                y: y as u32,
-            }
+            let (x, y) = h2xy::<u32>(id - size, z.into());
+            TileCoord { z, x, y }
         } else {
             TileCoord { z: 0, x: 0, y: 0 }
         }
@@ -190,7 +185,7 @@ impl From<TileCoord> for TileId {
             let base = PYRAMID_SIZE_BY_ZOOM
                 .get(usize::from(z))
                 .expect("TileCoord should be valid"); // see TileCoord::new
-            let tile_id = xy2h_discrete(u64::from(x), u64::from(y), z.into(), Hilbert);
+            let tile_id = xy2h(x, y, z.into());
 
             TileId(base + tile_id)
         }
