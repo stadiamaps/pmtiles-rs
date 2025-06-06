@@ -134,8 +134,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// #[tokio::main(flavor="current_thread")]
     /// async fn main() -> Result<(), pmtiles::PmtError> {
     ///     let backend = MmapBackend::try_from("fixtures/protomaps(vector)ODbL_firenze.pmtiles").await?;
-    ///     let reader = AsyncPmTilesReader::try_from_source(backend).await?;
-    ///     let reader = Arc::new(reader);
+    ///     let reader = Arc::new(AsyncPmTilesReader::try_from_source(backend).await?);
     ///     let mut entries = reader.entries();
     ///     while let Some(entry) = entries.try_next().await? {
     ///        // ... do something with entry ...
