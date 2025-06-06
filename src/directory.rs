@@ -9,7 +9,7 @@ use crate::{PmtError, TileId};
 
 #[derive(Default, Clone)]
 pub struct Directory {
-    entries: Vec<DirEntry>,
+    pub(crate) entries: Vec<DirEntry>,
 }
 
 impl Debug for Directory {
@@ -167,6 +167,36 @@ impl DirEntry {
     pub(crate) fn is_leaf(&self) -> bool {
         self.run_length == 0
     }
+
+    #[cfg(feature = "iter-async")]
+    #[must_use]
+    pub fn iter_coords(&self) -> DirEntryCoordsIter<'_> {
+        DirEntryCoordsIter {
+            entry: self,
+            current: 0,
+        }
+    }
+}
+
+#[cfg(feature = "iter-async")]
+pub struct DirEntryCoordsIter<'a> {
+    entry: &'a DirEntry,
+    current: u32,
+}
+
+#[cfg(feature = "iter-async")]
+impl Iterator for DirEntryCoordsIter<'_> {
+    type Item = TileId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current < self.entry.run_length {
+            let current = u64::from(self.current);
+            self.current += 1;
+            Some(TileId::new(self.entry.tile_id + current).expect("invalid entry data"))
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -177,6 +207,8 @@ mod tests {
 
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
+    #[cfg(feature = "iter-async")]
+    use crate::tile::test::coord;
     use crate::{Directory, Header};
 
     fn read_root_directory(file: &str) -> Directory {
@@ -208,11 +240,24 @@ mod tests {
             assert_eq!(directory.entries[nth].tile_id, nth as u64);
         }
 
-        // ...it breaks the pattern on the 59th tile
+        #[cfg(feature = "iter-async")]
+        assert_eq!(
+            directory.entries[57].iter_coords().collect::<Vec<_>>(),
+            vec![coord(3, 4, 6).into()]
+        );
+
+        // ...it breaks the pattern on the 59th tile, because it has a run length of 2
         assert_eq!(directory.entries[58].tile_id, 58);
         assert_eq!(directory.entries[58].run_length, 2);
         assert_eq!(directory.entries[58].offset, 422_070);
         assert_eq!(directory.entries[58].length, 850);
+
+        // that also means that it has two entries in xyz
+        #[cfg(feature = "iter-async")]
+        assert_eq!(
+            directory.entries[58].iter_coords().collect::<Vec<_>>(),
+            vec![coord(3, 4, 7).into(), coord(3, 5, 7).into()]
+        );
     }
 
     #[test]

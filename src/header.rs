@@ -285,15 +285,16 @@ impl Header {
 #[cfg(test)]
 mod tests {
     #![expect(clippy::unreadable_literal, clippy::float_cmp)]
+
     use std::fs::File;
     use std::io::Read;
     use std::num::NonZeroU64;
 
     use bytes::{Bytes, BytesMut};
 
-    use crate::TileType;
-    use crate::header::{HEADER_SIZE, Header};
+    use crate::header::HEADER_SIZE;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
+    use crate::{Header, TileType};
 
     #[test]
     fn read_header() {

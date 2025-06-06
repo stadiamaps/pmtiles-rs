@@ -24,6 +24,7 @@ check:
     @echo "--------------  Checking individual crate features"
     cargo check --workspace --all-targets --features aws-s3-async
     cargo check --workspace --all-targets --features http-async
+    cargo check --workspace --all-targets --features iter-async
     cargo check --workspace --all-targets --features mmap-async-tokio
     cargo check --workspace --all-targets --features s3-async-native
     cargo check --workspace --all-targets --features s3-async-rustls
@@ -119,6 +120,7 @@ test:
     @echo "--------------  Testing individual crate features"
     cargo test --workspace --all-targets --features aws-s3-async
     cargo test --workspace --all-targets --features http-async
+    cargo test --workspace --all-targets --features iter-async
     cargo test --workspace --all-targets --features mmap-async-tokio
     cargo test --workspace --all-targets --features s3-async-native
     cargo test --workspace --all-targets --features s3-async-rustls

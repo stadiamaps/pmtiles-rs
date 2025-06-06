@@ -3,10 +3,16 @@
 #![expect(clippy::cast_possible_truncation)]
 
 use std::future::Future;
+#[cfg(feature = "iter-async")]
+use std::sync::Arc;
 
+#[cfg(feature = "iter-async")]
+use async_stream::try_stream;
 use bytes::Bytes;
+#[cfg(feature = "iter-async")]
+use futures_util::stream::BoxStream;
 #[cfg(feature = "__async")]
-use tokio::io::AsyncReadExt;
+use tokio::io::AsyncReadExt as _;
 
 use crate::PmtError::UnsupportedCompression;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
@@ -74,7 +80,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// let tile = reader.get_tile(tile_id).await.unwrap();
     /// # }
     /// ```
-    pub async fn get_tile<ID: Into<TileId>>(&self, tile_id: ID) -> PmtResult<Option<Bytes>> {
+    pub async fn get_tile<Id: Into<TileId>>(&self, tile_id: Id) -> PmtResult<Option<Bytes>> {
         let Some(entry) = self.find_tile_entry(tile_id.into()).await? else {
             return Ok(None);
         };
@@ -83,6 +89,19 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         let length = entry.length as _;
 
         Ok(Some(self.backend.read_exact(offset, length).await?))
+    }
+
+    /// Fetches tile bytes from the archive.
+    /// If the tile is compressed, it will be decompressed.
+    pub async fn get_tile_decompressed<Id: Into<TileId>>(
+        &self,
+        tile_id: Id,
+    ) -> PmtResult<Option<Bytes>> {
+        Ok(if let Some(data) = self.get_tile(tile_id).await? {
+            Some(Self::decompress(self.header.tile_compression, data).await?)
+        } else {
+            None
+        })
     }
 
     /// Access header information.
@@ -103,6 +122,53 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             Self::decompress(self.header.internal_compression, metadata).await?;
 
         Ok(String::from_utf8(decompressed_metadata.to_vec())?)
+    }
+
+    /// Return an async stream over all tile entries in the archive. Directory entries are traversed, and not included in the result.
+    /// Because this function requires the reader for the duration of the stream, you need to wrap the reader in an `Arc`.
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use pmtiles::{AsyncPmTilesReader, MmapBackend};
+    /// # use futures_util::TryStreamExt as _;
+    /// #[tokio::main(flavor="current_thread")]
+    /// async fn main() -> Result<(), pmtiles::PmtError> {
+    ///     let backend = MmapBackend::try_from("fixtures/protomaps(vector)ODbL_firenze.pmtiles").await?;
+    ///     let reader = Arc::new(AsyncPmTilesReader::try_from_source(backend).await?);
+    ///     let mut entries = reader.entries();
+    ///     while let Some(entry) = entries.try_next().await? {
+    ///        // ... do something with entry ...
+    ///     }
+    ///     Ok(())
+    /// }
+    /// ```
+    #[cfg(feature = "iter-async")]
+    pub fn entries<'a>(self: Arc<Self>) -> BoxStream<'a, PmtResult<DirEntry>>
+    where
+        B: 'a,
+        C: 'a,
+    {
+        Box::pin(try_stream! {
+            let mut queue = std::collections::VecDeque::new();
+
+            for entry in &self.root_directory.entries {
+                queue.push_back(entry.clone());
+            }
+
+            while let Some(entry) = queue.pop_front() {
+                if entry.is_leaf() {
+                    let offset = (self.header.leaf_offset + entry.offset) as _;
+                    let length = entry.length as usize;
+                    let leaf_dir = self.read_directory(offset, length).await?;
+                    // enqueue all entries in the leaf directory
+                    for leaf_entry in leaf_dir.entries {
+                        queue.push_back(leaf_entry);
+                    }
+                } else {
+                    yield entry;
+                }
+            }
+        })
     }
 
     #[cfg(feature = "tilejson")]
@@ -209,6 +275,10 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     async fn decompress(compression: Compression, bytes: Bytes) -> PmtResult<Bytes> {
+        if compression == Compression::None {
+            return Ok(bytes);
+        }
+
         let mut decompressed_bytes = Vec::with_capacity(bytes.len() * 2);
         match compression {
             Compression::Gzip => {
@@ -273,7 +343,11 @@ mod tests {
     async fn compare_tiles(z: u8, x: u32, y: u32, fixture_bytes: &[u8]) {
         let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
-        let tile = tiles.get_tile(id(z, x, y)).await.unwrap().unwrap();
+        let tile = tiles
+            .get_tile_decompressed(id(z, x, y))
+            .await
+            .unwrap()
+            .unwrap();
 
         assert_eq!(
             tile.len(),
@@ -318,6 +392,26 @@ mod tests {
 
         let tile = tiles.get_tile(id(12, 2174, 1492)).await;
         assert!(tile.is_ok_and(|t| t.is_some()));
+    }
+
+    #[tokio::test]
+    async fn test_leaf_tile_compressed() {
+        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+        let coord = id(12, 2174, 1492);
+
+        let tile = tiles.get_tile(coord).await;
+        assert!(tile.as_ref().is_ok_and(Option::is_some));
+        let tile = tile.unwrap().unwrap();
+
+        let tile_dec = tiles.get_tile_decompressed(coord).await;
+        assert!(tile_dec.as_ref().is_ok_and(Option::is_some));
+        let tile_dec = tile_dec.unwrap().unwrap();
+
+        assert!(
+            tile_dec.len() > tile.len(),
+            "Decompressed tile should be larger than compressed tile"
+        );
     }
 
     #[tokio::test]
@@ -367,5 +461,19 @@ mod tests {
             let tile = tiles.get_tile(id(z, x, y)).await.unwrap().unwrap();
             assert_eq!(tile, &contents[..]);
         }
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "iter-async")]
+    async fn test_entries() {
+        use futures_util::TryStreamExt as _;
+
+        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+
+        let entries = std::sync::Arc::new(tiles).entries();
+
+        let all_entries: Vec<_> = entries.try_collect().await.unwrap();
+        assert_eq!(all_entries.len(), 108);
     }
 }

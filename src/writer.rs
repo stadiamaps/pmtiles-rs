@@ -3,9 +3,11 @@ use std::io::{BufWriter, Seek, Write};
 use countio::Counter;
 use flate2::write::GzEncoder;
 
-use crate::PmtError::{self, UnsupportedCompression};
+use crate::PmtError::UnsupportedCompression;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
-use crate::{Compression, DirEntry, Directory, Header, PmtResult, TileCoord, TileId, TileType};
+use crate::{
+    Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileCoord, TileId, TileType,
+};
 
 /// Builder for creating a new writer.
 pub struct PmTilesWriter {

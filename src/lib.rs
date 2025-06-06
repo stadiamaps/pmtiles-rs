@@ -37,6 +37,8 @@ pub use backend_http::HttpBackend;
 pub use backend_mmap::MmapBackend;
 #[cfg(feature = "__async-s3")]
 pub use backend_s3::S3Backend;
+#[cfg(feature = "iter-async")]
+pub use directory::DirEntryCoordsIter;
 pub use directory::{DirEntry, Directory};
 pub use error::{PmtError, PmtResult};
 pub use header::{Compression, Header, TileType};

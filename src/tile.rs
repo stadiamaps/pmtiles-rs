@@ -193,14 +193,18 @@ impl From<TileCoord> for TileId {
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use crate::{MAX_TILE_ID, PYRAMID_SIZE_BY_ZOOM, TileCoord, TileId};
 
-    fn coord_to_id(z: u8, x: u32, y: u32) -> u64 {
-        TileId::from(TileCoord::new(z, x, y).unwrap()).value()
+    pub fn coord(z: u8, x: u32, y: u32) -> TileCoord {
+        TileCoord::new(z, x, y).unwrap()
     }
 
-    fn id_to_coord(id: u64) -> (u8, u32, u32) {
+    pub fn coord_to_id(z: u8, x: u32, y: u32) -> u64 {
+        TileId::from(coord(z, x, y)).value()
+    }
+
+    pub fn id_to_coord(id: u64) -> (u8, u32, u32) {
         let coord = TileCoord::from(TileId::new(id).unwrap());
         (coord.z(), coord.x(), coord.y())
     }
