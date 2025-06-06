@@ -331,7 +331,7 @@ mod tests {
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::{AsyncPmTilesReader, MmapBackend, TileCoord};
 
-    fn id(z: u8, x: u64, y: u64) -> TileCoord {
+    fn id(z: u8, x: u32, y: u32) -> TileCoord {
         TileCoord::new(z, x, y).unwrap()
     }
 
@@ -341,7 +341,7 @@ mod tests {
         AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     }
 
-    async fn compare_tiles(z: u8, x: u64, y: u64, fixture_bytes: &[u8]) {
+    async fn compare_tiles(z: u8, x: u32, y: u32, fixture_bytes: &[u8]) {
         let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let tile = tiles
