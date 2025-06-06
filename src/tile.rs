@@ -167,7 +167,7 @@ impl From<TileId> for TileCoord {
 
         if z > 0 {
             // Extract the Hilbert curve index and convert it to tile coordinates
-            let (x, y) = h2xy::<u32>(id - size, z.into());
+            let (x, y) = h2xy::<u32>(id - size, z);
             TileCoord { z, x, y }
         } else {
             TileCoord { z: 0, x: 0, y: 0 }
@@ -185,7 +185,7 @@ impl From<TileCoord> for TileId {
             let base = PYRAMID_SIZE_BY_ZOOM
                 .get(usize::from(z))
                 .expect("TileCoord should be valid"); // see TileCoord::new
-            let tile_id = xy2h(x, y, z.into());
+            let tile_id = xy2h(x, y, z);
 
             TileId(base + tile_id)
         }
