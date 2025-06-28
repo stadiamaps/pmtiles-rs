@@ -109,6 +109,9 @@ get-msrv package=main_crate:  (get-crate-field 'rust_version' package)
 msrv:  (cargo-install 'cargo-msrv')
     cargo msrv find --write-msrv --ignore-lockfile {{features_flag}}
 
+release *args='':  (cargo-install 'release-plz')
+    release-plz {{args}}
+
 # Check semver compatibility with prior published version. Install it with `cargo install cargo-semver-checks`
 semver *args:  (cargo-install 'cargo-semver-checks')
     cargo semver-checks {{features_flag}} {{args}}
