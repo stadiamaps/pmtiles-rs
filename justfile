@@ -1,7 +1,7 @@
 #!/usr/bin/env just --justfile
 
 main_crate := 'pmtiles'
-features_flag := '--features __all_non_conflicting'
+features_flag := ''
 
 # if running in CI, treat warnings as errors by setting RUSTFLAGS and RUSTDOCFLAGS to '-D warnings' unless they are already set
 # Use `CI=true just ci-test` to run the same tests as in GitHub CI.
@@ -22,29 +22,14 @@ build:
 check:
     cargo check --workspace --all-targets {{features_flag}}
     @echo "--------------  Checking individual crate features"
-    cargo check --workspace --all-targets --features aws-s3-async
-    cargo check --workspace --all-targets --features http-async
-    cargo check --workspace --all-targets --features iter-async
-    cargo check --workspace --all-targets --features mmap-async-tokio
-    cargo check --workspace --all-targets --features s3-async-native
-    cargo check --workspace --all-targets --features s3-async-rustls
-    cargo check --workspace --all-targets --features tilejson
-    cargo check --workspace --all-targets --features write
-
-# Verify that the current version of the crate is not the same as the one published on crates.io
-check-if-published package=main_crate:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    LOCAL_VERSION="$({{just_executable()}} get-crate-field version {{package}})"
-    echo "Detected crate {{package}} version:  '$LOCAL_VERSION'"
-    PUBLISHED_VERSION="$(cargo search --quiet {{package}} | grep "^{{package}} =" | sed -E 's/.* = "(.*)".*/\1/')"
-    echo "Published crate version: '$PUBLISHED_VERSION'"
-    if [ "$LOCAL_VERSION" = "$PUBLISHED_VERSION" ]; then
-        echo "ERROR: The current crate version has already been published."
-        exit 1
-    else
-        echo "The current crate version has not yet been published."
-    fi
+    cargo check --workspace --all-targets --no-default-features --features aws-s3-async
+    cargo check --workspace --all-targets --no-default-features --features http-async
+    cargo check --workspace --all-targets --no-default-features --features iter-async
+    cargo check --workspace --all-targets --no-default-features --features mmap-async-tokio
+    cargo check --workspace --all-targets --no-default-features --features s3-async-native
+    cargo check --workspace --all-targets --no-default-features --features s3-async-rustls
+    cargo check --workspace --all-targets --no-default-features --features tilejson
+    cargo check --workspace --all-targets --no-default-features --features write
 
 # Generate code coverage report to upload to codecov.io
 ci-coverage: env-info && \
@@ -66,7 +51,7 @@ clean:
 # Run cargo clippy to lint the code
 clippy *args:
     cargo clippy --workspace --all-targets {{features_flag}} {{args}}
-    cargo clippy --workspace --all-targets --features s3-async-native {{args}}
+    cargo clippy --workspace --all-targets --no-default-features --features s3-async-native {{args}}
 
 # Generate code coverage report. Will install `cargo llvm-cov` if missing.
 coverage *args='--no-clean --open':  (cargo-install 'cargo-llvm-cov')
@@ -114,21 +99,21 @@ release *args='':  (cargo-install 'release-plz')
 
 # Check semver compatibility with prior published version. Install it with `cargo install cargo-semver-checks`
 semver *args:  (cargo-install 'cargo-semver-checks')
-    cargo semver-checks {{features_flag}} {{args}}
+    cargo semver-checks --only-explicit-features {{features_flag}} {{args}}
 
 # Run all unit and integration tests
 test:
     cargo test --workspace --all-targets {{features_flag}}
     cargo test --workspace --doc {{features_flag}}
     @echo "--------------  Testing individual crate features"
-    cargo test --workspace --all-targets --features aws-s3-async
-    cargo test --workspace --all-targets --features http-async
-    cargo test --workspace --all-targets --features iter-async
-    cargo test --workspace --all-targets --features mmap-async-tokio
-    cargo test --workspace --all-targets --features s3-async-native
-    cargo test --workspace --all-targets --features s3-async-rustls
-    cargo test --workspace --all-targets --features tilejson
-    cargo test --workspace --all-targets --features write
+    cargo test --workspace --all-targets --no-default-features --features aws-s3-async
+    cargo test --workspace --all-targets --no-default-features --features http-async
+    cargo test --workspace --all-targets --no-default-features --features iter-async
+    cargo test --workspace --all-targets --no-default-features --features mmap-async-tokio
+    cargo test --workspace --all-targets --no-default-features --features s3-async-native
+    cargo test --workspace --all-targets --no-default-features --features s3-async-rustls
+    cargo test --workspace --all-targets --no-default-features --features tilejson
+    cargo test --workspace --all-targets --no-default-features --features write
 
 # Test documentation generation
 test-doc:  (docs '')
