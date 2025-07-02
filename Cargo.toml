@@ -11,7 +11,10 @@ categories = ["science::geo"]
 rust-version = "1.85"
 
 [features]
-default = []
+# Default enables everything because semver checker and release-plz cannot pass this through
+# See https://github.com/obi1kenobi/cargo-semver-checks/issues/1355
+# In the future, we might want to change this to a more selective set of features.
+default = ["__all_non_conflicting"]
 aws-s3-async = ["__async-aws-s3"]
 http-async = ["__async", "dep:reqwest"]
 iter-async = ["__async", "dep:async-stream", "dep:futures-util"]
@@ -72,9 +75,6 @@ fmmap = { version = "0.4", features = ["tokio"] }
 reqwest = { version = "0.12.4", features = ["rustls-tls-webpki-roots"] }
 tempfile = "3.13.0"
 tokio = { version = "1", features = ["test-util", "macros", "rt"] }
-
-[package.metadata.docs.rs]
-features = ["__all_non_conflicting"]
 
 [lints.rust]
 unsafe_code = "forbid"
