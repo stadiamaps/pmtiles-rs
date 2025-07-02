@@ -62,4 +62,6 @@ pub enum PmtError {
     AwsS3Request(
         #[from] Box<aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::get_object::GetObjectError>>,
     ),
+    #[error("Invalid coordinate {0}/{1}/{2}")]
+    InvalidCoordinate(u8, u32, u32),
 }
