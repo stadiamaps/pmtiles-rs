@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.15.0...v0.15.1) - 2025-07-03
+
+### Added
+
+- `Coord::new` now returns Result ([#69](https://github.com/stadiamaps/pmtiles-rs/pull/69))
+
 ## [0.15.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.14.0...v0.15.0) - 2025-07-02
 
 ### Added
