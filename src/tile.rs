@@ -1,5 +1,7 @@
 use fast_hilbert::{h2xy, xy2h};
 
+use crate::{PmtError, PmtResult};
+
 /// The pre-computed sizes of the tile pyramid for each zoom level.
 /// The size at zoom level `z` (array index) is equal to the number of tiles before that zoom level.
 ///
@@ -79,20 +81,21 @@ impl TileCoord {
     ///
     /// ```
     /// # use pmtiles::TileCoord;
+    /// # use pmtiles::PmtError::InvalidCoordinate;
     /// let coord = TileCoord::new(18, 235085, 122323).unwrap();
     /// assert_eq!(coord.z(), 18);
     /// assert_eq!(coord.x(), 235085);
     /// assert_eq!(coord.y(), 122323);
-    /// assert!(TileCoord::new(32, 1, 3).is_none()); // Invalid zoom level
-    /// assert!(TileCoord::new(2, 4, 0).is_none()); // Invalid x coordinate
-    /// assert!(TileCoord::new(2, 0, 4).is_none()); // Invalid y coordinate
+    /// assert!(matches!(TileCoord::new(32, 1, 3), Err(InvalidCoordinate(..)))); // Invalid zoom level
+    /// assert!(matches!(TileCoord::new(2, 4, 0), Err(InvalidCoordinate(..)))); // Invalid x coordinate
+    /// assert!(matches!(TileCoord::new(2, 0, 4), Err(InvalidCoordinate(..)))); // Invalid y coordinate
     /// ```
-    #[must_use]
-    pub fn new(z: u8, x: u32, y: u32) -> Option<Self> {
+    pub fn new(z: u8, x: u32, y: u32) -> PmtResult<Self> {
         if z > MAX_ZOOM || x >= (1 << z) || y >= (1 << z) {
-            return None;
+            Err(PmtError::InvalidCoordinate(z, x, y))
+        } else {
+            Ok(Self { z, x, y })
         }
-        Some(Self { z, x, y })
     }
 
     /// Get the zoom level of this coordinate.
