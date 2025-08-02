@@ -446,25 +446,20 @@ mod tests {
     }
 
     #[rstest]
-    #[case(0, 0, 0, b"0")]
-    #[case(1, 0, 0, b"1")]
-    #[case(1, 0, 1, b"2")]
-    #[case(1, 1, 1, b"3")]
-    #[case(1, 1, 0, b"4")]
+    #[case(id(0, 0, 0), b"0")]
+    #[case(id(1, 0, 0), b"1")]
+    #[case(id(1, 0, 1), b"2")]
+    #[case(id(1, 1, 1), b"3")]
+    #[case(id(1, 1, 0), b"4")]
     #[tokio::test]
-    async fn test_martin_675(
-        #[case] z: u8,
-        #[case] x: u32,
-        #[case] y: u32,
-        #[case] expected_contents: &[u8],
-    ) {
+    async fn test_martin_675(#[case] coord: TileCoord, #[case] expected_contents: &[u8]) {
         let backend = MmapBackend::try_from("fixtures/leaf.pmtiles")
             .await
             .unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         // Verify that the test case does contain a leaf directory
         assert_ne!(0, tiles.get_header().leaf_length);
-        let tile = tiles.get_tile(id(z, x, y)).await.unwrap().unwrap();
+        let tile = tiles.get_tile(coord).await.unwrap().unwrap();
         assert_eq!(tile, expected_contents);
     }
 

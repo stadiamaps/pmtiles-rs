@@ -49,6 +49,7 @@ __all_non_conflicting = [
     "tilejson",
     "write",
     "object-store",
+    "object-store-fs",
     "object-store-http",
     "object-store-aws",
     "object-store-azure",
