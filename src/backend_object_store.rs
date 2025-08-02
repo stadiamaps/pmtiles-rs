@@ -141,8 +141,42 @@ impl AsyncBackend for ObjectStoreBackend {
 impl TryFrom<&Url> for ObjectStoreBackend {
     type Error = PmtError;
 
+    /// Create an [`ObjectStoreBackend`] based on the provided `url`
+    ///
+    /// The url can be for example:
+    /// * `file:///path/to/my/file`
+    /// * `s3://bucket/path`
+    /// * `https://example.com/path.pmtiles`
     fn try_from(value: &Url) -> Result<Self, Self::Error> {
         let (store, path) = object_store::parse_url(value)?;
+        Ok(ObjectStoreBackend { store, path })
+    }
+}
+
+impl<I, K, V> TryFrom<(&Url, I)> for ObjectStoreBackend
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<str>,
+    V: Into<String>,
+{
+    type Error = PmtError;
+
+    /// Create an [`ObjectStoreBackend`] based on the provided `url` and `options`
+    ///
+    /// The url can be for example:
+    /// * `file:///path/to/my/file`
+    /// * `s3://bucket/path`
+    /// * `https://example.com/path.pmtiles`
+    ///
+    /// Arguments:
+    /// * `url`: The URL to parse
+    /// * `options`: A list of key-value pairs to pass to the [`ObjectStore`] builder.
+    ///   Note different object stores accept different configuration options, so
+    ///   the options that are read depends on the `url` value. One common pattern
+    ///   is to pass configuration information via process variables using
+    ///   [`std::env::vars`].
+    fn try_from((url, options): (&Url, I)) -> Result<Self, Self::Error> {
+        let (store, path) = object_store::parse_url_opts(url, options)?;
         Ok(ObjectStoreBackend { store, path })
     }
 }
@@ -185,5 +219,26 @@ mod tests {
             "PMTiles/protomaps(vector)ODbL_firenze.pmtiles"
         );
         assert_eq!(backend.store().to_string(), "HttpStore");
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "object-store-http")]
+    async fn test_try_from_with_http_options() {
+        use httpmock::MockServer;
+
+        let mock = MockServer::start();
+        let server = mock.mock(|when, then| {
+            when.path("/foo/bar").and(|when| when.header("User-Agent", "pmties"));
+            then.status(200);
+        });
+        let url = mock.url("/foo/bar").parse().unwrap();
+        dbg!(mock.url("/foo/bar"));
+
+        let opts = [("user_agent", "pmties"), ("allow_http", "true")];
+        let backend = ObjectStoreBackend::try_from((&url, opts)).unwrap();
+        assert_eq!(backend.path().as_ref(), "foo/bar");
+        backend.store().get(&backend.path()).await.unwrap();
+
+        server.assert_hits(1);
     }
 }

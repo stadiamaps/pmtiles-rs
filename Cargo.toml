@@ -85,6 +85,7 @@ varint-rs = "2"
 [dev-dependencies]
 flate2 = "1"
 fmmap = { version = "0.4", features = ["tokio"] }
+httpmock = "0.7.0"
 reqwest = { version = "0.12.4", features = ["rustls-tls-webpki-roots"] }
 rstest = "0.26.1"
 tempfile = "3.13.0"
