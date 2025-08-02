@@ -1,7 +1,7 @@
 //! Object store backend implementation using the [`object_store`] crate.
 //!
 //! This backend provides a unified interface for accessing `PMTiles` from various
-//! storage systems including Files, HTTP, S3, Azure Blob Storage, and Google Cloud Storage.
+//! storage systems including S3, Azure Blob Storage, Google Cloud Storage, local files, HTTP/WebDAV Storage, memory and custom implementations.
 
 use std::ops::Range;
 
