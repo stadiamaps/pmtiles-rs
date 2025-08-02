@@ -168,7 +168,10 @@ mod tests {
         let backend = ObjectStoreBackend::new(store, "nonexistent.pmtiles");
 
         let result = backend.read(0, 100).await;
-        assert!(matches!(result.unwrap_err(), PmtError::ObjectStore(object_store::Error::NotFound { .. })));
+        assert!(matches!(
+            result.unwrap_err(),
+            PmtError::ObjectStore(object_store::Error::NotFound { .. })
+        ));
     }
 
     #[tokio::test]
