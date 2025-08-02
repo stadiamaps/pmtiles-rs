@@ -370,8 +370,13 @@ mod tests {
     #[case(id(3, 4, 5), include_bytes!("../fixtures/3_4_5.png"))]
     #[tokio::test]
     async fn get_tiles_object_store(#[case] coord: TileCoord, #[case] fixture_bytes: &[u8]) {
-        let url = url::Url::parse(RASTER_FILE).unwrap();
-        let backend = crate::ObjectStoreBackend::try_from(&url).unwrap();
+        use std::path::PathBuf;
+
+        // object_store expects an absolute url-path
+        let file = PathBuf::from(RASTER_FILE).canonicalize().unwrap();
+        let fileurl = format!("file://{}", file.to_string_lossy());
+
+        let backend = crate::ObjectStoreBackend::try_from(&fileurl.parse().unwrap()).unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let tile = tiles.get_tile_decompressed(coord).await.unwrap().unwrap();
 
