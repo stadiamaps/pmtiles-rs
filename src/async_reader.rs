@@ -371,7 +371,7 @@ mod tests {
     #[tokio::test]
     async fn get_tiles_object_store(#[case] coord: TileCoord, #[case] fixture_bytes: &[u8]) {
         let url = url::Url::parse(RASTER_FILE).unwrap();
-        let backend = crate::ObjectStorageBackend::try_from(&url).unwrap();
+        let backend = crate::ObjectStoreBackend::try_from(&url).unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let tile = tiles.get_tile_decompressed(coord).await.unwrap().unwrap();
 
