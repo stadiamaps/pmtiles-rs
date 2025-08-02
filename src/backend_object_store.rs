@@ -238,7 +238,7 @@ mod tests {
         let opts = [("user_agent", "pmties"), ("allow_http", "true")];
         let backend = ObjectStoreBackend::try_from((&url, opts)).unwrap();
         assert_eq!(backend.path().as_ref(), "foo/bar");
-        backend.store().get(&backend.path()).await.unwrap();
+        backend.store().get(backend.path()).await.unwrap();
 
         server.assert_hits(1);
     }
