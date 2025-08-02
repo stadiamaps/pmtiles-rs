@@ -228,7 +228,8 @@ mod tests {
 
         let mock = MockServer::start();
         let server = mock.mock(|when, then| {
-            when.path("/foo/bar").and(|when| when.header("User-Agent", "pmties"));
+            when.path("/foo/bar")
+                .and(|when| when.header("User-Agent", "pmties"));
             then.status(200);
         });
         let url = mock.url("/foo/bar").parse().unwrap();
