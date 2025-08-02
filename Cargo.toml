@@ -24,6 +24,12 @@ s3-async-rustls = ["__async-s3", "__async-s3-rustls"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
 write = ["dep:countio", "dep:flate2"]
 
+object-store = ["dep:object_store", "dep:url"]
+object-store-fs = ["object-store", "object_store/fs"]
+object-store-http = ["object-store", "object_store/http"]
+object-store-aws = ["object-store", "object_store/aws"]
+object-store-azure = ["object-store", "object_store/azure"]
+
 # Forward some of the common features to reqwest dependency
 reqwest-default = ["reqwest?/default"]
 reqwest-native-tls = ["reqwest?/native-tls"]
@@ -42,6 +48,10 @@ __all_non_conflicting = [
     "s3-async-rustls",
     "tilejson",
     "write",
+    "object-store",
+    "object-store-http",
+    "object-store-aws",
+    "object-store-azure",
 ]
 __async = ["dep:tokio", "async-compression/tokio"]
 __async-s3 = ["__async", "dep:rust-s3"]
@@ -60,6 +70,7 @@ fast_hilbert = "2.0.1"
 flate2 = { version = "1", optional = true }
 fmmap = { version = "0.4", default-features = false, optional = true }
 futures-util = { version = "0.3", optional = true }
+object_store = { version = "0.12", optional = true, default-features = false }
 reqwest = { version = "0.12.4", default-features = false, optional = true }
 rust-s3 = { version = "0.35.1", optional = true, default-features = false, features = ["fail-on-err"] }
 serde = { version = "1", optional = true }
@@ -67,6 +78,7 @@ serde_json = { version = "1", optional = true }
 thiserror = "2"
 tilejson = { version = "0.4", optional = true }
 tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
+url = {version = "2", optional = true }
 varint-rs = "2"
 
 [dev-dependencies]
