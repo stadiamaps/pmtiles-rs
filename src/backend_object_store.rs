@@ -34,17 +34,17 @@ use crate::{AsyncBackend, PmtError, PmtResult};
 /// // For example http  (under object-store-http feature)
 /// let url = Url::parse("https://example.com/tiles.pmtiles").unwrap();
 /// let backend = ObjectStoreBackend::try_from(&url).unwrap();
-/// # assert_eq!(&backend.path(), "tiles.pmtiles");
+/// # assert_eq!(&backend.path().to_string(), "tiles.pmtiles");
 ///
 /// // Works with S3 URLs too (under object-store-aws feature)
 /// let url = Url::parse("s3://bucket-name/path/tiles.pmtiles").unwrap();
 /// let backend = ObjectStoreBackend::try_from(&url).unwrap();
-/// # assert_eq!(&backend.path(), "path");
+/// # assert_eq!(&backend.path().to_string(), "path/tiles.pmtiles");
 ///
 /// // Or with URLs that encode the bucket name in the URL path
 /// let url = Url::parse("https://ACCOUNT_ID.r2.cloudflarestorage.com/bucket/path").unwrap();
 /// let backend = ObjectStoreBackend::try_from(&url).unwrap();
-/// # assert_eq!(&backend.path(), "path");
+/// # assert_eq!(&backend.path().to_string(), "path");
 /// ```
 ///
 /// Creating a backend manually:
