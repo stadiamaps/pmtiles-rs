@@ -34,17 +34,20 @@ use crate::{AsyncBackend, PmtError, PmtResult};
 /// // For example http  (under object-store-http feature)
 /// let url = Url::parse("https://example.com/tiles.pmtiles").unwrap();
 /// let backend = ObjectStoreBackend::try_from(&url).unwrap();
-/// # assert_eq!(&backend.path().to_string(), "tiles.pmtiles");
+/// # assert_eq!(backend.path().as_ref(), "tiles.pmtiles");
+/// # assert_eq!(backend.store().to_string(), "HttpStore");
 ///
 /// // Works with S3 URLs too (under object-store-aws feature)
 /// let url = Url::parse("s3://bucket-name/path/tiles.pmtiles").unwrap();
 /// let backend = ObjectStoreBackend::try_from(&url).unwrap();
-/// # assert_eq!(&backend.path().to_string(), "path/tiles.pmtiles");
+/// # assert_eq!(backend.path().as_ref(), "path/tiles.pmtiles");
+/// # assert_eq!(backend.store().to_string(), "AmazonS3(bucket-name)");
 ///
 /// // Or with URLs that encode the bucket name in the URL path
 /// let url = Url::parse("https://ACCOUNT_ID.r2.cloudflarestorage.com/bucket/path").unwrap();
 /// let backend = ObjectStoreBackend::try_from(&url).unwrap();
-/// # assert_eq!(&backend.path().to_string(), "path");
+/// # assert_eq!(backend.path().as_ref(), "path");
+/// # assert_eq!(backend.store().to_string(), "AmazonS3(bucket)");
 /// ```
 ///
 /// Creating a backend manually:
@@ -156,6 +159,7 @@ mod tests {
         let backend = ObjectStoreBackend::new(store, "test.pmtiles");
 
         assert_eq!(backend.path().as_ref(), "test.pmtiles");
+        assert_eq!(backend.store().to_string(), "InMemory");
     }
 
     #[tokio::test]
@@ -164,15 +168,7 @@ mod tests {
         let backend = ObjectStoreBackend::new(store, "nonexistent.pmtiles");
 
         let result = backend.read(0, 100).await;
-        assert!(result.is_err());
-
-        // Verify it converts to the right error type
-        match result.unwrap_err() {
-            PmtError::ObjectStore(object_store::Error::NotFound { .. }) => {
-                // Expected error type
-            }
-            _ => panic!("Expected ObjectStore NotFound error"),
-        }
+        assert!(matches!(result.unwrap_err(), PmtError::ObjectStore(object_store::Error::NotFound { .. })));
     }
 
     #[tokio::test]
@@ -185,5 +181,6 @@ mod tests {
             backend.path().as_ref(),
             "PMTiles/protomaps(vector)ODbL_firenze.pmtiles"
         );
+        assert_eq!(backend.store().to_string(), "HttpStore");
     }
 }
