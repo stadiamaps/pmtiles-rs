@@ -138,6 +138,13 @@ impl AsyncBackend for ObjectStoreBackend {
     }
 }
 
+#[cfg(any(
+    feature = "object-store-fs",
+    feature = "object-store-http",
+    feature = "object-store-aws",
+    feature = "object-store-azure",
+    feature = "object-store-gcp",
+))]
 impl TryFrom<&Url> for ObjectStoreBackend {
     type Error = PmtError;
 
@@ -153,6 +160,13 @@ impl TryFrom<&Url> for ObjectStoreBackend {
     }
 }
 
+#[cfg(any(
+    feature = "object-store-fs",
+    feature = "object-store-http",
+    feature = "object-store-aws",
+    feature = "object-store-azure",
+    feature = "object-store-gcp",
+))]
 impl<I, K, V> TryFrom<(&Url, I)> for ObjectStoreBackend
 where
     I: IntoIterator<Item = (K, V)>,
