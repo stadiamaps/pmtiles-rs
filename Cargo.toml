@@ -54,6 +54,7 @@ __all_non_conflicting = [
     "object-store-http",
     "object-store-aws",
     "object-store-azure",
+    "object-store-gcp",
 ]
 __async = ["dep:tokio", "async-compression/tokio"]
 __async-s3 = ["__async", "dep:rust-s3"]
