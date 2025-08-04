@@ -29,6 +29,7 @@ object-store-fs = ["object-store", "object_store/fs"]
 object-store-http = ["object-store", "object_store/http"]
 object-store-aws = ["object-store", "object_store/aws"]
 object-store-azure = ["object-store", "object_store/azure"]
+object-store-gcp = ["object-store", "object_store/gcp"]
 
 # Forward some of the common features to reqwest dependency
 reqwest-default = ["reqwest?/default"]
