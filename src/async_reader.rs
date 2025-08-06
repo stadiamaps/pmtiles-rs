@@ -368,7 +368,7 @@ mod tests {
     #[case(id(2, 2, 2), include_bytes!("../fixtures/2_2_2.png"))]
     #[case(id(3, 4, 5), include_bytes!("../fixtures/3_4_5.png"))]
     #[tokio::test]
-    #[cfg(feature="object-store")]
+    #[cfg(feature = "object-store")]
     async fn get_tiles_object_store(#[case] coord: TileCoord, #[case] fixture_bytes: &[u8]) {
         use object_store::{ObjectStore, WriteMultipart};
 
