@@ -68,7 +68,7 @@ impl ObjectStoreBackend {
     /// You can also parse urls from urls as following.
     /// The supported url schemes are dependent on the [`object_store`]-features.
     /// See [`object_store::parse_url`] for further details.
-    /// 
+    ///
     /// ```rust
     /// use pmtiles::ObjectStoreBackend;
     /// use url::Url;
