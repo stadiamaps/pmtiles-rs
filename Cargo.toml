@@ -24,12 +24,7 @@ s3-async-rustls = ["__async-s3", "__async-s3-rustls"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
 write = ["dep:countio", "dep:flate2"]
 
-object-store = ["dep:object_store", "dep:url"]
-object-store-fs = ["object-store", "object_store/fs"]
-object-store-http = ["object-store", "object_store/http"]
-object-store-aws = ["object-store", "object_store/aws"]
-object-store-azure = ["object-store", "object_store/azure"]
-object-store-gcp = ["object-store", "object_store/gcp"]
+object-store = ["dep:object_store"]
 
 # Forward some of the common features to reqwest dependency
 reqwest-default = ["reqwest?/default"]
@@ -81,7 +76,6 @@ serde_json = { version = "1", optional = true }
 thiserror = "2"
 tilejson = { version = "0.4", optional = true }
 tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
-url = { version = "2", optional = true }
 varint-rs = "2"
 
 [dev-dependencies]

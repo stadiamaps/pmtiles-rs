@@ -47,9 +47,6 @@ pub use directory::{DirEntry, Directory};
 pub use error::{PmtError, PmtResult};
 pub use header::{Compression, Header, TileType};
 /// Re-export of crate exposed in our API to simplify dependency management
-#[cfg(feature = "object-store")]
-pub use object_store;
-/// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "http-async")]
 pub use reqwest;
 /// Re-export of crate exposed in our API to simplify dependency management
