@@ -372,11 +372,13 @@ mod tests {
         use object_store::{ObjectStore, WriteMultipart};
 
         let store = Box::new(object_store::memory::InMemory::new());
-        
+
         let upload_path = object_store::path::Path::from("file.pmtiles");
-        let upload =  store.put_multipart(&upload_path).await.unwrap();
+        let upload = store.put_multipart(&upload_path).await.unwrap();
         let mut write = WriteMultipart::new(upload);
-        write.write(include_bytes!("../fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles"));
+        write.write(include_bytes!(
+            "../fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles"
+        ));
         write.finish().await.unwrap();
         let backend = crate::ObjectStoreBackend::new(store, upload_path);
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
