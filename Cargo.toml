@@ -45,11 +45,6 @@ __all_non_conflicting = [
     "tilejson",
     "write",
     "object-store",
-    "object-store-fs",
-    "object-store-http",
-    "object-store-aws",
-    "object-store-azure",
-    "object-store-gcp",
 ]
 __async = ["dep:tokio", "async-compression/tokio"]
 __async-s3 = ["__async", "dep:rust-s3"]
@@ -86,6 +81,7 @@ reqwest = { version = "0.12.4", features = ["rustls-tls-webpki-roots"] }
 rstest = "0.26.1"
 tempfile = "3.13.0"
 tokio = { version = "1", features = ["test-util", "macros", "rt"] }
+url = "2"
 
 [lints.rust]
 unsafe_code = "forbid"

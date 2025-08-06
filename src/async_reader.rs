@@ -363,20 +363,22 @@ mod tests {
         assert_eq!(tile, fixture_bytes, "Expected tile to match fixture.");
     }
 
-    #[cfg(feature = "object-store-fs")]
     #[rstest]
     #[case(id(0, 0, 0), include_bytes!("../fixtures/0_0_0.png"))]
     #[case(id(2, 2, 2), include_bytes!("../fixtures/2_2_2.png"))]
     #[case(id(3, 4, 5), include_bytes!("../fixtures/3_4_5.png"))]
     #[tokio::test]
     async fn get_tiles_object_store(#[case] coord: TileCoord, #[case] fixture_bytes: &[u8]) {
-        use std::path::PathBuf;
+        use object_store::{ObjectStore, WriteMultipart};
 
-        // object_store expects an absolute url-path
-        let file = PathBuf::from(RASTER_FILE).canonicalize().unwrap();
-        let fileurl = format!("file://{}", file.to_string_lossy());
-
-        let backend = crate::ObjectStoreBackend::try_from(&fileurl.parse().unwrap()).unwrap();
+        let store = Box::new(object_store::memory::InMemory::new());
+        
+        let upload_path = object_store::path::Path::from("file.pmtiles");
+        let upload =  store.put_multipart(&upload_path).await.unwrap();
+        let mut write = WriteMultipart::new(upload);
+        write.write(include_bytes!("../fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles"));
+        write.finish().await.unwrap();
+        let backend = crate::ObjectStoreBackend::new(store, upload_path);
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let tile = tiles.get_tile_decompressed(coord).await.unwrap().unwrap();
 

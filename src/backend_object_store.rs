@@ -14,9 +14,8 @@ use std::ops::Range;
 use bytes::Bytes;
 use object_store::ObjectStore;
 use object_store::path::Path;
-use url::Url;
 
-use crate::{AsyncBackend, PmtError, PmtResult};
+use crate::{AsyncBackend, PmtResult};
 
 /// Backend implementation using the [`object_store`] crate for unified storage access.
 ///
@@ -31,14 +30,14 @@ use crate::{AsyncBackend, PmtError, PmtResult};
 ///
 /// # Example
 ///
-/// ```rust
+/// ```
 /// use object_store::memory::InMemory;
 /// use pmtiles::ObjectStoreBackend;
 ///
 /// let store = Box::new(InMemory::new());
-/// let backend = ObjectStoreBackend::new(&url).unwrap();
-/// # assert_eq!(backend.store().to_string(), "InMemory")
-/// # assert_eq!(backend.path().as_ref(), "tiles.pmtiles")
+/// let backend = ObjectStoreBackend::new(store, "tiles.pmtiles");
+/// # assert_eq!(backend.store().to_string(), "InMemory");
+/// # assert_eq!(backend.path().as_ref(), "tiles.pmtiles");
 /// ```
 #[derive(Debug)]
 pub struct ObjectStoreBackend {
@@ -55,29 +54,29 @@ impl ObjectStoreBackend {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```
     /// use object_store::memory::InMemory;
     /// use pmtiles::ObjectStoreBackend;
     ///
     /// let store = Box::new(InMemory::new());
     /// let backend = ObjectStoreBackend::new(store, "tiles.pmtiles");
-    /// # assert_eq!(backend.store().to_string(), "InMemory")
-    /// # assert_eq!(backend.path().as_ref(), "tiles.pmtiles")
+    /// #   assert_eq!(backend.store().to_string(), "InMemory");
+    /// #   assert_eq!(backend.path().as_ref(), "tiles.pmtiles");
     /// ```
     ///
     /// You can also parse urls from urls as following.
     /// The supported url schemes are dependent on the [`object_store`]-features.
     /// See [`object_store::parse_url`] for further details.
     ///
-    /// ```rust
+    /// ```
     /// use pmtiles::ObjectStoreBackend;
     /// use url::Url;
     ///
-    /// let url = Url::parse("memory://tiles.pmtiles").unwrap();
-    /// let (url, path) = object_store::parse_url(&url);
-    /// let backend = ObjectStoreBackend::new(&url).unwrap();
-    /// # assert_eq!(backend.store().to_string(), "InMemory")
-    /// # assert_eq!(backend.path().as_ref(), "tiles.pmtiles")
+    /// let url = Url::parse("memory:///tiles.pmtiles").unwrap();
+    /// let (store, path) = object_store::parse_url(&url).unwrap();
+    /// let backend = ObjectStoreBackend::new(store, path);
+    /// # assert_eq!(backend.store().to_string(), "InMemory");
+    /// # assert_eq!(backend.path().as_ref(), "tiles.pmtiles");
     /// ```
     pub fn new<P: Into<Path>>(store: Box<dyn ObjectStore>, path: P) -> Self {
         Self {
@@ -117,6 +116,7 @@ mod tests {
     use object_store::memory::InMemory;
 
     use super::*;
+    use crate::PmtError;
 
     #[test]
     fn test_new_backend() {
