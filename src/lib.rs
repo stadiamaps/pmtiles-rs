@@ -11,6 +11,8 @@ mod backend_aws_s3;
 mod backend_http;
 #[cfg(feature = "mmap-async-tokio")]
 mod backend_mmap;
+#[cfg(feature = "object-store")]
+mod backend_object_store;
 #[cfg(feature = "__async-s3")]
 mod backend_s3;
 
@@ -35,6 +37,8 @@ pub use backend_aws_s3::AwsS3Backend;
 pub use backend_http::HttpBackend;
 #[cfg(feature = "mmap-async-tokio")]
 pub use backend_mmap::MmapBackend;
+#[cfg(feature = "object-store")]
+pub use backend_object_store::ObjectStoreBackend;
 #[cfg(feature = "__async-s3")]
 pub use backend_s3::S3Backend;
 #[cfg(feature = "iter-async")]

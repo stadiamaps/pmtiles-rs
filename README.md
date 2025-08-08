@@ -18,6 +18,7 @@ originally created by Brandon Liu for Protomaps.
   - Async `mmap` (Tokio) for local files
   - Async `http` and `https` (Reqwest + Tokio) for URLs
   - Async `s3` (Rust-S3 + Tokio) for S3-compatible buckets
+  - Async `s3`/`azure`/`gcp`/`fs`/`http`/`mem`/custom ([`object_store`](https://docs.rs/object_store))
 - Creating `PMTile` archives
 
 ## Plans & TODOs

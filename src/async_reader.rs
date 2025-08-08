@@ -327,6 +327,8 @@ pub trait AsyncBackend {
 #[cfg(test)]
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
+    use rstest::rstest;
+
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::{AsyncPmTilesReader, MmapBackend, TileCoord};
 
@@ -334,20 +336,24 @@ mod tests {
         TileCoord::new(z, x, y).unwrap()
     }
 
+    #[rstest]
+    #[case(RASTER_FILE)]
+    #[case(VECTOR_FILE)]
     #[tokio::test]
-    async fn open_sanity_check() {
-        let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
+    async fn open_sanity_check(#[case] file: &str) {
+        let backend = MmapBackend::try_from(file).await.unwrap();
         AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     }
 
-    async fn compare_tiles(z: u8, x: u32, y: u32, fixture_bytes: &[u8]) {
+    #[rstest]
+    #[case(id(0, 0, 0), include_bytes!("../fixtures/0_0_0.png"))]
+    #[case(id(2, 2, 2), include_bytes!("../fixtures/2_2_2.png"))]
+    #[case(id(3, 4, 5), include_bytes!("../fixtures/3_4_5.png"))]
+    #[tokio::test]
+    async fn get_tiles(#[case] coord: TileCoord, #[case] fixture_bytes: &[u8]) {
         let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
-        let tile = tiles
-            .get_tile_decompressed(id(z, x, y))
-            .await
-            .unwrap()
-            .unwrap();
+        let tile = tiles.get_tile_decompressed(coord).await.unwrap().unwrap();
 
         assert_eq!(
             tile.len(),
@@ -357,41 +363,52 @@ mod tests {
         assert_eq!(tile, fixture_bytes, "Expected tile to match fixture.");
     }
 
+    #[rstest]
+    #[case(id(0, 0, 0), include_bytes!("../fixtures/0_0_0.png"))]
+    #[case(id(2, 2, 2), include_bytes!("../fixtures/2_2_2.png"))]
+    #[case(id(3, 4, 5), include_bytes!("../fixtures/3_4_5.png"))]
     #[tokio::test]
-    async fn get_first_tile() {
-        let fixture_tile = include_bytes!("../fixtures/0_0_0.png");
-        compare_tiles(0, 0, 0, fixture_tile).await;
+    #[cfg(feature = "object-store")]
+    async fn get_tiles_object_store(#[case] coord: TileCoord, #[case] fixture_bytes: &[u8]) {
+        use object_store::{ObjectStore, WriteMultipart};
+
+        let store = Box::new(object_store::memory::InMemory::new());
+
+        let upload_path = object_store::path::Path::from("file.pmtiles");
+        let upload = store.put_multipart(&upload_path).await.unwrap();
+        let mut write = WriteMultipart::new(upload);
+        write.write(include_bytes!(
+            "../fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles"
+        ));
+        write.finish().await.unwrap();
+        let backend = crate::ObjectStoreBackend::new(store, upload_path);
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+        let tile = tiles.get_tile_decompressed(coord).await.unwrap().unwrap();
+
+        assert_eq!(
+            tile.len(),
+            fixture_bytes.len(),
+            "Expected tile length to match."
+        );
+        assert_eq!(tile, fixture_bytes, "Expected tile to match fixture.");
     }
 
+    #[rstest]
+    #[case(id(6, 31, 23), false)] // missing tile
+    #[case(id(12, 2174, 1492), true)] // existing leaf tile
     #[tokio::test]
-    async fn get_another_tile() {
-        let fixture_tile = include_bytes!("../fixtures/2_2_2.png");
-        compare_tiles(2, 2, 2, fixture_tile).await;
-    }
-
-    #[tokio::test]
-    async fn get_yet_another_tile() {
-        let fixture_tile = include_bytes!("../fixtures/3_4_5.png");
-        compare_tiles(3, 4, 5, fixture_tile).await;
-    }
-
-    #[tokio::test]
-    async fn test_missing_tile() {
+    async fn test_tile_existence(#[case] coord: TileCoord, #[case] should_exist: bool) {
         let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
-        let tile = tiles.get_tile(id(6, 31, 23)).await;
+        let tile = tiles.get_tile(coord).await;
         assert!(tile.is_ok());
-        assert!(tile.unwrap().is_none());
-    }
 
-    #[tokio::test]
-    async fn test_leaf_tile() {
-        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
-        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
-
-        let tile = tiles.get_tile(id(12, 2174, 1492)).await;
-        assert!(tile.is_ok_and(|t| t.is_some()));
+        if should_exist {
+            assert!(tile.unwrap().is_some());
+        } else {
+            assert!(tile.unwrap().is_none());
+        }
     }
 
     #[tokio::test]
@@ -423,44 +440,37 @@ mod tests {
         assert!(!metadata.is_empty());
     }
 
+    #[rstest]
+    #[case(VECTOR_FILE, |tj: &tilejson::TileJSON| assert!(tj.attribution.is_some()))]
+    #[case(RASTER_FILE, |tj: &tilejson::TileJSON| assert!(tj.other.is_empty()))]
     #[tokio::test]
     #[cfg(feature = "tilejson")]
-    async fn test_parse_tilejson() {
-        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+    async fn test_parse_tilejson(
+        #[case] file: &str,
+        #[case] assertion: impl Fn(&tilejson::TileJSON),
+    ) {
+        let backend = MmapBackend::try_from(file).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
-
         let tj = tiles.parse_tilejson(Vec::new()).await.unwrap();
-        assert!(tj.attribution.is_some());
+        assertion(&tj);
     }
 
+    #[rstest]
+    #[case(id(0, 0, 0), b"0")]
+    #[case(id(1, 0, 0), b"1")]
+    #[case(id(1, 0, 1), b"2")]
+    #[case(id(1, 1, 1), b"3")]
+    #[case(id(1, 1, 0), b"4")]
     #[tokio::test]
-    #[cfg(feature = "tilejson")]
-    async fn test_parse_tilejson2() {
-        let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
-        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
-
-        let tj = tiles.parse_tilejson(Vec::new()).await.unwrap();
-        assert!(tj.other.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_martin_675() {
+    async fn test_martin_675(#[case] coord: TileCoord, #[case] expected_contents: &[u8]) {
         let backend = MmapBackend::try_from("fixtures/leaf.pmtiles")
             .await
             .unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         // Verify that the test case does contain a leaf directory
         assert_ne!(0, tiles.get_header().leaf_length);
-        for (contents, z, x, y) in [
-            (b"0", 0, 0, 0),
-            (b"1", 1, 0, 0),
-            (b"2", 1, 0, 1),
-            (b"3", 1, 1, 1),
-            (b"4", 1, 1, 0),
-        ] {
-            let tile = tiles.get_tile(id(z, x, y)).await.unwrap().unwrap();
-            assert_eq!(tile, &contents[..]);
-        }
+        let tile = tiles.get_tile(coord).await.unwrap().unwrap();
+        assert_eq!(tile, expected_contents);
     }
 
     #[tokio::test]
