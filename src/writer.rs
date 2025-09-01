@@ -257,10 +257,17 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
             // Write leaf directories
             for leaf in root_dir.entries() {
                 let len = leaf.length as usize;
-                let mut dir = Directory::with_capacity(len);
-                for entry in self.entries.drain(0..len) {
-                    dir.push(entry);
-                }
+                let dir = if self.entries.len() < len {
+                    // The last leaf, use all remaining entries
+                    Directory::from_entries(self.entries.clone())
+                } else {
+                    let mut tmp_dir = Directory::with_capacity(len);
+                    for entry in self.entries.drain(0..len) {
+                        tmp_dir.push(entry);
+                    }
+                    tmp_dir
+                };
+
                 dir.write_compressed_to(&mut self.out, self.header.internal_compression)?;
             }
         }
@@ -485,9 +492,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn range_index_out_of_bounds_bug() {
-        // This test reproduces a "range end index out of bounds" bug.
+        // This test tries to reproduce a "range end index out of bounds" bug.
         // The buggy code tries to drain `leaf.length` (serialized byte size) entries
         // but when byte size > remaining entries, it panics with index out of bounds.
 
