@@ -483,4 +483,32 @@ mod tests {
 
         writer.finalize().unwrap();
     }
+
+    #[test]
+    #[should_panic]
+    fn range_index_out_of_bounds_bug() {
+        // This test reproduces a "range end index out of bounds" bug.
+        // The buggy code tries to drain `leaf.length` (serialized byte size) entries
+        // but when byte size > remaining entries, it panics with index out of bounds.
+
+        let path = get_temp_file_path("pmtiles").unwrap();
+        let file = File::create(path).unwrap();
+        let mut writer = PmTilesWriter::new(TileType::Png)
+            .internal_compression(Compression::None)
+            .create(file)
+            .unwrap();
+
+        // Create a large number of entries to force leaf directory creation
+        // but with values that create serialized byte sizes larger than entry counts
+        for i in 0..15000 {
+            writer.entries.push(DirEntry {
+                tile_id: i * 10_000_000, // Very large tile IDs
+                run_length: 1,
+                offset: i * 100_000_000, // Very large offsets
+                length: 10_000_000,      // Large lengths
+            });
+        }
+
+        writer.build_directories().unwrap();
+    }
 }
