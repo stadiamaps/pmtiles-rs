@@ -503,4 +503,42 @@ mod tests {
 
         writer.finalize().unwrap();
     }
+
+    #[tokio::test]
+    async fn raw_tiles() {
+        let path = get_temp_file_path("pmtiles").unwrap();
+        let file = File::create(&path).unwrap();
+        let mut writer = PmTilesWriter::new(TileType::Mvt)
+            .tile_compression(Compression::Gzip)
+            .create(file)
+            .unwrap();
+
+        // Add the pre-compressed tile
+        let precompressed_id = TileId::new(0).unwrap();
+        writer.add_raw_tile(precompressed_id.into(), &[0]).unwrap();
+
+        // Add a tile to go through normal compression
+        let regular_id = TileId::new(1).unwrap();
+        writer.add_tile(regular_id.into(), &[1]).unwrap();
+
+        writer.finalize().unwrap();
+
+        // Read it out
+        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let tiles_out = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+
+        let header = tiles_out.get_header();
+        assert_eq!(header.tile_compression, Compression::Gzip);
+
+        let precompressed_tile_raw = tiles_out.get_tile(precompressed_id).await.unwrap().unwrap();
+        assert_eq!(*precompressed_tile_raw, [0]);
+
+        // the regular
+        let regular_tile = tiles_out
+            .get_tile_decompressed(regular_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(*regular_tile, [1]);
+    }
 }
