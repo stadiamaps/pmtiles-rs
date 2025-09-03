@@ -259,7 +259,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
                 let len = leaf.length as usize;
                 let dir = if self.entries.len() < len {
                     // The last leaf, use all remaining entries
-                    Directory::from_entries(self.entries.clone())
+                    Directory::from_entries(std::mem::take(&mut self.entries))
                 } else {
                     let mut tmp_dir = Directory::with_capacity(len);
                     for entry in self.entries.drain(0..len) {
@@ -274,13 +274,15 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
         Ok(root_dir)
     }
 
-    fn optimize_directories(&self, target_root_len: usize) -> PmtResult<(Directory, usize)> {
+    fn optimize_directories(&mut self, target_root_len: usize) -> PmtResult<(Directory, usize)> {
         // Same logic as go-pmtiles (https://github.com/protomaps/go-pmtiles/blob/f1c24e6/pmtiles/directory.go#L368-L396)
         // and planetiler (https://github.com/onthegomap/planetiler/blob/6b3e152/planetiler-core/src/main/java/com/onthegomap/planetiler/pmtiles/WriteablePmtiles.java#L96-L118)
+
+        // Case 1: the entire directory fits into the root directory
         if self.entries.len() < 16384 {
-            let root_dir = Directory::from_entries(self.entries.clone());
+            // we don't need self.entries anymore, so we'll put it in the root_dir directly
+            let root_dir = Directory::from_entries(std::mem::take(&mut self.entries));
             let root_bytes = root_dir.compressed_size(self.header.internal_compression)?;
-            // Case1: the entire directory fits into the target len
             if root_bytes <= target_root_len {
                 return Ok((root_dir, 0));
             }
@@ -455,9 +457,14 @@ mod tests {
                 length: 1,
             });
         }
-        writer
+        let optimize_results = writer
             .optimize_directories(MAX_INITIAL_BYTES - HEADER_SIZE)
-            .unwrap()
+            .unwrap();
+
+        // Test the directory structure as well
+        writer.build_directories().unwrap();
+
+        optimize_results
     }
 
     #[test]
@@ -489,32 +496,5 @@ mod tests {
         assert!(!writer.header.clustered);
 
         writer.finalize().unwrap();
-    }
-
-    #[test]
-    fn range_index_out_of_bounds_bug() {
-        // This test tries to reproduce a "range end index out of bounds" bug.
-        // The buggy code tries to drain `leaf.length` (serialized byte size) entries
-        // but when byte size > remaining entries, it panics with index out of bounds.
-
-        let path = get_temp_file_path("pmtiles").unwrap();
-        let file = File::create(path).unwrap();
-        let mut writer = PmTilesWriter::new(TileType::Png)
-            .internal_compression(Compression::None)
-            .create(file)
-            .unwrap();
-
-        // Create a large number of entries to force leaf directory creation
-        // but with values that create serialized byte sizes larger than entry counts
-        for i in 0..15000 {
-            writer.entries.push(DirEntry {
-                tile_id: i * 10_000_000, // Very large tile IDs
-                run_length: 1,
-                offset: i * 100_000_000, // Very large offsets
-                length: 10_000_000,      // Large lengths
-            });
-        }
-
-        writer.build_directories().unwrap();
     }
 }
