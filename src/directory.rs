@@ -32,11 +32,6 @@ impl Directory {
     }
 
     #[cfg(feature = "write")]
-    pub(crate) fn entries(&self) -> &[DirEntry] {
-        &self.entries
-    }
-
-    #[cfg(feature = "write")]
     pub(crate) fn push(&mut self, entry: DirEntry) {
         self.entries.push(entry);
     }

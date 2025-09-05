@@ -9,6 +9,8 @@ use crate::{
     Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileCoord, TileId, TileType,
 };
 
+const MAX_ROOT_DIR_BYTES: usize = MAX_INITIAL_BYTES - HEADER_SIZE;
+
 /// Builder for creating a new writer.
 pub struct PmTilesWriter {
     header: Header,
@@ -23,6 +25,8 @@ pub struct PmTilesStreamWriter<W: Write + Seek> {
     n_addressed_tiles: u64,
     // TODO: Replace with digest HashMap for deduplicating non-subsequent tiles
     n_tile_contents: u64,
+    // In our implementation, n_tile_entries is always equal to n_tile_contents, but we store it separately for when we support more complex deduplication with the TODO above.
+    n_tile_entries: u64,
     prev_tile_data: Vec<u8>,
 }
 
@@ -172,6 +176,7 @@ impl PmTilesWriter {
             entries: Vec::new(),
             n_addressed_tiles: 0,
             n_tile_contents: 0,
+            n_tile_entries: 0,
             prev_tile_data: vec![],
         };
         writer.header.metadata_length = metadata_length;
@@ -230,6 +235,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
                 self.header.clustered = false;
             }
 
+            self.n_tile_entries += 1;
             self.entries.push(DirEntry {
                 tile_id,
                 run_length: 1, // Will be increased by following identical tiles
@@ -246,46 +252,49 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     /// Build root and leaf directories from entries.
     /// Leaf directories are written to the output.
     /// The root directory is returned.
+    /// The entries are consumed.
+    /// The leaf directory metadata is written to the header.
     fn build_directories(&mut self) -> PmtResult<Directory> {
         if !self.header.clustered {
             // Spec does only say that leaf directories *should* be in ascending order,
             // but sorted directories are better for readers anyway.
             self.entries.sort_by_key(|entry| entry.tile_id);
         }
-        let (root_dir, num_leaves) = self.optimize_directories(MAX_INITIAL_BYTES - HEADER_SIZE)?;
-        if num_leaves > 0 {
-            // Write leaf directories
-            for leaf in root_dir.entries() {
-                let len = leaf.length as usize;
-                let dir = if self.entries.len() < len {
-                    // The last leaf, use all remaining entries
-                    Directory::from_entries(std::mem::take(&mut self.entries))
-                } else {
-                    let mut tmp_dir = Directory::with_capacity(len);
-                    for entry in self.entries.drain(0..len) {
-                        tmp_dir.push(entry);
-                    }
-                    tmp_dir
-                };
+        let (root_dir, leaf_dirs) = self.optimize_directories(MAX_ROOT_DIR_BYTES)?;
+        let mut leaves_bytes = 0usize;
 
-                dir.write_compressed_to(&mut self.out, self.header.internal_compression)?;
-            }
+        // If we have leaf directories, record their starting offset before writing them.
+        if !leaf_dirs.is_empty() {
+            self.header.leaf_offset = self.out.writer_bytes() as u64;
         }
+
+        for leaf in &leaf_dirs {
+            let leaf_bytes =
+                leaf.write_compressed_to_counted(&mut self.out, self.header.internal_compression)?;
+            leaves_bytes += leaf_bytes;
+        }
+
+        self.header.leaf_length = leaves_bytes as u64;
         Ok(root_dir)
     }
 
-    fn optimize_directories(&mut self, target_root_len: usize) -> PmtResult<(Directory, usize)> {
+    fn optimize_directories(
+        &mut self,
+        target_root_len: usize,
+    ) -> PmtResult<(Directory, Vec<Directory>)> {
         // Same logic as go-pmtiles (https://github.com/protomaps/go-pmtiles/blob/f1c24e6/pmtiles/directory.go#L368-L396)
         // and planetiler (https://github.com/onthegomap/planetiler/blob/6b3e152/planetiler-core/src/main/java/com/onthegomap/planetiler/pmtiles/WriteablePmtiles.java#L96-L118)
 
-        // Case 1: the entire directory fits into the root directory
-        if self.entries.len() < 16384 {
+        // Case 1: let's see if the root directory fits without leaves
+        if self.entries.len() < 16_384 {
             // we don't need self.entries anymore, so we'll put it in the root_dir directly
             let root_dir = Directory::from_entries(std::mem::take(&mut self.entries));
             let root_bytes = root_dir.compressed_size(self.header.internal_compression)?;
             if root_bytes <= target_root_len {
-                return Ok((root_dir, 0));
+                return Ok((root_dir, vec![]));
             }
+            // it didn't fit - go to the next case; put the entries back
+            self.entries = root_dir.entries;
         }
 
         // TODO: case 2: mixed tile entries/directory entries in root
@@ -295,20 +304,27 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
 
         let mut leaf_size = (self.entries.len() / 3500).max(4096);
         loop {
-            let (root_dir, num_leaves) = self.build_roots_leaves(leaf_size)?;
+            let (root_dir, leaf_dirs) = self.build_roots_leaves(leaf_size)?;
             let root_bytes = root_dir.compressed_size(self.header.internal_compression)?;
             if root_bytes <= target_root_len {
-                return Ok((root_dir, num_leaves));
+                return Ok((root_dir, leaf_dirs));
             }
             leaf_size += leaf_size / 5; // go-pmtiles: leaf_size *= 1.2
         }
     }
 
-    fn build_roots_leaves(&self, leaf_size: usize) -> PmtResult<(Directory, usize)> {
+    /// Build root directory and leaf directories from entries, given a leaf size.
+    /// The leaf directories are not written to output.
+    /// The root directory is returned.
+    fn build_roots_leaves(&self, leaf_size: usize) -> PmtResult<(Directory, Vec<Directory>)> {
         let mut root_dir = Directory::with_capacity(self.entries.len() / leaf_size);
+        let mut leaves = Vec::with_capacity(self.entries.len() / leaf_size);
         let mut offset = 0;
         for chunk in self.entries.chunks(leaf_size) {
-            let leaf_size = self.dir_size(chunk)?;
+            let leaf = Directory::from_entries(chunk.to_vec());
+            let leaf_size = leaf.compressed_size(self.header.internal_compression)?;
+            leaves.push(leaf);
+
             root_dir.push(DirEntry {
                 tile_id: chunk[0].tile_id,
                 offset,
@@ -318,26 +334,22 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
             offset += leaf_size as u64;
         }
 
-        let num_leaves = root_dir.entries().len();
-        Ok((root_dir, num_leaves))
-    }
-
-    fn dir_size(&self, entries: &[DirEntry]) -> PmtResult<usize> {
-        let dir = Directory::from_entries(entries.to_vec());
-        dir.compressed_size(self.header.internal_compression)
+        Ok((root_dir, leaves))
     }
 
     /// Finish writing the `PMTiles` file.
     pub fn finalize(mut self) -> PmtResult<()> {
-        if let Some(last) = self.entries.last() {
-            self.header.data_length = last.offset + u64::from(last.length);
-            self.header.leaf_offset = self.header.data_offset + self.header.data_length;
-            self.header.n_addressed_tiles = self.n_addressed_tiles.try_into().ok();
-            self.header.n_tile_entries = (self.entries.len() as u64).try_into().ok();
-            self.header.n_tile_contents = self.n_tile_contents.try_into().ok();
-        }
+        // We're done writing data, so we can set the data_length here.
+        self.header.data_length =
+            self.out.writer_bytes() as u64 - MAX_INITIAL_BYTES as u64 - self.header.metadata_length;
+
         // Write leaf directories and get a root directory
         let root_dir = self.build_directories()?;
+
+        self.header.n_addressed_tiles = self.n_addressed_tiles.try_into().ok();
+        self.header.n_tile_contents = self.n_tile_contents.try_into().ok();
+        self.header.n_tile_entries = self.n_tile_entries.try_into().ok();
+
         // Determine compressed root directory length
         let mut root_dir_buf = vec![];
         root_dir.write_compressed_to(&mut root_dir_buf, self.header.internal_compression)?;
@@ -362,14 +374,15 @@ fn into_u32(v: usize) -> PmtResult<u32> {
 #[expect(clippy::float_cmp)]
 mod tests {
     use std::fs::File;
+    use std::num::NonZeroU64;
+    use std::sync::Arc;
 
+    use futures_util::TryStreamExt;
     use tempfile::NamedTempFile;
 
-    use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
     use crate::tests::RASTER_FILE;
     use crate::{
-        AsyncPmTilesReader, Compression, DirEntry, Directory, MmapBackend, PmTilesWriter,
-        TileCoord, TileId, TileType,
+        AsyncPmTilesReader, Compression, MmapBackend, PmTilesWriter, TileCoord, TileId, TileType,
     };
 
     fn get_temp_file_path(suffix: &str) -> std::io::Result<String> {
@@ -441,44 +454,61 @@ mod tests {
         }
     }
 
-    fn gen_entries(num_tiles: u64) -> (Directory, usize) {
+    fn gen_entries(num_tiles: u64) -> String {
         let path = get_temp_file_path("pmtiles").unwrap();
-        let file = File::create(path).unwrap();
+        let file = File::create(&path).unwrap();
         let mut writer = PmTilesWriter::new(TileType::Png)
             // flate2 compression is extremely slow in debug mode
             .internal_compression(Compression::None)
             .create(file)
             .unwrap();
         for tile_id in 0..num_tiles {
-            writer.entries.push(DirEntry {
-                tile_id,
-                run_length: 1,
-                offset: tile_id,
-                length: 1,
-            });
+            let data: Vec<u8> = tile_id.to_le_bytes().to_vec();
+            writer
+                .add_tile(TileId::new(tile_id).unwrap().into(), &data)
+                .unwrap();
         }
-        let optimize_results = writer
-            .optimize_directories(MAX_INITIAL_BYTES - HEADER_SIZE)
+        writer.finalize().unwrap();
+
+        path
+    }
+
+    async fn verify_entries(file_path: &str, num_tiles: u64) {
+        let backend = MmapBackend::try_from(file_path).await.unwrap();
+        let tiles_out = Arc::new(AsyncPmTilesReader::try_from_source(backend).await.unwrap());
+        let header_out = tiles_out.get_header();
+        assert_eq!(header_out.n_addressed_tiles, NonZeroU64::new(num_tiles));
+        assert_eq!(header_out.n_tile_entries, NonZeroU64::new(num_tiles));
+        assert_eq!(header_out.n_tile_contents, NonZeroU64::new(num_tiles));
+        let entries = tiles_out
+            .clone()
+            .entries()
+            .try_collect::<Vec<_>>()
+            .await
             .unwrap();
+        let coords = entries
+            .iter()
+            .flat_map(|e| e.iter_coords())
+            .collect::<Vec<_>>();
 
-        // Test the directory structure as well
-        writer.build_directories().unwrap();
-
-        optimize_results
+        assert_eq!(coords.len(), usize::try_from(num_tiles).unwrap());
+        for tile_id in &[coords.first().unwrap(), coords.last().unwrap()] {
+            let data: Vec<u8> = tile_id.value().to_le_bytes().to_vec();
+            let tile_out = tiles_out.get_tile(**tile_id).await.unwrap().unwrap();
+            assert_eq!(tile_out, data);
+        }
     }
 
-    #[test]
-    fn no_leaves() {
-        let (root_dir, num_leaves) = gen_entries(100);
-        assert_eq!(num_leaves, 0);
-        assert_eq!(root_dir.entries().len(), 100);
+    #[tokio::test]
+    async fn no_leaves() {
+        let path = gen_entries(100);
+        verify_entries(&path, 100).await;
     }
 
-    #[test]
-    fn with_leaves() {
-        let (root_dir, num_leaves) = gen_entries(20000);
-        assert_eq!(num_leaves, 5);
-        assert_eq!(root_dir.entries().len(), num_leaves);
+    #[tokio::test]
+    async fn with_leaves() {
+        let path = gen_entries(20000);
+        verify_entries(&path, 20000).await;
     }
 
     #[test]
