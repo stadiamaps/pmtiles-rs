@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::io::{BufWriter, Seek, Write};
 
+use blake3;
 use countio::Counter;
 use flate2::write::GzEncoder;
 
@@ -18,18 +20,28 @@ pub struct PmTilesWriter {
     metadata: String,
 }
 
+struct TileContentLocation {
+    offset: u64,
+    length: u32,
+}
+
 /// `PMTiles` streaming writer.
 pub struct PmTilesStreamWriter<W: Write + Seek> {
     out: Counter<BufWriter<W>>,
     header: Header,
     entries: Vec<DirEntry>,
+
+    /// The number of addressable tiles in this archive.
     n_addressed_tiles: u64,
-    // TODO: Replace with digest HashMap for deduplicating non-subsequent tiles
-    n_tile_contents: u64,
-    // In our implementation, n_tile_entries is always equal to n_tile_contents,
-    // but we store it separately for when we support more complex deduplication with the TODO above.
+
+    /// The number of tile entries (not including directory entries) in this archive.
     n_tile_entries: u64,
-    prev_tile_data: Vec<u8>,
+
+    /// A map of tile content locations by their hash.
+    /// Use len() to get `n_tile_contents`.
+    tile_content_map: HashMap<[u8; 32], TileContentLocation>,
+
+    prev_tile_hash: Option<[u8; 32]>,
 }
 
 pub(crate) trait WriteTo {
@@ -177,9 +189,9 @@ impl PmTilesWriter {
             header: self.header,
             entries: Vec::new(),
             n_addressed_tiles: 0,
-            n_tile_contents: 0,
             n_tile_entries: 0,
-            prev_tile_data: vec![],
+            prev_tile_hash: None,
+            tile_content_map: HashMap::new(),
         };
         writer.header.metadata_length = metadata_length;
         writer.header.data_offset = MAX_INITIAL_BYTES as u64 + metadata_length;
@@ -235,32 +247,51 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
             run_length: 0,
         };
         let last_entry = self.entries.last_mut().unwrap_or(&mut first_entry);
+        let tile_hash: [u8; 32] = blake3::hash(data).into();
 
         self.n_addressed_tiles += 1;
         if !is_first
-            && self.prev_tile_data == data
+            && self.prev_tile_hash == Some(tile_hash)
             && tile_id == last_entry.tile_id + u64::from(last_entry.run_length)
         {
             last_entry.run_length += 1;
-        } else {
-            let offset = last_entry.offset + u64::from(last_entry.length);
-            // Write tile
-            let len = data.write_compressed_to_counted(&mut self.out, tile_compression)?;
-            let length = into_u32(len)?;
-            self.n_tile_contents += 1;
+        } else if let Some(loc) = self.tile_content_map.get(&tile_hash) {
+            // Reuse existing tile content
+
             if tile_id != last_entry.tile_id + u64::from(last_entry.run_length) {
                 self.header.clustered = false;
             }
 
             self.n_tile_entries += 1;
+            self.prev_tile_hash = Some(tile_hash);
+            self.entries.push(DirEntry {
+                tile_id,
+                run_length: 1, // Will be increased by following identical tiles
+                offset: loc.offset,
+                length: loc.length,
+            });
+        } else {
+            let offset = last_entry.offset + u64::from(last_entry.length);
+            // Write tile
+            let len = data.write_compressed_to_counted(&mut self.out, tile_compression)?;
+            let length = into_u32(len)?;
+
+            if tile_id != last_entry.tile_id + u64::from(last_entry.run_length) {
+                self.header.clustered = false;
+            }
+
+            self.n_tile_entries += 1;
+            self.prev_tile_hash = Some(tile_hash);
+            self.tile_content_map
+                .entry(tile_hash)
+                .or_insert(TileContentLocation { offset, length });
+
             self.entries.push(DirEntry {
                 tile_id,
                 run_length: 1, // Will be increased by following identical tiles
                 offset,
                 length,
             });
-
-            self.prev_tile_data = data.to_vec();
         }
 
         Ok(())
@@ -364,7 +395,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
         let root_dir = self.build_directories()?;
 
         self.header.n_addressed_tiles = self.n_addressed_tiles.try_into().ok();
-        self.header.n_tile_contents = self.n_tile_contents.try_into().ok();
+        self.header.n_tile_contents = (self.tile_content_map.len() as u64).try_into().ok();
         self.header.n_tile_entries = self.n_tile_entries.try_into().ok();
 
         // Determine compressed root directory length
@@ -441,8 +472,8 @@ mod tests {
         assert_eq!(header_in.tile_type, header_out.tile_type);
         assert_eq!(header_in.n_addressed_tiles, header_out.n_addressed_tiles);
         assert_eq!(header_in.n_tile_entries, header_out.n_tile_entries);
-        // assert_eq!(header_in.n_tile_contents, header_out.n_tile_contents);
-        assert_eq!(Some(84), header_out.n_tile_contents.map(Into::into));
+        assert_eq!(header_in.n_tile_contents, header_out.n_tile_contents);
+        // assert_eq!(Some(84), header_out.n_tile_contents.map(Into::into));
         assert_eq!(header_in.min_zoom, header_out.min_zoom);
         assert_eq!(header_in.max_zoom, header_out.max_zoom);
         assert_eq!(header_in.center_zoom, header_out.center_zoom);
