@@ -1,6 +1,6 @@
-use std::io::{BufWriter, Seek, Write};
 use countio::Counter;
 use flate2::write::GzEncoder;
+use std::io::{BufWriter, Seek, Write};
 
 use crate::PmtError::UnsupportedCompression;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
