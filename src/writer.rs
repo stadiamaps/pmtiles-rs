@@ -193,7 +193,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     /// Add a pre-compressed tile to the writer.
     ///
     /// Use this method only if you want to manage the compression aspects before storing the tile.
-    /// Otherwise you should use [`add_tile`](Self::add_tile) instead.
+    /// Otherwise, you should use [`add_tile`](Self::add_tile) instead.
     ///
     /// Tiles are deduplicated and written to output.
     /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
