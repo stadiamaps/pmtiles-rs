@@ -1,5 +1,4 @@
 use std::io::{BufWriter, Seek, Write};
-
 use countio::Counter;
 use flate2::write::GzEncoder;
 
@@ -9,6 +8,7 @@ use crate::{
     Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileCoord, TileId, TileType,
 };
 
+/// Maximum size of the root directory in bytes.
 const MAX_ROOT_DIR_BYTES: usize = MAX_INITIAL_BYTES - HEADER_SIZE;
 
 /// Builder for creating a new writer.
@@ -25,7 +25,8 @@ pub struct PmTilesStreamWriter<W: Write + Seek> {
     n_addressed_tiles: u64,
     // TODO: Replace with digest HashMap for deduplicating non-subsequent tiles
     n_tile_contents: u64,
-    // In our implementation, n_tile_entries is always equal to n_tile_contents, but we store it separately for when we support more complex deduplication with the TODO above.
+    // In our implementation, n_tile_entries is always equal to n_tile_contents,
+    // but we store it separately for when we support more complex deduplication with the TODO above.
     n_tile_entries: u64,
     prev_tile_data: Vec<u8>,
 }
