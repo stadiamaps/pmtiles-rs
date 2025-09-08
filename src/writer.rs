@@ -182,22 +182,23 @@ impl PmTilesWriter {
 }
 
 impl<W: Write + Seek> PmTilesStreamWriter<W> {
-    /// Add a tile to the writer, without automatic compression.
-    ///
-    /// If `data` is not already compressed, you should use [`add_tile`](Self::add_tile) instead.
-    ///
-    /// Tiles are deduplicated and written to output.
-    /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
-    pub fn add_raw_tile(&mut self, coord: TileCoord, data: &[u8]) -> PmtResult<()> {
-        self.add_tile_by_id(coord.into(), data, Compression::None)
-    }
-
     /// Add a tile to the writer.
     ///
     /// Tiles are deduplicated and written to output.
     /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
     pub fn add_tile(&mut self, coord: TileCoord, data: &[u8]) -> PmtResult<()> {
         self.add_tile_by_id(coord.into(), data, self.header.tile_compression)
+    }
+
+    /// Add a pre-compressed tile to the writer.
+    ///
+    /// Use this method only if you want to manage the compression aspects before storing the tile.
+    /// Otherwise you should use [`add_tile`](Self::add_tile) instead.
+    ///
+    /// Tiles are deduplicated and written to output.
+    /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
+    pub fn add_raw_tile(&mut self, coord: TileCoord, data: &[u8]) -> PmtResult<()> {
+        self.add_tile_by_id(coord.into(), data, Compression::None)
     }
 
     /// Add a tile to the writer.
