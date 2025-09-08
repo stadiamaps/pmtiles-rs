@@ -1,7 +1,7 @@
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::io::{BufWriter, Seek, Write};
 
-use blake3;
 use countio::Counter;
 use flate2::write::GzEncoder;
 
@@ -38,7 +38,7 @@ pub struct PmTilesStreamWriter<W: Write + Seek> {
     n_tile_entries: u64,
 
     /// A map of tile content locations by their hash.
-    /// Use len() to get `n_tile_contents`.
+    /// Use `len()` to get `n_tile_contents`.
     tile_content_map: HashMap<[u8; 32], TileContentLocation>,
 
     prev_tile_hash: Option<[u8; 32]>,
@@ -260,15 +260,16 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
         }
 
         // Based on the tile hash, either get the existing location or write the tile data to the archive
-        let loc = self.tile_content_map.entry(tile_hash).or_insert_with(|| {
-            let offset = self.prev_written_tile_offset;
-            let len = data
-                .write_compressed_to_counted(&mut self.out, tile_compression)
-                .expect("could not write tile data");
-            self.prev_written_tile_offset += len as u64;
-            let length = into_u32(len).unwrap();
-            TileContentLocation { offset, length }
-        });
+        let loc = match self.tile_content_map.entry(tile_hash) {
+            Entry::Occupied(e) => e.into_mut(),
+            Entry::Vacant(e) => {
+                let offset = self.prev_written_tile_offset;
+                let len = data.write_compressed_to_counted(&mut self.out, tile_compression)?;
+                self.prev_written_tile_offset += len as u64;
+                let length = into_u32(len)?;
+                e.insert(TileContentLocation { offset, length })
+            }
+        };
 
         self.prev_tile_hash = Some(tile_hash);
 
