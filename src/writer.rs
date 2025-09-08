@@ -187,14 +187,30 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     /// Tiles are deduplicated and written to output.
     /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
     pub fn add_tile(&mut self, coord: TileCoord, data: &[u8]) -> PmtResult<()> {
-        self.add_tile_by_id(coord.into(), data)
+        self.add_tile_by_id(coord.into(), data, self.header.tile_compression)
+    }
+
+    /// Add a pre-compressed tile to the writer.
+    ///
+    /// Use this method only if you want to manage the compression aspects before storing the tile.
+    /// Otherwise, you should use [`add_tile`](Self::add_tile) instead.
+    ///
+    /// Tiles are deduplicated and written to output.
+    /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
+    pub fn add_raw_tile(&mut self, coord: TileCoord, data: &[u8]) -> PmtResult<()> {
+        self.add_tile_by_id(coord.into(), data, Compression::None)
     }
 
     /// Add a tile to the writer.
     ///
     /// Tiles are deduplicated and written to output.
     /// The `tile_id` should be increasing for best read performance.
-    fn add_tile_by_id(&mut self, tile_id: TileId, data: &[u8]) -> PmtResult<()> {
+    fn add_tile_by_id(
+        &mut self,
+        tile_id: TileId,
+        data: &[u8],
+        tile_compression: Compression,
+    ) -> PmtResult<()> {
         if data.is_empty() {
             // Ignore empty tiles, since the spec does not allow storing them
             return Ok(());
@@ -222,8 +238,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
         } else {
             let offset = last_entry.offset + u64::from(last_entry.length);
             // Write tile
-            let len =
-                data.write_compressed_to_counted(&mut self.out, self.header.tile_compression)?;
+            let len = data.write_compressed_to_counted(&mut self.out, tile_compression)?;
             let length = into_u32(len)?;
             self.n_tile_contents += 1;
             if tile_id != last_entry.tile_id + u64::from(last_entry.run_length) {
@@ -387,7 +402,9 @@ mod tests {
         for id in 0..num_tiles.into() {
             let id = TileId::new(id).unwrap();
             let tile = tiles_in.get_tile(id).await.unwrap().unwrap();
-            writer.add_tile_by_id(id, &tile).unwrap();
+            writer
+                .add_tile_by_id(id, &tile, header_in.tile_compression)
+                .unwrap();
         }
         writer.finalize().unwrap();
 
@@ -472,15 +489,58 @@ mod tests {
         let file = get_temp_file_path("pmtiles").unwrap();
         let file = File::create(file).unwrap();
         let mut writer = PmTilesWriter::new(TileType::Png).create(file).unwrap();
+        assert_eq!(writer.header.tile_compression, Compression::None);
 
         let id = TileId::new(0).unwrap();
-        writer.add_tile_by_id(id, &[0, 1, 2, 3]).unwrap();
+        writer
+            .add_tile_by_id(id, &[0, 1, 2, 3], Compression::None)
+            .unwrap();
         assert!(writer.header.clustered);
 
         let id = TileId::new(2).unwrap();
-        writer.add_tile_by_id(id, &[0, 1, 2, 3]).unwrap();
+        writer
+            .add_tile_by_id(id, &[0, 1, 2, 3], Compression::None)
+            .unwrap();
         assert!(!writer.header.clustered);
 
         writer.finalize().unwrap();
+    }
+
+    #[tokio::test]
+    async fn raw_tiles() {
+        let path = get_temp_file_path("pmtiles").unwrap();
+        let file = File::create(&path).unwrap();
+        let mut writer = PmTilesWriter::new(TileType::Mvt)
+            .tile_compression(Compression::Gzip)
+            .create(file)
+            .unwrap();
+
+        // Add the pre-compressed tile
+        let precompressed_id = TileId::new(0).unwrap();
+        writer.add_raw_tile(precompressed_id.into(), &[0]).unwrap();
+
+        // Add a tile to go through normal compression
+        let regular_id = TileId::new(1).unwrap();
+        writer.add_tile(regular_id.into(), &[1]).unwrap();
+
+        writer.finalize().unwrap();
+
+        // Read it out
+        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let tiles_out = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+
+        let header = tiles_out.get_header();
+        assert_eq!(header.tile_compression, Compression::Gzip);
+
+        let precompressed_tile_raw = tiles_out.get_tile(precompressed_id).await.unwrap().unwrap();
+        assert_eq!(*precompressed_tile_raw, [0]);
+
+        // the regular
+        let regular_tile = tiles_out
+            .get_tile_decompressed(regular_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(*regular_tile, [1]);
     }
 }
