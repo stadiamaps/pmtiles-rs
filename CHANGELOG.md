@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.15.0...v0.16.0) - 2025-09-08
+
+### Added
+
+- *(object_store)* add an `object_store::ObjectStore` backend ([#71](https://github.com/stadiamaps/pmtiles-rs/pull/71))
+- `Coord::new` now returns Result ([#69](https://github.com/stadiamaps/pmtiles-rs/pull/69))
+
+### Other
+
+- Add an add_raw_tile that skips tile compression ([#74](https://github.com/stadiamaps/pmtiles-rs/pull/74))
+- [pre-commit.ci] pre-commit autoupdate ([#73](https://github.com/stadiamaps/pmtiles-rs/pull/73))
+- Bump actions/checkout from 4 to 5 in the all-actions-version-updates group ([#72](https://github.com/stadiamaps/pmtiles-rs/pull/72))
+
 ## [0.15.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.14.0...v0.15.0) - 2025-07-02
 
 ### Added
