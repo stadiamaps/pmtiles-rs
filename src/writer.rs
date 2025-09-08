@@ -222,9 +222,6 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
 
         let tile_id = tile_id.value();
         let mut last_entry = self.entries.last_mut();
-        if last_entry.is_none() && tile_id > 0 {
-            self.header.clustered = false;
-        }
         let tile_hash: [u8; 32] = blake3::hash(data).into();
 
         self.n_addressed_tiles += 1;
@@ -238,9 +235,9 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
             return Ok(());
         }
 
-        // If the tile_id is not consecutive, mark as unclustered
+        // If the tile_id is not in order, mark as unclustered
         if let Some(last_entry) = last_entry
-            && tile_id != last_entry.tile_id + u64::from(last_entry.run_length)
+            && tile_id < last_entry.tile_id + u64::from(last_entry.run_length)
         {
             self.header.clustered = false;
         }
@@ -537,11 +534,11 @@ mod tests {
         let file = File::create(file).unwrap();
         let mut writer = PmTilesWriter::new(TileType::Png).create(file).unwrap();
 
-        let id = TileId::new(0).unwrap();
+        let id = TileId::new(2).unwrap();
         writer.add_tile_by_id(id, &[0, 1, 2, 3]).unwrap();
         assert!(writer.header.clustered);
 
-        let id = TileId::new(2).unwrap();
+        let id = TileId::new(0).unwrap();
         writer.add_tile_by_id(id, &[0, 1, 2, 3]).unwrap();
         assert!(!writer.header.clustered);
 
