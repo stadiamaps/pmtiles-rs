@@ -42,6 +42,7 @@ pub struct PmTilesStreamWriter<W: Write + Seek> {
     tile_content_map: HashMap<[u8; 32], TileContentLocation>,
 
     prev_tile_hash: Option<[u8; 32]>,
+    prev_written_tile_offset: u64,
 }
 
 pub(crate) trait WriteTo {
@@ -190,8 +191,9 @@ impl PmTilesWriter {
             entries: Vec::new(),
             n_addressed_tiles: 0,
             n_tile_entries: 0,
-            prev_tile_hash: None,
             tile_content_map: HashMap::new(),
+            prev_tile_hash: None,
+            prev_written_tile_offset: 0,
         };
         writer.header.metadata_length = metadata_length;
         writer.header.data_offset = MAX_INITIAL_BYTES as u64 + metadata_length;
@@ -236,63 +238,50 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
         }
 
         let tile_id = tile_id.value();
-        let is_first = self.entries.is_empty();
-        if is_first && tile_id > 0 {
+        let mut last_entry = self.entries.last_mut();
+        if last_entry.is_none() && tile_id > 0 {
             self.header.clustered = false;
         }
-        let mut first_entry = DirEntry {
-            tile_id: 0,
-            offset: 0,
-            length: 0,
-            run_length: 0,
-        };
-        let last_entry = self.entries.last_mut().unwrap_or(&mut first_entry);
         let tile_hash: [u8; 32] = blake3::hash(data).into();
 
         self.n_addressed_tiles += 1;
-        if !is_first
+
+        // If the tile is identical to the previous one and the tile_id is consecutive, increase run_length
+        if let Some(ref mut last_entry) = last_entry
             && self.prev_tile_hash == Some(tile_hash)
             && tile_id == last_entry.tile_id + u64::from(last_entry.run_length)
         {
             last_entry.run_length += 1;
-        } else if let Some(loc) = self.tile_content_map.get(&tile_hash) {
-            // Reuse existing tile content
-
-            if tile_id != last_entry.tile_id + u64::from(last_entry.run_length) {
-                self.header.clustered = false;
-            }
-
-            self.n_tile_entries += 1;
-            self.prev_tile_hash = Some(tile_hash);
-            self.entries.push(DirEntry {
-                tile_id,
-                run_length: 1, // Will be increased by following identical tiles
-                offset: loc.offset,
-                length: loc.length,
-            });
-        } else {
-            let offset = last_entry.offset + u64::from(last_entry.length);
-            // Write tile
-            let len = data.write_compressed_to_counted(&mut self.out, tile_compression)?;
-            let length = into_u32(len)?;
-
-            if tile_id != last_entry.tile_id + u64::from(last_entry.run_length) {
-                self.header.clustered = false;
-            }
-
-            self.n_tile_entries += 1;
-            self.prev_tile_hash = Some(tile_hash);
-            self.tile_content_map
-                .entry(tile_hash)
-                .or_insert(TileContentLocation { offset, length });
-
-            self.entries.push(DirEntry {
-                tile_id,
-                run_length: 1, // Will be increased by following identical tiles
-                offset,
-                length,
-            });
+            return Ok(());
         }
+
+        // If the tile_id is not consecutive, mark as unclustered
+        if let Some(last_entry) = last_entry
+            && tile_id != last_entry.tile_id + u64::from(last_entry.run_length)
+        {
+            self.header.clustered = false;
+        }
+
+        // Based on the tile hash, either get the existing location or write the tile data to the archive
+        let loc = self.tile_content_map.entry(tile_hash).or_insert_with(|| {
+            let offset = self.prev_written_tile_offset;
+            let len = data
+                .write_compressed_to_counted(&mut self.out, tile_compression)
+                .expect("could not write tile data");
+            self.prev_written_tile_offset += len as u64;
+            let length = into_u32(len).unwrap();
+            TileContentLocation { offset, length }
+        });
+
+        self.prev_tile_hash = Some(tile_hash);
+
+        self.n_tile_entries += 1;
+        self.entries.push(DirEntry {
+            tile_id,
+            run_length: 1, // Will be increased by following identical tiles
+            offset: loc.offset,
+            length: loc.length,
+        });
 
         Ok(())
     }
