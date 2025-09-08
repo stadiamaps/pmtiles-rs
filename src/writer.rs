@@ -488,6 +488,7 @@ mod tests {
         let file = get_temp_file_path("pmtiles").unwrap();
         let file = File::create(file).unwrap();
         let mut writer = PmTilesWriter::new(TileType::Png).create(file).unwrap();
+        assert_eq!(writer.header.tile_compression, Compression::None);
 
         let id = TileId::new(0).unwrap();
         writer
