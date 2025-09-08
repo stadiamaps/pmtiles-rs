@@ -22,7 +22,7 @@ mmap-async-tokio = ["__async", "dep:fmmap", "fmmap?/tokio"]
 s3-async-native = ["__async-s3", "__async-s3-nativetls"]
 s3-async-rustls = ["__async-s3", "__async-s3-rustls"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
-write = ["dep:countio", "dep:flate2"]
+write = ["dep:blake3", "dep:countio", "dep:flate2"]
 
 object-store = ["dep:object_store"]
 
@@ -57,6 +57,7 @@ __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
 async-compression = { version = "0.4", features = ["gzip"] }
 async-stream = { version = "0.3", optional = true }
 aws-sdk-s3 = { version = "1.49.0", optional = true }
+blake3 = { version = "1.8", optional = true }
 bytes = "1"
 countio = { version = "0.2.19", optional = true }
 fast_hilbert = "2.0.1"
