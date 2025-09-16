@@ -606,4 +606,57 @@ mod tests {
             .unwrap();
         assert_eq!(*regular_tile, [1]);
     }
+
+    #[tokio::test]
+    async fn dedup_nonconsecutive_tiles_no_rle() {
+        // Create archive with tiles A, B, C where A == C and B differs.
+        let path = get_temp_file_path("pmtiles").unwrap();
+        let file = File::create(&path).unwrap();
+        let mut writer = PmTilesWriter::new(TileType::Png)
+            .internal_compression(Compression::None)
+            .create(file)
+            .unwrap();
+
+        // A == C, B differs.
+        let a = b"ABC";
+        let b = b"X";
+        let c = b"ABC";
+
+        writer.add_tile(TileId::new(0).unwrap().into(), a).unwrap();
+        writer.add_tile(TileId::new(1).unwrap().into(), b).unwrap();
+        writer.add_tile(TileId::new(2).unwrap().into(), c).unwrap();
+        writer.finalize().unwrap();
+
+        // Open and verify: 3 addressed/entries, 2 unique contents (A and C deduped), no RLE.
+        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let tiles_out = Arc::new(AsyncPmTilesReader::try_from_source(backend).await.unwrap());
+        let header = tiles_out.get_header();
+        assert_eq!(header.n_addressed_tiles, NonZeroU64::new(3));
+        assert_eq!(header.n_tile_entries, NonZeroU64::new(3));
+        assert_eq!(header.n_tile_contents, NonZeroU64::new(2));
+
+        let entries = tiles_out
+            .clone()
+            .entries()
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 3);
+
+        let e0 = entries.iter().find(|e| e.tile_id == 0).unwrap();
+        let e1 = entries.iter().find(|e| e.tile_id == 1).unwrap();
+        let e2 = entries.iter().find(|e| e.tile_id == 2).unwrap();
+
+        // No RLE should be used for non-consecutive identical tiles.
+        assert_eq!(e0.run_length, 1);
+        assert_eq!(e1.run_length, 1);
+        assert_eq!(e2.run_length, 1);
+
+        // A and C should refer to the same bytes in the archive.
+        assert_eq!(e0.offset, e2.offset);
+        assert_eq!(e0.length, e2.length);
+
+        // B should point to different bytes.
+        assert_ne!(e1.offset, e0.offset);
+    }
 }
