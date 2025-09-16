@@ -244,19 +244,18 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
         self.n_addressed_tiles += 1;
 
         // If the tile is identical to the previous one and the tile_id is consecutive, increase run_length
-        if let Some(ref mut last_entry) = last_entry
-            && self.prev_tile_hash == Some(tile_hash)
-            && tile_id == last_entry.tile_id + u64::from(last_entry.run_length)
-        {
-            last_entry.run_length += 1;
-            return Ok(());
-        }
+        if let Some(ref mut last_entry) = last_entry {
+            if self.prev_tile_hash == Some(tile_hash)
+                && tile_id == last_entry.tile_id + u64::from(last_entry.run_length)
+            {
+                last_entry.run_length += 1;
+                return Ok(());
+            }
 
-        // If the tile_id is not in order, mark as unclustered
-        if let Some(last_entry) = last_entry
-            && tile_id < last_entry.tile_id + u64::from(last_entry.run_length)
-        {
-            self.header.clustered = false;
+            // If the tile_id is not in order, mark as unclustered
+            if tile_id < last_entry.tile_id + u64::from(last_entry.run_length) {
+                self.header.clustered = false;
+            }
         }
 
         // Based on the tile hash, either get the existing location or write the tile data to the archive
