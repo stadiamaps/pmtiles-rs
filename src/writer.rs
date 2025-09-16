@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::hash::BuildHasherDefault;
 use std::io::{BufWriter, Seek, Write};
 
 use countio::Counter;
 use flate2::write::GzEncoder;
+use twox_hash::XxHash3_64;
 
 use crate::PmtError::UnsupportedCompression;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
@@ -39,9 +41,9 @@ pub struct PmTilesStreamWriter<W: Write + Seek> {
 
     /// A map of tile content locations by their hash.
     /// Use `len()` to get `n_tile_contents`.
-    tile_content_map: HashMap<[u8; 32], TileContentLocation>,
+    tile_content_map: HashMap<u64, TileContentLocation, BuildHasherDefault<XxHash3_64>>,
 
-    prev_tile_hash: Option<[u8; 32]>,
+    prev_tile_hash: Option<u64>,
     prev_written_tile_offset: u64,
 }
 
@@ -191,7 +193,7 @@ impl PmTilesWriter {
             entries: Vec::new(),
             n_addressed_tiles: 0,
             n_tile_entries: 0,
-            tile_content_map: HashMap::new(),
+            tile_content_map: HashMap::default(),
             prev_tile_hash: None,
             prev_written_tile_offset: 0,
         };
@@ -239,7 +241,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
 
         let tile_id = tile_id.value();
         let mut last_entry = self.entries.last_mut();
-        let tile_hash: [u8; 32] = blake3::hash(data).into();
+        let tile_hash: u64 = XxHash3_64::oneshot(data);
 
         self.n_addressed_tiles += 1;
 
