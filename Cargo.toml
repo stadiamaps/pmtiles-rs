@@ -65,7 +65,7 @@ fmmap = { version = "0.4", default-features = false, optional = true }
 futures-util = { version = "0.3", optional = true }
 object_store = { version = "0.12", optional = true, default-features = false }
 reqwest = { version = "0.12.4", default-features = false, optional = true }
-rust-s3 = { version = "0.35.1", optional = true, default-features = false, features = ["fail-on-err"] }
+rust-s3 = { version = "0.37.0", optional = true, default-features = false, features = ["fail-on-err"] }
 serde = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
 thiserror = "2"
