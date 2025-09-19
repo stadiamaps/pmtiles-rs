@@ -1,7 +1,11 @@
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::hash::BuildHasherDefault;
 use std::io::{BufWriter, Seek, Write};
 
 use countio::Counter;
 use flate2::write::GzEncoder;
+use twox_hash::XxHash3_64;
 
 use crate::PmtError::UnsupportedCompression;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
@@ -18,18 +22,29 @@ pub struct PmTilesWriter {
     metadata: String,
 }
 
+struct TileContentLocation {
+    offset: u64,
+    length: u32,
+}
+
 /// `PMTiles` streaming writer.
 pub struct PmTilesStreamWriter<W: Write + Seek> {
     out: Counter<BufWriter<W>>,
     header: Header,
     entries: Vec<DirEntry>,
+
+    /// The number of addressable tiles in this archive.
     n_addressed_tiles: u64,
-    // TODO: Replace with digest HashMap for deduplicating non-subsequent tiles
-    n_tile_contents: u64,
-    // In our implementation, n_tile_entries is always equal to n_tile_contents,
-    // but we store it separately for when we support more complex deduplication with the TODO above.
+
+    /// The number of tile entries (not including directory entries) in this archive.
     n_tile_entries: u64,
-    prev_tile_data: Vec<u8>,
+
+    /// A map of tile content locations by their hash.
+    /// Use `len()` to get `n_tile_contents`.
+    tile_content_map: HashMap<u64, TileContentLocation, BuildHasherDefault<XxHash3_64>>,
+
+    prev_tile_hash: Option<u64>,
+    prev_written_tile_offset: u64,
 }
 
 pub(crate) trait WriteTo {
@@ -177,9 +192,10 @@ impl PmTilesWriter {
             header: self.header,
             entries: Vec::new(),
             n_addressed_tiles: 0,
-            n_tile_contents: 0,
             n_tile_entries: 0,
-            prev_tile_data: vec![],
+            tile_content_map: HashMap::default(),
+            prev_tile_hash: None,
+            prev_written_tile_offset: 0,
         };
         writer.header.metadata_length = metadata_length;
         writer.header.data_offset = MAX_INITIAL_BYTES as u64 + metadata_length;
@@ -224,44 +240,47 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
         }
 
         let tile_id = tile_id.value();
-        let is_first = self.entries.is_empty();
-        if is_first && tile_id > 0 {
-            self.header.clustered = false;
-        }
-        let mut first_entry = DirEntry {
-            tile_id: 0,
-            offset: 0,
-            length: 0,
-            run_length: 0,
-        };
-        let last_entry = self.entries.last_mut().unwrap_or(&mut first_entry);
+        let mut last_entry = self.entries.last_mut();
+        let tile_hash: u64 = XxHash3_64::oneshot(data);
 
         self.n_addressed_tiles += 1;
-        if !is_first
-            && self.prev_tile_data == data
-            && tile_id == last_entry.tile_id + u64::from(last_entry.run_length)
-        {
-            last_entry.run_length += 1;
-        } else {
-            let offset = last_entry.offset + u64::from(last_entry.length);
-            // Write tile
-            let len = data.write_compressed_to_counted(&mut self.out, tile_compression)?;
-            let length = into_u32(len)?;
-            self.n_tile_contents += 1;
-            if tile_id != last_entry.tile_id + u64::from(last_entry.run_length) {
-                self.header.clustered = false;
+
+        // If the tile is identical to the previous one and the tile_id is consecutive, increase run_length
+        if let Some(ref mut last_entry) = last_entry {
+            if self.prev_tile_hash == Some(tile_hash)
+                && tile_id == last_entry.tile_id + u64::from(last_entry.run_length)
+            {
+                last_entry.run_length += 1;
+                return Ok(());
             }
 
-            self.n_tile_entries += 1;
-            self.entries.push(DirEntry {
-                tile_id,
-                run_length: 1, // Will be increased by following identical tiles
-                offset,
-                length,
-            });
-
-            self.prev_tile_data = data.to_vec();
+            // If the tile_id is not in order, mark as unclustered
+            if tile_id < last_entry.tile_id + u64::from(last_entry.run_length) {
+                self.header.clustered = false;
+            }
         }
+
+        // Based on the tile hash, either get the existing location or write the tile data to the archive
+        let loc = match self.tile_content_map.entry(tile_hash) {
+            Entry::Occupied(e) => e.into_mut(),
+            Entry::Vacant(e) => {
+                let offset = self.prev_written_tile_offset;
+                let len = data.write_compressed_to_counted(&mut self.out, tile_compression)?;
+                self.prev_written_tile_offset += len as u64;
+                let length = into_u32(len)?;
+                e.insert(TileContentLocation { offset, length })
+            }
+        };
+
+        self.prev_tile_hash = Some(tile_hash);
+
+        self.n_tile_entries += 1;
+        self.entries.push(DirEntry {
+            tile_id,
+            run_length: 1, // Will be increased by following identical tiles
+            offset: loc.offset,
+            length: loc.length,
+        });
 
         Ok(())
     }
@@ -364,7 +383,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
         let root_dir = self.build_directories()?;
 
         self.header.n_addressed_tiles = self.n_addressed_tiles.try_into().ok();
-        self.header.n_tile_contents = self.n_tile_contents.try_into().ok();
+        self.header.n_tile_contents = (self.tile_content_map.len() as u64).try_into().ok();
         self.header.n_tile_entries = self.n_tile_entries.try_into().ok();
 
         // Determine compressed root directory length
@@ -441,8 +460,7 @@ mod tests {
         assert_eq!(header_in.tile_type, header_out.tile_type);
         assert_eq!(header_in.n_addressed_tiles, header_out.n_addressed_tiles);
         assert_eq!(header_in.n_tile_entries, header_out.n_tile_entries);
-        // assert_eq!(header_in.n_tile_contents, header_out.n_tile_contents);
-        assert_eq!(Some(84), header_out.n_tile_contents.map(Into::into));
+        assert_eq!(header_in.n_tile_contents, header_out.n_tile_contents);
         assert_eq!(header_in.min_zoom, header_out.min_zoom);
         assert_eq!(header_in.max_zoom, header_out.max_zoom);
         assert_eq!(header_in.center_zoom, header_out.center_zoom);
@@ -537,13 +555,13 @@ mod tests {
         let mut writer = PmTilesWriter::new(TileType::Png).create(file).unwrap();
         assert_eq!(writer.header.tile_compression, Compression::None);
 
-        let id = TileId::new(0).unwrap();
+        let id = TileId::new(2).unwrap();
         writer
             .add_tile_by_id(id, &[0, 1, 2, 3], Compression::None)
             .unwrap();
         assert!(writer.header.clustered);
 
-        let id = TileId::new(2).unwrap();
+        let id = TileId::new(0).unwrap();
         writer
             .add_tile_by_id(id, &[0, 1, 2, 3], Compression::None)
             .unwrap();
@@ -588,5 +606,58 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(*regular_tile, [1]);
+    }
+
+    #[tokio::test]
+    async fn dedup_nonconsecutive_tiles_no_rle() {
+        // Create archive with tiles A, B, C where A == C and B differs.
+        let path = get_temp_file_path("pmtiles").unwrap();
+        let file = File::create(&path).unwrap();
+        let mut writer = PmTilesWriter::new(TileType::Png)
+            .internal_compression(Compression::None)
+            .create(file)
+            .unwrap();
+
+        // A == C, B differs.
+        let a = b"ABC";
+        let b = b"X";
+        let c = b"ABC";
+
+        writer.add_tile(TileId::new(0).unwrap().into(), a).unwrap();
+        writer.add_tile(TileId::new(1).unwrap().into(), b).unwrap();
+        writer.add_tile(TileId::new(2).unwrap().into(), c).unwrap();
+        writer.finalize().unwrap();
+
+        // Open and verify: 3 addressed/entries, 2 unique contents (A and C deduped), no RLE.
+        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let tiles_out = Arc::new(AsyncPmTilesReader::try_from_source(backend).await.unwrap());
+        let header = tiles_out.get_header();
+        assert_eq!(header.n_addressed_tiles, NonZeroU64::new(3));
+        assert_eq!(header.n_tile_entries, NonZeroU64::new(3));
+        assert_eq!(header.n_tile_contents, NonZeroU64::new(2));
+
+        let entries = tiles_out
+            .clone()
+            .entries()
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 3);
+
+        let e0 = entries.iter().find(|e| e.tile_id == 0).unwrap();
+        let e1 = entries.iter().find(|e| e.tile_id == 1).unwrap();
+        let e2 = entries.iter().find(|e| e.tile_id == 2).unwrap();
+
+        // No RLE should be used for non-consecutive identical tiles.
+        assert_eq!(e0.run_length, 1);
+        assert_eq!(e1.run_length, 1);
+        assert_eq!(e2.run_length, 1);
+
+        // A and C should refer to the same bytes in the archive.
+        assert_eq!(e0.offset, e2.offset);
+        assert_eq!(e0.length, e2.length);
+
+        // B should point to different bytes.
+        assert_ne!(e1.offset, e0.offset);
     }
 }

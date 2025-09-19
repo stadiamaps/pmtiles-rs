@@ -22,7 +22,7 @@ mmap-async-tokio = ["__async", "dep:fmmap", "fmmap?/tokio"]
 s3-async-native = ["__async-s3", "__async-s3-nativetls"]
 s3-async-rustls = ["__async-s3", "__async-s3-rustls"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
-write = ["dep:countio", "dep:flate2"]
+write = ["dep:countio", "dep:flate2", "dep:twox-hash"]
 
 object-store = ["dep:object_store"]
 
@@ -71,6 +71,7 @@ serde_json = { version = "1", optional = true }
 thiserror = "2"
 tilejson = { version = "0.4", optional = true }
 tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
+twox-hash = { version = "2", optional = true, default-features = false, features = ["std", "xxhash3_64"] }
 varint-rs = "2"
 
 [dev-dependencies]
