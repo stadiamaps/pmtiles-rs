@@ -461,7 +461,6 @@ mod tests {
         assert_eq!(header_in.n_addressed_tiles, header_out.n_addressed_tiles);
         assert_eq!(header_in.n_tile_entries, header_out.n_tile_entries);
         assert_eq!(header_in.n_tile_contents, header_out.n_tile_contents);
-        // assert_eq!(Some(84), header_out.n_tile_contents.map(Into::into));
         assert_eq!(header_in.min_zoom, header_out.min_zoom);
         assert_eq!(header_in.max_zoom, header_out.max_zoom);
         assert_eq!(header_in.center_zoom, header_out.center_zoom);
