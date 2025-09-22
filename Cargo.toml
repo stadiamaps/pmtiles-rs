@@ -8,7 +8,7 @@ description = "Implementation of the PMTiles v3 spec with multiple sync and asyn
 repository = "https://github.com/stadiamaps/pmtiles-rs"
 keywords = ["pmtiles", "gis", "geo"]
 categories = ["science::geo"]
-rust-version = "1.85"
+rust-version = "1.88"
 
 [features]
 # Default enables everything because semver checker and release-plz cannot pass this through
