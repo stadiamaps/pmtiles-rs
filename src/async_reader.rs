@@ -216,10 +216,10 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// Recursively locates a tile in the archive.
     async fn find_tile_entry(&self, tile_id: TileId) -> PmtResult<Option<DirEntry>> {
         let entry = self.root_directory.find_tile_id(tile_id);
-        if let Some(entry) = entry {
-            if entry.is_leaf() {
-                return self.find_entry_rec(tile_id, entry, 0).await;
-            }
+        if let Some(entry) = entry
+            && entry.is_leaf()
+        {
+            return self.find_entry_rec(tile_id, entry, 0).await;
         }
 
         Ok(entry.cloned())
@@ -248,14 +248,14 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             DirCacheResult::Found(entry) => Some(entry),
         };
 
-        if let Some(ref entry) = entry {
-            if entry.is_leaf() {
-                return if depth <= 4 {
-                    Box::pin(self.find_entry_rec(tile_id, entry, depth + 1)).await
-                } else {
-                    Ok(None)
-                };
-            }
+        if let Some(ref entry) = entry
+            && entry.is_leaf()
+        {
+            return if depth <= 4 {
+                Box::pin(self.find_entry_rec(tile_id, entry, depth + 1)).await
+            } else {
+                Ok(None)
+            };
         }
 
         Ok(entry)
