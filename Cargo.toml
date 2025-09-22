@@ -8,7 +8,7 @@ description = "Implementation of the PMTiles v3 spec with multiple sync and asyn
 repository = "https://github.com/stadiamaps/pmtiles-rs"
 keywords = ["pmtiles", "gis", "geo"]
 categories = ["science::geo"]
-rust-version = "1.85"
+rust-version = "1.88"
 
 [features]
 # Default enables everything because semver checker and release-plz cannot pass this through
@@ -48,7 +48,7 @@ __all_non_conflicting = [
 ]
 __async = ["dep:tokio", "async-compression/tokio"]
 __async-s3 = ["__async", "dep:rust-s3"]
-__async-s3-nativetls = ["rust-s3?/use-tokio-native-tls"]
+__async-s3-nativetls = ["rust-s3?/tokio-native-tls"]
 __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]
 __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
 
@@ -65,7 +65,7 @@ fmmap = { version = "0.4", default-features = false, optional = true }
 futures-util = { version = "0.3", optional = true }
 object_store = { version = "0.12", optional = true, default-features = false }
 reqwest = { version = "0.12.4", default-features = false, optional = true }
-rust-s3 = { version = "0.35.1", optional = true, default-features = false, features = ["fail-on-err"] }
+rust-s3 = { version = "0.37.0", optional = true, default-features = false, features = ["fail-on-err"] }
 serde = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
 thiserror = "2"
