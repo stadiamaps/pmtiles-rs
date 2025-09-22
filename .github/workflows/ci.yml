@@ -5,8 +5,6 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  release:
-    types: [ published ]
   workflow_dispatch:
 
 defaults:
@@ -22,7 +20,7 @@ jobs:
       - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
-        with: { tool: just }
+        with: { tool: 'just,cargo-binstall' }
       - run: just ci-test
 
   test-msrv:
@@ -33,7 +31,7 @@ jobs:
       - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
-        with: { tool: just }
+        with: { tool: 'just' }
       - name: Read MSRV
         id: msrv
         run: echo "value=$(just get-msrv)" >> $GITHUB_OUTPUT
@@ -68,6 +66,8 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Result of the needed steps
+        run: echo "${{ toJSON(needs) }}"
       - if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
         run: exit 1
 
@@ -98,9 +98,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: If version is the same, create a PR proposing new version and changelog for the next release
+      - if: ${{ steps.release.outputs.releases_created == 'false' }}
+        name: If version is the same, create a PR proposing new version and changelog for the next release
         uses: release-plz/action@v0.5
-        if: ${{ steps.release.outputs.releases_created == 'false' }}
         with: { command: release-pr }
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
