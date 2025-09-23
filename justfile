@@ -1,12 +1,17 @@
 #!/usr/bin/env just --justfile
 
 main_crate := 'pmtiles'
-features_flag := ''
+packages := '--workspace'  # All crates in the workspace
+features := '--features default'
+targets := '--all-targets'  # For all targets (lib, bin, tests, examples, benches)
 
 # if running in CI, treat warnings as errors by setting RUSTFLAGS and RUSTDOCFLAGS to '-D warnings' unless they are already set
 # Use `CI=true just ci-test` to run the same tests as in GitHub CI.
 # Use `just env-info` to see the current values of RUSTFLAGS and RUSTDOCFLAGS
 ci_mode := if env('CI', '') != '' {'1'} else {''}
+# cargo-binstall needs a workaround due to caching
+# ci_mode might be manually set by user, so re-check the env var
+binstall_args := if env('CI', '') != '' {'--no-confirm --no-track --disable-telemetry'} else {''}
 export RUSTFLAGS := env('RUSTFLAGS', if ci_mode == '1' {'-D warnings'} else {''})
 export RUSTDOCFLAGS := env('RUSTDOCFLAGS', if ci_mode == '1' {'-D warnings'} else {''})
 export RUST_BACKTRACE := env('RUST_BACKTRACE', if ci_mode == '1' {'1'} else {''})
@@ -16,20 +21,20 @@ export RUST_BACKTRACE := env('RUST_BACKTRACE', if ci_mode == '1' {'1'} else {''}
 
 # Build the project
 build:
-    cargo build --workspace --all-targets {{features_flag}}
+    cargo build {{packages}} {{features}} {{targets}}
 
 # Quick compile without building a binary
 check:
-    cargo check --workspace --all-targets {{features_flag}}
+    cargo check {{packages}} {{features}} {{targets}}
     @echo "--------------  Checking individual crate features"
-    cargo check --workspace --all-targets --no-default-features --features aws-s3-async
-    cargo check --workspace --all-targets --no-default-features --features http-async
-    cargo check --workspace --all-targets --no-default-features --features iter-async
-    cargo check --workspace --all-targets --no-default-features --features mmap-async-tokio
-    cargo check --workspace --all-targets --no-default-features --features s3-async-native
-    cargo check --workspace --all-targets --no-default-features --features s3-async-rustls
-    cargo check --workspace --all-targets --no-default-features --features tilejson
-    cargo check --workspace --all-targets --no-default-features --features write
+    cargo check {{packages}} {{targets}} --no-default-features --features aws-s3-async
+    cargo check {{packages}} {{targets}} --no-default-features --features http-async
+    cargo check {{packages}} {{targets}} --no-default-features --features iter-async
+    cargo check {{packages}} {{targets}} --no-default-features --features mmap-async-tokio
+    cargo check {{packages}} {{targets}} --no-default-features --features s3-async-native
+    cargo check {{packages}} {{targets}} --no-default-features --features s3-async-rustls
+    cargo check {{packages}} {{targets}} --no-default-features --features tilejson
+    cargo check {{packages}} {{targets}} --no-default-features --features write
 
 # Generate code coverage report to upload to codecov.io
 ci-coverage: env-info && \
@@ -50,32 +55,34 @@ clean:
 
 # Run cargo clippy to lint the code
 clippy *args:
-    cargo clippy --workspace --all-targets {{features_flag}} {{args}}
-    cargo clippy --workspace --all-targets --no-default-features --features s3-async-native {{args}}
+    cargo clippy {{packages}} {{features}} {{targets}} {{args}}
+    cargo clippy {{packages}} {{targets}} --no-default-features --features s3-async-native {{args}}
 
 # Generate code coverage report. Will install `cargo llvm-cov` if missing.
 coverage *args='--no-clean --open':  (cargo-install 'cargo-llvm-cov')
-    cargo llvm-cov --workspace --all-targets {{features_flag}} --include-build-script {{args}}
+    cargo llvm-cov {{packages}} {{features}} {{targets}} --include-build-script {{args}}
 
 # Build and open code documentation
 docs *args='--open':
-    DOCS_RS=1 cargo doc --no-deps {{args}} --workspace {{features_flag}}
+    DOCS_RS=1 cargo doc --no-deps {{args}} {{packages}} {{features}}
 
 # Print environment info
 env-info:
-    @echo "Running {{if ci_mode == '1' {'in CI mode'} else {'in dev mode'} }} on {{os()}} / {{arch()}}"
+    @echo "Running for '{{main_crate}}' crate {{if ci_mode == '1' {'in CI mode'} else {'in dev mode'} }} on {{os()}} / {{arch()}}"
+    @echo "PWD $(pwd)"
     {{just_executable()}} --version
     rustc --version
     cargo --version
     rustup --version
     @echo "RUSTFLAGS='$RUSTFLAGS'"
     @echo "RUSTDOCFLAGS='$RUSTDOCFLAGS'"
+    @echo "RUST_BACKTRACE='$RUST_BACKTRACE'"
 
 # Reformat all code `cargo fmt`. If nightly is available, use it for better results
 fmt:
     #!/usr/bin/env bash
     set -euo pipefail
-    if rustup component list --toolchain nightly | grep rustfmt &> /dev/null; then
+    if (rustup toolchain list | grep nightly && rustup component list --toolchain nightly | grep rustfmt) &> /dev/null; then
         echo 'Reformatting Rust code using nightly Rust fmt to sort imports'
         cargo +nightly fmt --all -- --config imports_granularity=Module,group_imports=StdExternalCrate
     else
@@ -83,37 +90,42 @@ fmt:
         cargo fmt --all
     fi
 
+# Reformat all Cargo.toml files using cargo-sort
+fmt-toml *args:  (cargo-install 'cargo-sort')
+    cargo sort {{packages}} --grouped {{args}}
+
 # Get any package's field from the metadata
 get-crate-field field package=main_crate:  (assert-cmd 'jq')
-    cargo metadata --format-version 1 | jq -e -r '.packages | map(select(.name == "{{package}}")) | first | .{{field}} | select(. != null)'
+    cargo metadata --format-version 1 | jq -e -r '.packages | map(select(.name == "{{package}}")) | first | .{{field}} // error("Field \"{{field}}\" is missing in Cargo.toml for package {{package}}")'
 
 # Get the minimum supported Rust version (MSRV) for the crate
 get-msrv package=main_crate:  (get-crate-field 'rust_version' package)
 
 # Find the minimum supported Rust version (MSRV) using cargo-msrv extension, and update Cargo.toml
 msrv:  (cargo-install 'cargo-msrv')
-    cargo msrv find --write-msrv --ignore-lockfile {{features_flag}}
+    cargo msrv find --write-msrv --ignore-lockfile {{features}}
 
+# Run cargo-release
 release *args='':  (cargo-install 'release-plz')
     release-plz {{args}}
 
 # Check semver compatibility with prior published version. Install it with `cargo install cargo-semver-checks`
 semver *args:  (cargo-install 'cargo-semver-checks')
-    cargo semver-checks --only-explicit-features {{features_flag}} {{args}}
+    cargo semver-checks {{features}} {{args}}
 
 # Run all unit and integration tests
 test:
-    cargo test --workspace --all-targets {{features_flag}}
-    cargo test --workspace --doc {{features_flag}}
+    cargo test {{packages}} {{features}} {{targets}}
+    cargo test --doc {{packages}} {{features}}
     @echo "--------------  Testing individual crate features"
-    cargo test --workspace --all-targets --no-default-features --features aws-s3-async
-    cargo test --workspace --all-targets --no-default-features --features http-async
-    cargo test --workspace --all-targets --no-default-features --features iter-async
-    cargo test --workspace --all-targets --no-default-features --features mmap-async-tokio
-    cargo test --workspace --all-targets --no-default-features --features s3-async-native
-    cargo test --workspace --all-targets --no-default-features --features s3-async-rustls
-    cargo test --workspace --all-targets --no-default-features --features tilejson
-    cargo test --workspace --all-targets --no-default-features --features write
+    cargo test {{packages}} {{targets}} --no-default-features --features aws-s3-async
+    cargo test {{packages}} {{targets}} --no-default-features --features http-async
+    cargo test {{packages}} {{targets}} --no-default-features --features iter-async
+    cargo test {{packages}} {{targets}} --no-default-features --features mmap-async-tokio
+    cargo test {{packages}} {{targets}} --no-default-features --features s3-async-native
+    cargo test {{packages}} {{targets}} --no-default-features --features s3-async-rustls
+    cargo test {{packages}} {{targets}} --no-default-features --features tilejson
+    cargo test {{packages}} {{targets}} --no-default-features --features write
 
 # Test documentation generation
 test-doc:  (docs '')
@@ -124,7 +136,7 @@ test-fmt:
 
 # Find unused dependencies. Install it with `cargo install cargo-udeps`
 udeps:  (cargo-install 'cargo-udeps')
-    cargo +nightly udeps --workspace --all-targets {{features_flag}}
+    cargo +nightly udeps {{packages}} {{features}} {{targets}}
 
 # Update all dependencies, including breaking changes. Requires nightly toolchain (install with `rustup install nightly`)
 update:
@@ -156,11 +168,14 @@ cargo-install $COMMAND $INSTALL_CMD='' *args='':
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v $COMMAND > /dev/null; then
+        echo "$COMMAND could not be found. Installing..."
         if ! command -v cargo-binstall > /dev/null; then
-            echo "$COMMAND could not be found. Installing it with    cargo install ${INSTALL_CMD:-$COMMAND} --locked {{args}}"
+            set -x
             cargo install ${INSTALL_CMD:-$COMMAND} --locked {{args}}
+            { set +x; } 2>/dev/null
         else
-            echo "$COMMAND could not be found. Installing it with    cargo binstall ${INSTALL_CMD:-$COMMAND} --locked {{args}}"
-            cargo binstall ${INSTALL_CMD:-$COMMAND} --locked {{args}}
+            set -x
+            cargo binstall ${INSTALL_CMD:-$COMMAND} {{binstall_args}} --locked {{args}}
+            { set +x; } 2>/dev/null
         fi
     fi
