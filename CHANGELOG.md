@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.16.0...v0.17.0) - 2025-09-23
+
+### Other
+
+- minor justfile/ci updates ([#81](https://github.com/stadiamaps/pmtiles-rs/pull/81))
+- Upgrade rust-s3 ([#80](https://github.com/stadiamaps/pmtiles-rs/pull/80))
+- cleanup Cargo.toml ([#79](https://github.com/stadiamaps/pmtiles-rs/pull/79))
+- Writer tile dedup ([#76](https://github.com/stadiamaps/pmtiles-rs/pull/76))
+- Fix range index errors on writing ([#75](https://github.com/stadiamaps/pmtiles-rs/pull/75))
+
 ## [0.16.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.15.0...v0.16.0) - 2025-09-08
 
 ### Added
