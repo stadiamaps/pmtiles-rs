@@ -10,7 +10,7 @@ pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
 #[cfg(any(test, feature = "__async", feature = "write"))]
 pub(crate) const HEADER_SIZE: usize = 127;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 /// The header of a `PMTiles` file, containing metadata about the tiles.
 pub struct Header {
@@ -53,6 +53,36 @@ pub struct Header {
 }
 
 impl Header {
+    /// Get the number of addressed tiles (sum of all run lengths)
+    #[must_use]
+    pub fn n_addressed_tiles(&self) -> Option<NonZeroU64> {
+        self.n_addressed_tiles
+    }
+
+    /// Get the number of tile entries in the directory
+    #[must_use]
+    pub fn n_tile_entries(&self) -> Option<NonZeroU64> {
+        self.n_tile_entries
+    }
+
+    /// Get the number of unique tile contents
+    #[must_use]
+    pub fn n_tile_contents(&self) -> Option<NonZeroU64> {
+        self.n_tile_contents
+    }
+
+    /// Check if the archive is clustered (tiles stored in Hilbert curve order)
+    #[must_use]
+    pub fn clustered(&self) -> bool {
+        self.clustered
+    }
+
+    /// Get the internal compression used for directories
+    #[must_use]
+    pub fn internal_compression(&self) -> Compression {
+        self.internal_compression
+    }
+
     #[cfg(feature = "write")]
     pub(crate) fn new(tile_compression: Compression, tile_type: TileType) -> Self {
         Self {
@@ -312,7 +342,7 @@ impl crate::writer::WriteTo for Header {
 
 impl Header {
     #[cfg(feature = "write")]
-    #[expect(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_truncation)]
     fn write_coordinate_part<W: std::io::Write>(writer: &mut W, value: f64) -> std::io::Result<()> {
         writer.write_all(&((value * 10_000_000.0).round() as i32).to_le_bytes())
     }

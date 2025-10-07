@@ -22,10 +22,10 @@ use crate::{DirectoryCache, NoCache};
 
 /// An asynchronous reader for `PMTiles` archives.
 pub struct AsyncPmTilesReader<B, C = NoCache> {
-    backend: B,
+    pub(crate) backend: B,
     cache: C,
     header: Header,
-    root_directory: Directory,
+    pub(crate) root_directory: Directory,
 }
 
 impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
@@ -294,7 +294,11 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         Ok(entry)
     }
 
-    async fn read_directory(&self, offset: usize, length: usize) -> PmtResult<Directory> {
+    pub(crate) async fn read_directory(
+        &self,
+        offset: usize,
+        length: usize,
+    ) -> PmtResult<Directory> {
         let data = self.backend.read_exact(offset, length).await?;
         Self::read_compressed_directory(self.header.internal_compression, data).await
     }
