@@ -9,6 +9,7 @@ target/
 temp/
 tmp/
 venv/
+*.pmtiles
 
 # This is a library, no lock
 Cargo.lock

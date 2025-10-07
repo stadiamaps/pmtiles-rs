@@ -21,6 +21,8 @@ pub use cache::{DirCacheResult, DirectoryCache, HashMapCache, NoCache};
 
 mod directory;
 mod error;
+#[cfg(feature = "extract")]
+pub mod extract;
 mod header;
 mod tile;
 #[cfg(feature = "write")]
