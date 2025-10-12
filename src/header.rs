@@ -219,6 +219,10 @@ impl Header {
     }
 
     /// Attempts to parse a Header from a byte buffer.
+    ///
+    /// # Errors
+    ///
+    /// If the byte buffer contains invalid `PMTiles` header data.
     pub fn try_from_bytes(mut bytes: Bytes) -> PmtResult<Self> {
         let magic_bytes = bytes.split_to(V3_MAGIC.len());
 

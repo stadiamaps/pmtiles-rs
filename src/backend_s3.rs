@@ -9,6 +9,12 @@ impl AsyncPmTilesReader<S3Backend, NoCache> {
     /// archive using the `rust-s3` backend.
     ///
     /// Fails if `bucket` or `path` does not exist or is an invalid archive. (Note: S3 requests are made to validate it.)
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the
+    /// - the backend fails to read the header/root directory,
+    /// - or if the root directory is malformed
     pub async fn new_with_bucket_path(bucket: Bucket, path: String) -> PmtResult<Self> {
         Self::new_with_cached_bucket_path(NoCache, bucket, path).await
     }
@@ -20,6 +26,12 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<S3Backend, C> {
     ///
     /// Fails if `bucket` or `path` does not exist or is an invalid archive.
     /// Note that S3 requests are made to validate it.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the
+    /// - the backend fails to read the header/root directory,
+    /// - or if the root directory is malformed
     pub async fn new_with_cached_bucket_path(
         cache: C,
         bucket: Bucket,

@@ -34,6 +34,12 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
     /// Creates a new reader from a specified source and validates the provided `PMTiles` archive is valid.
     ///
     /// Note: Prefer using `new_with_*` methods.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if
+    /// - the backend fails to read the header/root directory or
+    /// - or if the root directory is malformed
     pub async fn try_from_source(backend: B) -> PmtResult<Self> {
         Self::try_from_cached_source(backend, NoCache).await
     }
@@ -43,6 +49,12 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// Creates a new cached reader from a specified source and validates the provided `PMTiles` archive is valid.
     ///
     /// Note: Prefer using `new_with_*` methods.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if
+    /// - the backend fails to read the header/root directory,
+    /// - or if the root directory is malformed
     pub async fn try_from_cached_source(backend: B, cache: C) -> PmtResult<Self> {
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
         let mut initial_bytes = backend.read(0, MAX_INITIAL_BYTES).await?;
@@ -81,6 +93,12 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// let tile = reader.get_tile(tile_id).await.unwrap();
     /// # }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the
+    /// - header/root directory cannot be read or
+    /// - backend fails to read tile data
     pub async fn get_tile<Id: Into<TileId>>(&self, tile_id: Id) -> PmtResult<Option<Bytes>> {
         let Some(entry) = self.find_tile_entry(tile_id.into()).await? else {
             return Ok(None);
@@ -94,6 +112,13 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
     /// Fetches tile bytes from the archive.
     /// If the tile is compressed, it will be decompressed.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the
+    /// - header/root directory cannot be read,
+    /// - backend fails to read tile data or
+    /// - tile header indicates that the tile is compressed and it cannot be decompressed
     pub async fn get_tile_decompressed<Id: Into<TileId>>(
         &self,
         tile_id: Id,
@@ -114,6 +139,13 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ///
     /// Note: by spec, this should be valid JSON. This method currently returns a [String].
     /// This may change in the future.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the
+    /// - backend fails to read the metadata or
+    /// - metadata cannot be decompressed or
+    /// - is not valid UTF-8
     pub async fn get_metadata(&self) -> PmtResult<String> {
         let offset = self.header.metadata_offset as _;
         let length = self.header.metadata_length as _;
@@ -173,7 +205,13 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     #[cfg(feature = "tilejson")]
-    /// Parses the metadata and combines it with header data to produce a TileJSON object.
+    /// Parses the metadata and combines it with header data to produce a `TileJSON` object.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if
+    /// - reading or parsing the metadata fails or
+    /// - metadata contains invalid JSON
     pub async fn parse_tilejson(&self, sources: Vec<String>) -> PmtResult<tilejson::TileJSON> {
         use serde_json::Value;
 

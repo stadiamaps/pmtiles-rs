@@ -9,6 +9,11 @@ impl AsyncPmTilesReader<AwsS3Backend, NoCache> {
     ///
     /// Fails if the `bucket` or `key` does not exist or is an invalid
     /// archive. Note that S3 requests are made to validate it.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the S3 object does not exist,
+    /// the S3 request fails, or if the data is not a valid `PMTiles` archive.
     pub async fn new_with_client_bucket_and_path(
         client: Client,
         bucket: String,
@@ -26,6 +31,11 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<AwsS3Backend, C> {
     /// Fails if the `bucket` or `key` does not exist or is an invalid
     /// archive.
     /// (Note: S3 requests are made to validate it.)
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the S3 object does not exist,
+    /// the S3 request fails, or if the data is not a valid `PMTiles` archive.
     pub async fn new_with_cached_client_bucket_and_path(
         cache: C,
         client: Client,

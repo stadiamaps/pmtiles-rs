@@ -10,6 +10,13 @@ impl AsyncPmTilesReader<MmapBackend, NoCache> {
     /// Creates a new `PMTiles` reader from a file path using the async mmap backend.
     ///
     /// Fails if `path` does not exist or is an invalid archive.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the
+    /// - file cannot be opened for memory mapping,
+    /// - backend fails to read the header/root directory or
+    /// - root directory is malformed
     pub async fn new_with_path<P: AsRef<Path>>(path: P) -> PmtResult<Self> {
         Self::new_with_cached_path(NoCache, path).await
     }
@@ -19,6 +26,13 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
     /// Creates a new cached `PMTiles` reader from a file path using the async mmap backend.
     ///
     /// Fails if `path` does not exist or is an invalid archive.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the
+    /// - file cannot be opened for memory mapping,
+    /// - backend fails to read the header/root directory or
+    /// - root directory is malformed
     pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> PmtResult<Self> {
         let backend = MmapBackend::try_from(path).await?;
 
@@ -33,6 +47,10 @@ pub struct MmapBackend {
 
 impl MmapBackend {
     /// Creates a new memory-mapped file backend.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the file cannot be opened for memory mapping.
     pub async fn try_from<P: AsRef<Path>>(p: P) -> PmtResult<Self> {
         Ok(Self {
             file: AsyncMmapFile::open_with_options(p, AsyncOptions::new().read(true))
