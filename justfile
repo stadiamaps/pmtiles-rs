@@ -31,6 +31,7 @@ check:
     cargo check {{packages}} {{targets}} --no-default-features --features http-async
     cargo check {{packages}} {{targets}} --no-default-features --features iter-async
     cargo check {{packages}} {{targets}} --no-default-features --features mmap-async-tokio
+    cargo check {{packages}} {{targets}} --no-default-features --features object-store
     cargo check {{packages}} {{targets}} --no-default-features --features s3-async-native
     cargo check {{packages}} {{targets}} --no-default-features --features s3-async-rustls
     cargo check {{packages}} {{targets}} --no-default-features --features tilejson
