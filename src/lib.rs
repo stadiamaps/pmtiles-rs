@@ -5,28 +5,7 @@ mod async_reader;
 #[cfg(feature = "__async")]
 pub use async_reader::{AsyncBackend, AsyncPmTilesReader};
 
-pub mod backends;
-
-#[doc(hidden)]
-#[deprecated(since = "0.16.0", note = "Use `backends::aws_s3` instead")]
-#[cfg(feature = "__async-aws-s3")]
-pub use backends::aws_s3 as backend_aws_s3;
-#[doc(hidden)]
-#[deprecated(since = "0.16.0", note = "Use `backends::http` instead")]
-#[cfg(feature = "http-async")]
-pub use backends::http as backend_http;
-#[doc(hidden)]
-#[deprecated(since = "0.16.0", note = "Use `backends::mmap` instead")]
-#[cfg(feature = "mmap-async-tokio")]
-pub use backends::mmap as backend_mmap;
-#[doc(hidden)]
-#[deprecated(since = "0.16.0", note = "Use `backends::object_store` instead")]
-#[cfg(feature = "object-store")]
-pub use backends::object_store as backend_object_store;
-#[doc(hidden)]
-#[deprecated(since = "0.16.0", note = "Use `backends::s3` instead")]
-#[cfg(feature = "__async-s3")]
-pub use backends::s3 as backend_s3;
+mod backends;
 
 #[cfg(feature = "__async")]
 mod cache;

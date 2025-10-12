@@ -1,10 +1,10 @@
 #[cfg(feature = "aws-s3-async")]
-pub mod aws_s3;
+mod aws_s3;
 #[cfg(feature = "http-async")]
-pub mod http;
+mod http;
 #[cfg(feature = "mmap-async-tokio")]
-pub mod mmap;
+mod mmap;
 #[cfg(feature = "object-store")]
-pub mod object_store;
+mod object_store;
 #[cfg(feature = "__async-s3")]
-pub mod s3;
+mod s3;
