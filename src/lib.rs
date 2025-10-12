@@ -6,6 +6,7 @@ mod async_reader;
 pub use async_reader::{AsyncBackend, AsyncPmTilesReader};
 
 mod backends;
+#[allow(unused_imports, reason = "only a warning if no backends are enabled")]
 pub use backends::*;
 
 #[cfg(feature = "__async")]
