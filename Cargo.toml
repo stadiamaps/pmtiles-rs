@@ -85,6 +85,7 @@ url = "2"
 
 [lints.rust]
 unsafe_code = "forbid"
+missing_docs = "warn"
 unused_qualifications = "warn"
 
 [lints.clippy]
@@ -92,8 +93,9 @@ unused_qualifications = "warn"
 panic_in_result_fn = "warn"
 todo = "warn"
 unwrap_used = "warn"
+panic = "warn"
 # Pedantics without being too noisy
 pedantic = { level = "warn", priority = -1 }
-missing_errors_doc = "allow"
+missing_errors_doc = "warn"
 module_name_repetitions = "allow"
 similar_names = "allow"

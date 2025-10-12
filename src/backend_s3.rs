@@ -31,6 +31,7 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<S3Backend, C> {
     }
 }
 
+/// Backend for reading `PMTiles` from S3.
 pub struct S3Backend {
     bucket: Bucket,
     path: String,
@@ -38,6 +39,7 @@ pub struct S3Backend {
 
 impl S3Backend {
     #[must_use]
+    /// Creates a new S3 backend.
     pub fn from(bucket: Bucket, path: String) -> S3Backend {
         Self { bucket, path }
     }

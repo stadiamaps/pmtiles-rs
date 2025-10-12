@@ -12,6 +12,7 @@ pub(crate) const HEADER_SIZE: usize = 127;
 
 #[derive(Debug)]
 #[allow(dead_code)]
+/// The header of a `PMTiles` file, containing metadata about the tiles.
 pub struct Header {
     pub(crate) version: u8,
     pub(crate) root_offset: u64,
@@ -27,16 +28,27 @@ pub struct Header {
     pub(crate) n_tile_contents: Option<NonZeroU64>,
     pub(crate) clustered: bool,
     pub(crate) internal_compression: Compression,
+    /// The compression used for tile data.
     pub tile_compression: Compression,
+    /// The type of tiles.
     pub tile_type: TileType,
+    /// The minimum zoom level.
     pub min_zoom: u8,
+    /// The maximum zoom level.
     pub max_zoom: u8,
+    /// The minimum longitude.
     pub min_longitude: f32,
+    /// The minimum latitude.
     pub min_latitude: f32,
+    /// The maximum longitude.
     pub max_longitude: f32,
+    /// The maximum latitude.
     pub max_latitude: f32,
+    /// The zoom level for the center point.
     pub center_zoom: u8,
+    /// The longitude of the center point.
     pub center_longitude: f32,
+    /// The latitude of the center point.
     pub center_latitude: f32,
 }
 
@@ -75,16 +87,23 @@ impl Header {
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
+/// Supported compression types for `PMTiles` data.
 pub enum Compression {
+    /// Unknown compression.
     Unknown,
+    /// No compression.
     None,
+    /// Gzip compression.
     Gzip,
+    /// Brotli compression.
     Brotli,
+    /// Zstandard compression.
     Zstd,
 }
 
 impl Compression {
     #[must_use]
+    /// Returns the content encoding string for this compression type, if applicable.
     pub fn content_encoding(self) -> Option<&'static str> {
         Some(match self {
             Compression::Gzip => "gzip",
@@ -112,6 +131,7 @@ impl TryInto<Compression> for u8 {
 #[cfg(feature = "tilejson")]
 impl Header {
     #[must_use]
+    /// Generates a `TileJSON` object from the header data.
     pub fn get_tilejson(&self, sources: Vec<String>) -> tilejson::TileJSON {
         tilejson::tilejson! {
             tiles: sources,
@@ -123,6 +143,7 @@ impl Header {
     }
 
     #[must_use]
+    /// Returns the bounds of the tiles as a `TileJSON` Bounds object.
     pub fn get_bounds(&self) -> tilejson::Bounds {
         tilejson::Bounds::new(
             f64::from(self.min_longitude),
@@ -133,6 +154,7 @@ impl Header {
     }
 
     #[must_use]
+    /// Returns the center point of the tiles as a `TileJSON` Center object.
     pub fn get_center(&self) -> tilejson::Center {
         tilejson::Center::new(
             f64::from(self.center_longitude),
@@ -143,16 +165,23 @@ impl Header {
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
+/// Supported tile types for `PMTiles`.
 pub enum TileType {
+    /// Unknown tile type.
     Unknown,
+    /// Mapbox Vector Tile.
     Mvt,
+    /// PNG image tile.
     Png,
+    /// JPEG image tile.
     Jpeg,
+    /// WebP image tile.
     Webp,
 }
 
 impl TileType {
     #[must_use]
+    /// Returns the MIME content type for this tile type.
     pub fn content_type(self) -> &'static str {
         match self {
             TileType::Mvt => "application/vnd.mapbox-vector-tile",
@@ -189,6 +218,7 @@ impl Header {
         buf.get_i32_le() as f32 / 10_000_000.
     }
 
+    /// Attempts to parse a Header from a byte buffer.
     pub fn try_from_bytes(mut bytes: Bytes) -> PmtResult<Self> {
         let magic_bytes = bytes.split_to(V3_MAGIC.len());
 

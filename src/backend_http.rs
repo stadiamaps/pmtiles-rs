@@ -28,12 +28,14 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
     }
 }
 
+/// Backend for reading `PMTiles` over HTTP.
 pub struct HttpBackend {
     client: Client,
     url: Url,
 }
 
 impl HttpBackend {
+    /// Creates a new HTTP backend.
     pub fn try_from<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
         Ok(HttpBackend {
             client,

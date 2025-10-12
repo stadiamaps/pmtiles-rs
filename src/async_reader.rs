@@ -22,6 +22,7 @@ use crate::{
 #[cfg(feature = "__async")]
 use crate::{DirectoryCache, NoCache};
 
+/// An asynchronous reader for `PMTiles` archives.
 pub struct AsyncPmTilesReader<B, C = NoCache> {
     backend: B,
     cache: C,
@@ -172,6 +173,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     #[cfg(feature = "tilejson")]
+    /// Parses the metadata and combines it with header data to produce a TileJSON object.
     pub async fn parse_tilejson(&self, sources: Vec<String>) -> PmtResult<tilejson::TileJSON> {
         use serde_json::Value;
 
@@ -296,6 +298,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 }
 
+/// A trait for asynchronous backends that can read data from a `PMTiles` source.
 pub trait AsyncBackend {
     /// Reads exactly `length` bytes starting at `offset`
     fn read_exact(

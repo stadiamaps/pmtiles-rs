@@ -38,6 +38,7 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<AwsS3Backend, C> {
     }
 }
 
+/// Backend for reading `PMTiles` from AWS S3.
 pub struct AwsS3Backend {
     client: Client,
     bucket: String,
@@ -46,6 +47,7 @@ pub struct AwsS3Backend {
 
 impl AwsS3Backend {
     #[must_use]
+    /// Creates a new AWS S3 backend.
     pub fn from(client: Client, bucket: String, key: String) -> Self {
         Self {
             client,

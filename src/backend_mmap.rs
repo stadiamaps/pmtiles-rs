@@ -26,11 +26,13 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
     }
 }
 
+/// Backend for reading `PMTiles` from a memory-mapped file.
 pub struct MmapBackend {
     file: AsyncMmapFile,
 }
 
 impl MmapBackend {
+    /// Creates a new memory-mapped file backend.
     pub async fn try_from<P: AsRef<Path>>(p: P) -> PmtResult<Self> {
         Ok(Self {
             file: AsyncMmapFile::open_with_options(p, AsyncOptions::new().read(true))
