@@ -1,4 +1,7 @@
 #![cfg_attr(all(feature = "default"), doc = include_str!("../README.md"))]
+// Only here because we warn on `missing_docs`.
+// The first `cfg_attr` is exported to https://docs.rs
+#![cfg_attr(not(feature = "default"), doc = "# `PMTiles` (for Rust)")]
 
 #[cfg(feature = "__async")]
 mod async_reader;
