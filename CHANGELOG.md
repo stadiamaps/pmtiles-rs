@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.17.0...v0.17.1) - 2025-10-13
+
+### Fixed
+
+- make the `object-store` feature depend on `__async` ([#84](https://github.com/stadiamaps/pmtiles-rs/pull/84))
+
+### Other
+
+- use crates.io trusted publishing ([#86](https://github.com/stadiamaps/pmtiles-rs/pull/86))
+- move the backends to its own module ([#82](https://github.com/stadiamaps/pmtiles-rs/pull/82))
+- document all doc items ([#83](https://github.com/stadiamaps/pmtiles-rs/pull/83))
+
 ## [0.17.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.16.0...v0.17.0) - 2025-09-23
 
 ### Other
