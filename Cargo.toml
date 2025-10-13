@@ -96,6 +96,5 @@ unwrap_used = "warn"
 panic = "warn"
 # Pedantics without being too noisy
 pedantic = { level = "warn", priority = -1 }
-missing_errors_doc = "warn"
 module_name_repetitions = "allow"
 similar_names = "allow"
