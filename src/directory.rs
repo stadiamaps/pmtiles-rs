@@ -8,6 +8,7 @@ use varint_rs::VarintWriter as _;
 use crate::{PmtError, TileId};
 
 #[derive(Default, Clone)]
+/// A directory of tile entries in a `PMTiles` file.
 pub struct Directory {
     pub(crate) entries: Vec<DirEntry>,
 }
@@ -151,6 +152,7 @@ impl crate::writer::WriteTo for Directory {
 }
 
 #[derive(Clone, Default, Debug)]
+/// An entry in the `PMTiles` directory, representing a tile or a range of tiles.
 pub struct DirEntry {
     pub(crate) tile_id: u64,
     pub(crate) offset: u64,
@@ -165,6 +167,7 @@ impl DirEntry {
 
     #[cfg(feature = "iter-async")]
     #[must_use]
+    /// Returns an iterator over the tile coordinates covered by this entry.
     pub fn iter_coords(&self) -> DirEntryCoordsIter<'_> {
         DirEntryCoordsIter {
             entry: self,
@@ -174,6 +177,7 @@ impl DirEntry {
 }
 
 #[cfg(feature = "iter-async")]
+/// Iterator over tile coordinates in a directory entry.
 pub struct DirEntryCoordsIter<'a> {
     entry: &'a DirEntry,
     current: u32,

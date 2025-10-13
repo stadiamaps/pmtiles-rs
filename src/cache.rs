@@ -4,9 +4,13 @@ use std::sync::{Arc, RwLock};
 
 use crate::{DirEntry, Directory, TileId};
 
+/// Result of a directory cache lookup.
 pub enum DirCacheResult {
+    /// The directory was not found in the cache.
     NotCached,
+    /// The tile was not found in the directory.
     NotFound,
+    /// The tile was found in the directory.
     Found(DirEntry),
 }
 
@@ -33,6 +37,7 @@ pub trait DirectoryCache {
     fn insert_dir(&self, offset: usize, directory: Directory) -> impl Future<Output = ()> + Send;
 }
 
+/// A cache that does not cache anything.
 pub struct NoCache;
 
 impl DirectoryCache for NoCache {
@@ -48,6 +53,7 @@ impl DirectoryCache for NoCache {
 /// A simple HashMap-based implementation of a `PMTiles` directory cache.
 #[derive(Default)]
 pub struct HashMapCache {
+    /// The internal cache storage.
     pub cache: Arc<RwLock<HashMap<usize, Directory>>>,
 }
 

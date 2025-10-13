@@ -90,6 +90,10 @@ impl TileCoord {
     /// assert!(matches!(TileCoord::new(2, 4, 0), Err(InvalidCoordinate(..)))); // Invalid x coordinate
     /// assert!(matches!(TileCoord::new(2, 0, 4), Err(InvalidCoordinate(..)))); // Invalid y coordinate
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// If the coordinates are invalid for the given zoom level
     pub fn new(z: u8, x: u32, y: u32) -> PmtResult<Self> {
         if z > MAX_ZOOM || x >= (1 << z) || y >= (1 << z) {
             Err(PmtError::InvalidCoordinate(z, x, y))
