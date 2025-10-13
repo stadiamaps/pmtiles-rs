@@ -8,16 +8,9 @@ mod async_reader;
 #[cfg(feature = "__async")]
 pub use async_reader::{AsyncBackend, AsyncPmTilesReader};
 
-#[cfg(feature = "__async-aws-s3")]
-mod backend_aws_s3;
-#[cfg(feature = "http-async")]
-mod backend_http;
-#[cfg(feature = "mmap-async-tokio")]
-mod backend_mmap;
-#[cfg(feature = "object-store")]
-mod backend_object_store;
-#[cfg(feature = "__async-s3")]
-mod backend_s3;
+mod backends;
+#[allow(unused_imports, reason = "only a warning if no backends are enabled")]
+pub use backends::*;
 
 #[cfg(feature = "__async")]
 mod cache;
@@ -34,16 +27,6 @@ mod writer;
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "__async-aws-s3")]
 pub use aws_sdk_s3;
-#[cfg(feature = "aws-s3-async")]
-pub use backend_aws_s3::AwsS3Backend;
-#[cfg(feature = "http-async")]
-pub use backend_http::HttpBackend;
-#[cfg(feature = "mmap-async-tokio")]
-pub use backend_mmap::MmapBackend;
-#[cfg(feature = "object-store")]
-pub use backend_object_store::ObjectStoreBackend;
-#[cfg(feature = "__async-s3")]
-pub use backend_s3::S3Backend;
 #[cfg(feature = "iter-async")]
 pub use directory::DirEntryCoordsIter;
 pub use directory::{DirEntry, Directory};
