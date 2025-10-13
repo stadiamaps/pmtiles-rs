@@ -167,6 +167,10 @@ impl PmTilesWriter {
     }
 
     /// Create a new `PMTiles` writer.
+    ///
+    /// # Errors
+    ///
+    /// If writing to the output stream fails
     pub fn create<W: Write + Seek>(self, writer: W) -> PmtResult<PmTilesStreamWriter<W>> {
         let mut out = Counter::new(BufWriter::new(writer));
 
@@ -209,6 +213,10 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     ///
     /// Tiles are deduplicated and written to output.
     /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
+    ///
+    /// # Errors
+    ///
+    /// If writing to the output stream fails
     pub fn add_tile(&mut self, coord: TileCoord, data: &[u8]) -> PmtResult<()> {
         self.add_tile_by_id(coord.into(), data, self.header.tile_compression)
     }
@@ -220,6 +228,10 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     ///
     /// Tiles are deduplicated and written to output.
     /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
+    ///
+    /// # Errors
+    ///
+    /// If writing to the output stream fails
     pub fn add_raw_tile(&mut self, coord: TileCoord, data: &[u8]) -> PmtResult<()> {
         self.add_tile_by_id(coord.into(), data, Compression::None)
     }
@@ -228,6 +240,10 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     ///
     /// Tiles are deduplicated and written to output.
     /// The `tile_id` should be increasing for best read performance.
+    ///
+    /// # Errors
+    ///
+    /// If writing to the output stream fails
     fn add_tile_by_id(
         &mut self,
         tile_id: TileId,
@@ -374,6 +390,12 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     }
 
     /// Finish writing the `PMTiles` file.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if
+    /// - writing to the output stream fails or
+    /// - if the file structure is invalid.
     pub fn finalize(mut self) -> PmtResult<()> {
         // We're done writing data, so we can set the data_length here.
         self.header.data_length =

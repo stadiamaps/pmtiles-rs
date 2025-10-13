@@ -23,8 +23,7 @@ s3-async-native = ["__async-s3", "__async-s3-nativetls"]
 s3-async-rustls = ["__async-s3", "__async-s3-rustls"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
 write = ["dep:countio", "dep:flate2", "dep:twox-hash"]
-
-object-store = ["dep:object_store"]
+object-store = ["__async", "dep:object_store"]
 
 # Forward some of the common features to reqwest dependency
 reqwest-default = ["reqwest?/default"]
@@ -85,6 +84,7 @@ url = "2"
 
 [lints.rust]
 unsafe_code = "forbid"
+missing_docs = "warn"
 unused_qualifications = "warn"
 
 [lints.clippy]
@@ -92,8 +92,8 @@ unused_qualifications = "warn"
 panic_in_result_fn = "warn"
 todo = "warn"
 unwrap_used = "warn"
+panic = "warn"
 # Pedantics without being too noisy
 pedantic = { level = "warn", priority = -1 }
-missing_errors_doc = "allow"
 module_name_repetitions = "allow"
 similar_names = "allow"

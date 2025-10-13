@@ -8,6 +8,13 @@ impl AsyncPmTilesReader<HttpBackend, NoCache> {
     /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
     ///
     /// Fails if `url` does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the
+    /// - URL is invalid,
+    /// - the backend fails to read the header/root directory,
+    /// - or if the root directory is malformed
     pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
         Self::new_with_cached_url(NoCache, client, url).await
     }
@@ -17,6 +24,13 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
     /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
     ///
     /// Fails if `url` does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the
+    /// - URL is invalid,
+    /// - the backend fails to read the header/root directory,
+    /// - or if the root directory is malformed
     pub async fn new_with_cached_url<U: IntoUrl>(
         cache: C,
         client: Client,
@@ -28,12 +42,18 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
     }
 }
 
+/// Backend for reading `PMTiles` over HTTP.
 pub struct HttpBackend {
     client: Client,
     url: Url,
 }
 
 impl HttpBackend {
+    /// Creates a new HTTP backend.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the URL cannot be parsed into a valid URL.
     pub fn try_from<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
         Ok(HttpBackend {
             client,
