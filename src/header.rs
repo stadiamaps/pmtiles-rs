@@ -37,19 +37,19 @@ pub struct Header {
     /// The maximum zoom level.
     pub max_zoom: u8,
     /// The minimum longitude.
-    pub min_longitude: f32,
+    pub min_longitude: f64,
     /// The minimum latitude.
-    pub min_latitude: f32,
+    pub min_latitude: f64,
     /// The maximum longitude.
-    pub max_longitude: f32,
+    pub max_longitude: f64,
     /// The maximum latitude.
-    pub max_latitude: f32,
+    pub max_latitude: f64,
     /// The zoom level for the center point.
     pub center_zoom: u8,
     /// The longitude of the center point.
-    pub center_longitude: f32,
+    pub center_longitude: f64,
     /// The latitude of the center point.
-    pub center_latitude: f32,
+    pub center_latitude: f64,
 }
 
 impl Header {
@@ -213,9 +213,9 @@ static V2_MAGIC: &str = "PM";
 
 impl Header {
     #[expect(clippy::cast_precision_loss)]
-    fn read_coordinate_part<B: Buf>(mut buf: B) -> f32 {
+    fn read_coordinate_part<B: Buf>(mut buf: B) -> f64 {
         // TODO: would it be more precise to do `((value as f64) / 10_000_000.) as f32` ?
-        buf.get_i32_le() as f32 / 10_000_000.
+        buf.get_i32_le() as f64 / 10_000_000.
     }
 
     /// Attempts to parse a Header from a byte buffer.
@@ -311,7 +311,7 @@ impl crate::writer::WriteTo for Header {
 impl Header {
     #[cfg(feature = "write")]
     #[expect(clippy::cast_possible_truncation)]
-    fn write_coordinate_part<W: std::io::Write>(writer: &mut W, value: f32) -> std::io::Result<()> {
+    fn write_coordinate_part<W: std::io::Write>(writer: &mut W, value: f64) -> std::io::Result<()> {
         writer.write_all(&((value * 10_000_000.0) as i32).to_le_bytes())
     }
 }
@@ -371,12 +371,12 @@ mod tests {
         assert_eq!(header.min_zoom, 0);
         assert_eq!(header.max_zoom, 14);
         assert_eq!(header.center_zoom, 0);
-        assert_eq!(header.center_latitude, 43.779778);
-        assert_eq!(header.center_longitude, 11.241483);
-        assert_eq!(header.min_latitude, 43.727013);
-        assert_eq!(header.max_latitude, 43.832542);
+        assert_eq!(header.center_latitude, 43.779779);
+        assert_eq!(header.center_longitude, 11.2414827);
+        assert_eq!(header.min_latitude, 43.7270125);
+        assert_eq!(header.max_latitude, 43.8325455);
         assert_eq!(header.min_longitude, 11.154026);
-        assert_eq!(header.max_longitude, 11.328939);
+        assert_eq!(header.max_longitude, 11.3289395);
         assert!(header.clustered);
     }
 
@@ -406,19 +406,11 @@ mod tests {
         let header = Header::try_from_bytes(header_bytes.freeze()).unwrap();
         let tj = header.get_tilejson(Vec::new());
 
-        assert_eq!(
-            tj.center,
-            Some(Center::new(11.241482734680176, 43.77977752685547, 0))
-        );
+        assert_eq!(tj.center, Some(Center::new(11.2414827, 43.779779, 0)));
 
         assert_eq!(
             tj.bounds,
-            Some(Bounds::new(
-                11.15402603149414,
-                43.727012634277344,
-                11.328939437866211,
-                43.832542419433594
-            ))
+            Some(Bounds::new(11.154026, 43.7270125, 11.3289395, 43.8325455))
         );
     }
 
