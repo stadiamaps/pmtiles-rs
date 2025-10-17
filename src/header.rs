@@ -55,7 +55,6 @@ pub struct Header {
 impl Header {
     #[cfg(feature = "write")]
     pub(crate) fn new(tile_compression: Compression, tile_type: TileType) -> Self {
-        #[expect(clippy::excessive_precision)]
         Self {
             version: 3,
             root_offset: HEADER_SIZE as u64,
@@ -146,10 +145,10 @@ impl Header {
     /// Returns the bounds of the tiles as a `TileJSON` Bounds object.
     pub fn get_bounds(&self) -> tilejson::Bounds {
         tilejson::Bounds::new(
-            f64::from(self.min_longitude),
-            f64::from(self.min_latitude),
-            f64::from(self.max_longitude),
-            f64::from(self.max_latitude),
+            self.min_longitude,
+            self.min_latitude,
+            self.max_longitude,
+            self.max_latitude,
         )
     }
 
@@ -157,8 +156,8 @@ impl Header {
     /// Returns the center point of the tiles as a `TileJSON` Center object.
     pub fn get_center(&self) -> tilejson::Center {
         tilejson::Center::new(
-            f64::from(self.center_longitude),
-            f64::from(self.center_latitude),
+            self.center_longitude,
+            self.center_latitude,
             self.center_zoom,
         )
     }
@@ -213,7 +212,7 @@ static V2_MAGIC: &str = "PM";
 
 impl Header {
     fn read_coordinate_part<B: Buf>(mut buf: B) -> f64 {
-        buf.get_i32_le() as f64 / 10_000_000.
+        f64::from(buf.get_i32_le()) / 10_000_000.
     }
 
     /// Attempts to parse a Header from a byte buffer.
