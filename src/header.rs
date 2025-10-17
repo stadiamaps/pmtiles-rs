@@ -212,9 +212,7 @@ static V3_MAGIC: &str = "PMTiles";
 static V2_MAGIC: &str = "PM";
 
 impl Header {
-    #[expect(clippy::cast_precision_loss)]
     fn read_coordinate_part<B: Buf>(mut buf: B) -> f64 {
-        // TODO: would it be more precise to do `((value as f64) / 10_000_000.) as f32` ?
         buf.get_i32_le() as f64 / 10_000_000.
     }
 
@@ -312,7 +310,7 @@ impl Header {
     #[cfg(feature = "write")]
     #[expect(clippy::cast_possible_truncation)]
     fn write_coordinate_part<W: std::io::Write>(writer: &mut W, value: f64) -> std::io::Result<()> {
-        writer.write_all(&((value * 10_000_000.0) as i32).to_le_bytes())
+        writer.write_all(&((value * 10_000_000.0).round() as i32).to_le_bytes())
     }
 }
 
