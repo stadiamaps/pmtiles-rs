@@ -134,7 +134,7 @@ impl PmTilesWriter {
 
     /// Set the bounds of the tiles
     #[must_use]
-    pub fn bounds(mut self, min_lon: f32, min_lat: f32, max_lon: f32, max_lat: f32) -> Self {
+    pub fn bounds(mut self, min_lon: f64, min_lat: f64, max_lon: f64, max_lat: f64) -> Self {
         self.header.min_latitude = min_lat;
         self.header.min_longitude = min_lon;
         self.header.max_latitude = max_lat;
@@ -151,7 +151,7 @@ impl PmTilesWriter {
 
     /// Set the center position.
     #[must_use]
-    pub fn center(mut self, lon: f32, lat: f32) -> Self {
+    pub fn center(mut self, lon: f64, lat: f64) -> Self {
         self.header.center_latitude = lat;
         self.header.center_longitude = lon;
         self
