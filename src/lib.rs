@@ -15,7 +15,7 @@ pub use backends::*;
 #[cfg(feature = "__async")]
 mod cache;
 #[cfg(feature = "__async")]
-pub use cache::{DirCacheResult, DirectoryCache, HashMapCache, NoCache};
+pub use cache::{DirCacheResult, DirectoryCacheV2, DirectoryCache, HashMapCache, HashMapCacheV2, NoCache};
 
 mod directory;
 mod error;

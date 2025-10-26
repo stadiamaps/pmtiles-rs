@@ -2,7 +2,7 @@ use bytes::Bytes;
 use reqwest::header::{HeaderValue, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
 
-use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCache, NoCache, PmtError, PmtResult};
+use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCacheV2, NoCache, PmtError, PmtResult};
 
 impl AsyncPmTilesReader<HttpBackend, NoCache> {
     /// Creates a new `PMTiles` reader from a URL using the Reqwest backend.
@@ -20,7 +20,7 @@ impl AsyncPmTilesReader<HttpBackend, NoCache> {
     }
 }
 
-impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
+impl<C: DirectoryCacheV2 + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
     /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
     ///
     /// Fails if `url` does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)

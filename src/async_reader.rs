@@ -17,10 +17,10 @@ use tokio::io::AsyncReadExt as _;
 use crate::PmtError::UnsupportedCompression;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::{
-    Compression, DirCacheResult, DirEntry, Directory, Header, PmtError, PmtResult, TileId,
+    Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileId,
 };
 #[cfg(feature = "__async")]
-use crate::{DirectoryCache, NoCache};
+use crate::{DirectoryCacheV2, NoCache};
 
 /// An asynchronous reader for `PMTiles` archives.
 pub struct AsyncPmTilesReader<B, C = NoCache> {
@@ -45,7 +45,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
     }
 }
 
-impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTilesReader<B, C> {
+impl<B: AsyncBackend + Sync + Send, C: DirectoryCacheV2 + Sync + Send> AsyncPmTilesReader<B, C> {
     /// Creates a new cached reader from a specified source and validates the provided `PMTiles` archive is valid.
     ///
     /// Note: Prefer using `new_with_*` methods.
@@ -275,18 +275,12 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         // and it allows the directory to be cached later without cloning it first.
         let offset = (self.header.leaf_offset + entry.offset) as _;
 
-        let entry = match self.cache.get_dir_entry(offset, tile_id).await {
-            DirCacheResult::NotCached => {
-                // Cache miss - read from backend
-                let length = entry.length as _;
-                let dir = self.read_directory(offset, length).await?;
-                let entry = dir.find_tile_id(tile_id).cloned();
-                self.cache.insert_dir(offset, dir).await;
-                entry
-            }
-            DirCacheResult::NotFound => None,
-            DirCacheResult::Found(entry) => Some(entry),
-        };
+        let entry = self.cache.get_dir_entry_or_insert(offset, tile_id, async move {
+            let this = &self;
+            let length = entry.length as _;
+            let dir = this.read_directory(offset, length).await;
+            dir
+        }).await?;
 
         if let Some(ref entry) = entry
             && entry.is_leaf()
