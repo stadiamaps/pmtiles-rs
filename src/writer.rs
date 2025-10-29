@@ -60,6 +60,7 @@ pub(crate) trait WriteTo {
             Compression::Gzip => {
                 let mut encoder = GzEncoder::new(writer, flate2::Compression::default());
                 self.write_to(&mut encoder)?;
+                encoder.finish()?;
             }
             v => Err(UnsupportedCompression(v))?,
         }
