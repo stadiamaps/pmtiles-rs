@@ -7,12 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.17.2](https://github.com/stadiamaps/pmtiles-rs/compare/v0.17.1...v0.17.2) - 2025-10-29
+## [0.18.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.17.1...v0.18.0) - 2025-10-29
 
 ### Other
 
 - Don't ignore errors from Gzip `finish` ([#89](https://github.com/stadiamaps/pmtiles-rs/pull/89))
-- losing lat/lon precision (10e-7) ([#87](https://github.com/stadiamaps/pmtiles-rs/pull/87))
+- **Breaking:** losing lat/lon precision (10e-7) ([#87](https://github.com/stadiamaps/pmtiles-rs/pull/87))
 
 ## [0.17.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.17.0...v0.17.1) - 2025-10-13
 
