@@ -64,7 +64,7 @@ where
     ) -> PmtResult<Option<DirEntry>> {
         let dir_result = self.get_dir_entry(offset, tile_id).await;
         match dir_result {
-            DirCacheResult::Found(dir) => Ok(Some(dir.into())),
+            DirCacheResult::Found(dir) => Ok(Some(dir)),
             DirCacheResult::NotFound => Ok(None),
             DirCacheResult::NotCached => {
                 let dir = fetcher.await?;
