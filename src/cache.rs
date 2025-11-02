@@ -38,7 +38,7 @@ pub trait DirectoryCache {
     fn insert_dir(&self, offset: usize, directory: Directory) -> impl Future<Output = ()> + Send;
 }
 
-/// The V2 version of the DirectoryCache trait, allows for request coalescing, preventing
+/// The V2 version of the `DirectoryCache` trait, allows for request coalescing, preventing
 /// superfluous inserts when concurrent requests are made for a directory not yet in the cache.
 pub trait DirectoryCacheV2 {
     /// Get a directory entry from the cache, or insert it using the provided fetcher function.
@@ -50,7 +50,7 @@ pub trait DirectoryCacheV2 {
     ) -> impl Future<Output = PmtResult<Option<DirEntry>>>;
 }
 
-/// Provides a blanket implementation of DirectoryCacheV2 for any existing DirectoryCache
+/// Provides a blanket implementation of `DirectoryCacheV2` for any existing `DirectoryCache`
 /// implementation.
 impl<T> DirectoryCacheV2 for T
 where
@@ -70,7 +70,7 @@ where
                 let dir = fetcher.await?;
                 self.insert_dir(offset, dir.clone()).await;
                 let entry = dir.find_tile_id(tile_id);
-                Ok(entry.map(|e| e.clone()))
+                Ok(entry.cloned())
             }
         }
     }
@@ -113,9 +113,9 @@ impl DirectoryCache for HashMapCache {
     }
 }
 
-/// Provides an implementation of the HashMap-based directory cache for the DirectoryCacheV2 trait.
-/// The original version of the HashMapCache is kept intact for testing compatibility with existing
-/// implementations of the DirectoryCache trait.
+/// Provides an implementation of the HashMap-based directory cache for the `DirectoryCacheV2` trait.
+/// The original version of the `HashMapCache` is kept intact for testing compatibility with existing
+/// implementations of the `DirectoryCache` trait.
 /// This implementation uses two levels of locking to allow requests for a slot to coalesce without
 /// having to a lock global to the cache.
 #[derive(Default)]
@@ -135,7 +135,7 @@ enum CacheSlotState {
 
 #[derive(Default)]
 struct CacheSlot {
-    /// A slot in the cache. We use a RwLock to guard the slot state and coalesce requests.
+    /// A slot in the cache. We use a `RwLock` to guard the slot state and coalesce requests.
     slot: tokio::sync::RwLock<CacheSlotState>,
 }
 
@@ -149,13 +149,9 @@ impl CacheSlot {
             // First, get the read lock and check to see if the slot already has been marked as
             // NotFound or Filled.
             let slot_status = self.slot.read().await;
-            match &*slot_status {
-                Filled(dir) => {
-                    // Already filled, return the entry if found.
-                    return Ok(dir.find_tile_id(tile_id).cloned());
-                }
-                // If empty, we need to fetch and fill it.
-                _ => {}
+            if let Filled(dir) = &*slot_status {
+                // Already filled, return the entry if found.
+                return Ok(dir.find_tile_id(tile_id).cloned());
             }
         }
         // Now get the write lock to possibly initialize the slot.
@@ -168,7 +164,7 @@ impl CacheSlot {
         }
         match *slot_status {
             Filled(ref dir) => Ok(dir.find_tile_id(tile_id).cloned()),
-            _ => unreachable!(),
+            CacheSlotState::Empty => unreachable!(),
         }
     }
 }
@@ -256,8 +252,7 @@ mod tests {
         let get_result = cache
             .get_dir_entry_or_insert(offset + 10, tile_id.unwrap(), async {
                 let mut dir = Directory::default();
-                let mut dir_entry = DirEntry::default();
-                dir_entry.offset = (offset + 10) as u64;
+                let dir_entry = DirEntry { offset: (offset + 10) as u64, ..Default::default() };
                 dir.entries.push(dir_entry);
                 Ok(dir)
             })
@@ -286,8 +281,7 @@ mod tests {
         let get_result = cache
             .get_dir_entry_or_insert(offset, tile_id.unwrap(), async {
                 let mut dir = Directory::default();
-                let mut dir_entry = DirEntry::default();
-                dir_entry.offset = (offset + 10) as u64;
+                let dir_entry = DirEntry { offset: (offset + 10) as u64, ..Default::default() };
                 dir.entries.push(dir_entry);
                 Ok(dir)
             })
