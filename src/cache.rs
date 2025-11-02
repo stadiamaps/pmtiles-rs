@@ -52,7 +52,7 @@ pub trait DirectoryCacheV2 {
 
 /// Provides a blanket implementation of `DirectoryCacheV2` for any existing `DirectoryCache`
 /// implementation.
-impl<T> DirectoryCacheV2 for T
+impl <T> DirectoryCacheV2 for T
 where
     T: DirectoryCache + Send + Sync,
 {
@@ -117,7 +117,7 @@ impl DirectoryCache for HashMapCache {
 /// The original version of the `HashMapCache` is kept intact for testing compatibility with existing
 /// implementations of the `DirectoryCache` trait.
 /// This implementation uses two levels of locking to allow requests for a slot to coalesce without
-/// having to a lock global to the cache.
+/// having to take a lock global to the cache.
 #[derive(Default)]
 pub struct HashMapCacheV2 {
     /// The internal cache storage.
