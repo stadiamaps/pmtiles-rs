@@ -16,9 +16,7 @@ use tokio::io::AsyncReadExt as _;
 
 use crate::PmtError::UnsupportedCompression;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
-use crate::{
-    Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileId,
-};
+use crate::{Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileId};
 #[cfg(feature = "__async")]
 use crate::{DirectoryCacheV2, NoCache};
 
@@ -275,12 +273,15 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCacheV2 + Sync + Send> AsyncPmTi
         // and it allows the directory to be cached later without cloning it first.
         let offset = (self.header.leaf_offset + entry.offset) as _;
 
-        let entry = self.cache.get_dir_entry_or_insert(offset, tile_id, async move {
-            let this = &self;
-            let length = entry.length as _;
-            let dir = this.read_directory(offset, length).await;
-            dir
-        }).await?;
+        let entry = self
+            .cache
+            .get_dir_entry_or_insert(offset, tile_id, async move {
+                let this = &self;
+                let length = entry.length as _;
+                let dir = this.read_directory(offset, length).await;
+                dir
+            })
+            .await?;
 
         if let Some(ref entry) = entry
             && entry.is_leaf()

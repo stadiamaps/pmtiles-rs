@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, RwLock};
 
+use crate::cache::CacheSlotState::Filled;
 use crate::{DirEntry, Directory, PmtResult, TileId};
-use crate::cache::CacheSlotState::{Filled};
 
 /// Result of a directory cache lookup.
 pub enum DirCacheResult {
@@ -52,7 +52,10 @@ pub trait DirectoryCacheV2 {
 
 /// Provides a blanket implementation of DirectoryCacheV2 for any existing DirectoryCache
 /// implementation.
-impl <T> DirectoryCacheV2 for T where T: DirectoryCache + Send + Sync {
+impl<T> DirectoryCacheV2 for T
+where
+    T: DirectoryCache + Send + Sync,
+{
     async fn get_dir_entry_or_insert(
         &self,
         offset: usize,
@@ -206,7 +209,9 @@ impl DirectoryCacheV2 for HashMapCacheV2 {
 
 #[cfg(test)]
 mod tests {
-    use crate::{DirEntry, Directory, DirectoryCache, DirectoryCacheV2, HashMapCache, HashMapCacheV2};
+    use crate::{
+        DirEntry, Directory, DirectoryCache, DirectoryCacheV2, HashMapCache, HashMapCacheV2,
+    };
 
     #[tokio::test]
     async fn test_hash_map_cache() {
@@ -216,9 +221,12 @@ mod tests {
         let mut dir_to_cache = Directory::default();
         dir_to_cache.entries.push(DirEntry::default());
 
-         // Initially, the cache should be empty.
+        // Initially, the cache should be empty.
         let get_result = cache.get_dir_entry(offset, tile_id.unwrap()).await;
-        assert!(matches!(get_result, crate::cache::DirCacheResult::NotCached));
+        assert!(matches!(
+            get_result,
+            crate::cache::DirCacheResult::NotCached
+        ));
 
         // Insert a directory into the cache.
         cache.insert_dir(offset, dir_to_cache).await;
@@ -228,25 +236,32 @@ mod tests {
         assert!(matches!(get_result, crate::cache::DirCacheResult::Found(_)));
 
         // The fetcher won't get called, because the entry is already cached.
-        let get_result = cache.get_dir_entry_or_insert(offset, tile_id.unwrap(), async {
-            Err(crate::PmtError::InvalidEntry)
-        }).await.unwrap();
+        let get_result = cache
+            .get_dir_entry_or_insert(offset, tile_id.unwrap(), async {
+                Err(crate::PmtError::InvalidEntry)
+            })
+            .await
+            .unwrap();
         assert!(get_result.is_some());
 
         // Now the fetcher will be executed.
-        let get_result = cache.get_dir_entry_or_insert(offset + 10, tile_id.unwrap(), async {
-            Err(crate::PmtError::InvalidEntry)
-        }).await;
+        let get_result = cache
+            .get_dir_entry_or_insert(offset + 10, tile_id.unwrap(), async {
+                Err(crate::PmtError::InvalidEntry)
+            })
+            .await;
         assert!(get_result.is_err());
 
         // The fetcher will be executed and will contain a tile
-        let get_result = cache.get_dir_entry_or_insert(offset + 10, tile_id.unwrap(), async {
-            let mut dir = Directory::default();
-            let mut dir_entry = DirEntry::default();
-            dir_entry.offset = (offset + 10) as u64;
-            dir.entries.push(dir_entry);
-            Ok(dir)
-        }).await;
+        let get_result = cache
+            .get_dir_entry_or_insert(offset + 10, tile_id.unwrap(), async {
+                let mut dir = Directory::default();
+                let mut dir_entry = DirEntry::default();
+                dir_entry.offset = (offset + 10) as u64;
+                dir.entries.push(dir_entry);
+                Ok(dir)
+            })
+            .await;
         assert!(get_result.is_ok());
         assert!(get_result.unwrap().is_some());
     }
@@ -260,27 +275,33 @@ mod tests {
         dir_to_cache.entries.push(DirEntry::default());
 
         // Returns an Err
-        let get_result = cache.get_dir_entry_or_insert(offset, tile_id.unwrap(), async {
-            Err(crate::PmtError::InvalidEntry)
-        }).await;
+        let get_result = cache
+            .get_dir_entry_or_insert(offset, tile_id.unwrap(), async {
+                Err(crate::PmtError::InvalidEntry)
+            })
+            .await;
         assert!(get_result.is_err());
 
         // Now inserts the directory into the cache and returns the DirEntry.
-        let get_result = cache.get_dir_entry_or_insert(offset, tile_id.unwrap(), async {
-            let mut dir = Directory::default();
-            let mut dir_entry = DirEntry::default();
-            dir_entry.offset = (offset + 10) as u64;
-            dir.entries.push(dir_entry);
-            Ok(dir)
-        }).await;
+        let get_result = cache
+            .get_dir_entry_or_insert(offset, tile_id.unwrap(), async {
+                let mut dir = Directory::default();
+                let mut dir_entry = DirEntry::default();
+                dir_entry.offset = (offset + 10) as u64;
+                dir.entries.push(dir_entry);
+                Ok(dir)
+            })
+            .await;
         assert!(get_result.is_ok());
         assert!(get_result.unwrap().is_some());
 
         // Repeating the request with the fetcher that returns an Err, but this time the fetcher
         // will not be called because the Directory is cached.
-        let get_result = cache.get_dir_entry_or_insert(offset, tile_id.unwrap(), async {
-            Err(crate::PmtError::InvalidEntry)
-        }).await;
+        let get_result = cache
+            .get_dir_entry_or_insert(offset, tile_id.unwrap(), async {
+                Err(crate::PmtError::InvalidEntry)
+            })
+            .await;
         assert!(get_result.is_ok());
         assert!(get_result.unwrap().is_some());
     }
