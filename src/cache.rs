@@ -252,7 +252,10 @@ mod tests {
         let get_result = cache
             .get_dir_entry_or_insert(offset + 10, tile_id.unwrap(), async {
                 let mut dir = Directory::default();
-                let dir_entry = DirEntry { offset: (offset + 10) as u64, ..Default::default() };
+                let dir_entry = DirEntry {
+                    offset: (offset + 10) as u64,
+                    ..Default::default()
+                };
                 dir.entries.push(dir_entry);
                 Ok(dir)
             })
@@ -281,7 +284,10 @@ mod tests {
         let get_result = cache
             .get_dir_entry_or_insert(offset, tile_id.unwrap(), async {
                 let mut dir = Directory::default();
-                let dir_entry = DirEntry { offset: (offset + 10) as u64, ..Default::default() };
+                let dir_entry = DirEntry {
+                    offset: (offset + 10) as u64,
+                    ..Default::default()
+                };
                 dir.entries.push(dir_entry);
                 Ok(dir)
             })
