@@ -52,7 +52,7 @@ pub trait DirectoryCacheV2 {
 
 /// Provides a blanket implementation of `DirectoryCacheV2` for any existing `DirectoryCache`
 /// implementation.
-impl <T> DirectoryCacheV2 for T
+impl<T> DirectoryCacheV2 for T
 where
     T: DirectoryCache + Send + Sync,
 {
