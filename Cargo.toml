@@ -16,8 +16,8 @@ rust-version = "1.88"
 # In the future, we might want to change this to a more selective set of features.
 default = ["__all_non_conflicting"]
 aws-s3-async = ["__async-aws-s3"]
-extract = ["write", "dep:roaring", "dep:futures-util", "iter-async"]
-http-async = ["__async", "dep:reqwest"]
+extract = ["write", "dep:roaring", "dep:futures-util", "iter-async", "reqwest?/stream"]
+http-async = ["__async", "dep:reqwest", "dep:async-stream", "dep:futures-util"]
 iter-async = ["__async", "dep:async-stream", "dep:futures-util"]
 mmap-async-tokio = ["__async", "dep:fmmap", "fmmap?/tokio"]
 moka = ["__async", "dep:moka"]

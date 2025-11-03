@@ -9,6 +9,7 @@ use std::sync::Arc;
 #[cfg(feature = "iter-async")]
 use async_stream::try_stream;
 use bytes::Bytes;
+use futures_util::Stream;
 #[cfg(feature = "iter-async")]
 use futures_util::stream::BoxStream;
 #[cfg(feature = "__async")]
@@ -372,6 +373,25 @@ pub trait AsyncBackend {
 
     /// Reads up to `length` bytes starting at `offset`.
     fn read(&self, offset: usize, length: usize) -> impl Future<Output = PmtResult<Bytes>> + Send;
+
+    /// Reads up to `length` bytes starting at `offset`, returning bytes as a stream.
+    ///
+    /// Default implementation wraps `read()` result into a single-item stream.
+    fn read_stream(
+        &self,
+        offset: usize,
+        length: usize,
+    ) -> impl Stream<Item = PmtResult<Bytes>> + Send
+    where
+        Self: Sync,
+    {
+        async_stream::stream! {
+            match self.read(offset, length).await {
+                Ok(bytes) => yield Ok(bytes),
+                Err(e) => yield Err(e),
+            }
+        }
+    }
 }
 
 #[cfg(test)]
