@@ -1,13 +1,13 @@
 use std::io::{BufWriter, SeekFrom};
 use std::sync::Arc;
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use countio::Counter;
 use futures_util::stream::{StreamExt, TryStreamExt};
 use tokio::sync::RwLock;
 
 use crate::async_reader::{AsyncBackend, AsyncPmTilesReader};
-use crate::extract::{BoundingBox, ExtractionPlan, ExtractStats};
+use crate::extract::{BoundingBox, CopyDiscard, ExtractStats, ExtractionPlan};
 use crate::header::HEADER_SIZE;
 use crate::{DirectoryCache, Header, PmtError, PmtResult};
 
@@ -349,6 +349,8 @@ impl<'a, B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> Extract
                     let output = output.clone();
                     let total_tile_transfer_bytes = plan.total_tile_transfer_bytes();
                     async move {
+                        use futures_util::TryStreamExt;
+
                         let src_offset = usize::try_from(data_offset + overfetch_range.range.src_offset).map_err(PmtError::IoRangeOverflow)?;
                         let length = usize::try_from(overfetch_range.range.length).map_err(PmtError::IoRangeOverflow)?;
                         log::debug!(
@@ -356,20 +358,60 @@ impl<'a, B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> Extract
                                 idx + 1,
                             );
 
-                        let bytes = self.backend().read_exact(src_offset, length).await?;
+                        // Get the byte stream
+                        let byte_stream = self.backend().read_stream(src_offset, length);
+                        futures_util::pin_mut!(byte_stream);
 
-                        // Write the fetched data to output
+                        // Write the fetched data to output, streaming chunks as they arrive
                         let dst_offset = new_header.data_offset + overfetch_range.range.dst_offset;
 
                         let mut output = output.write().await;
                         output.seek(SeekFrom::Start(dst_offset))?;
-                        // Process copy/discard instructions - write wanted bytes, skip discard bytes
-                        let mut pos = 0;
-                        for cd in &overfetch_range.copy_discards {
-                            let wanted = usize::try_from(cd.wanted).map_err(PmtError::IoRangeOverflow)?;
-                            let discard = usize::try_from(cd.discard).map_err(PmtError::IoRangeOverflow)?;
-                            output.write_all(&bytes[pos..pos + wanted])?;
-                            pos += wanted + discard;
+
+                        let mut cd_iter = overfetch_range.copy_discards.iter();
+
+                        // Current chunk of bytes from `byte_stream`
+                        let mut current_bytes: Option<Bytes> = None;
+                        // What to do with the upcoming bytes (copy and/or discard)
+                        let mut current_cd: Option<CopyDiscard> = None;
+
+                        loop {
+                            if current_bytes.is_none() {
+                                current_bytes = byte_stream.try_next().await?;
+                            }
+                            if current_cd.is_none() {
+                                current_cd = cd_iter.next().copied();
+                            }
+
+                            // Process current chunk against current copy/discard, or exit if either exhausted
+                            let (Some(bytes), Some(CopyDiscard { wanted, discard})) = (&mut current_bytes, &mut current_cd) else {
+                                debug_assert!(
+                                    current_bytes.is_none() && current_cd.is_none(),
+                                    "Stream and copy/discard instructions should exhaust simultaneously"
+                                );
+                                break;
+                            };
+
+                            if *wanted > 0 {
+                                // In copy portion - write bytes
+                                let copy_len = (*wanted).min(bytes.len() as u64);
+                                let bytes_to_copy = bytes.split_to(copy_len as usize);
+                                output.write_all(&bytes_to_copy)?;
+                                *wanted -= copy_len;
+                            } else {
+                                // In discard portion - skip bytes
+                                let discard_len = (*discard).min(bytes.len() as u64);
+                                bytes.advance(discard_len as usize);
+                                *discard -= discard_len;
+                            }
+
+                            // Clear if fully consumed
+                            if bytes.is_empty() {
+                                current_bytes = None;
+                            }
+                            if *wanted == 0 && *discard == 0 {
+                                current_cd = None;
+                            }
                         }
                         drop(output);
 
