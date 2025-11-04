@@ -19,7 +19,7 @@ enum Commands {
     Show(show::Args),
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logger from RUST_LOG environment variable
     // Example: RUST_LOG=debug pmtiles extract ...
