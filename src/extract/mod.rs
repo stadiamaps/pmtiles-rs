@@ -225,38 +225,28 @@ pub fn relevant_entries(
     let mut tiles = Vec::new();
 
     for (idx, entry) in dir.iter().enumerate() {
+        log::debug!("enumerating {idx}");
         if entry.run_length == 0 {
-            // Leaf directory entry - check if any tiles in its range are relevant
             let mut tmp = RoaringTreemap::new();
 
-            // Determine the range this leaf covers
-            let range_end = if idx == dir.len() - 1 {
-                // Last entry - bounded by last_tile
-                last_tile
+            if let Some(next) = dir.get(idx + 1) {
+                tmp.insert_range(entry.tile_id..next.tile_id);
             } else {
-                // Bounded by next entry's tile_id
-                dir[idx + 1].tile_id
-            };
-
-            // Add all tiles in this leaf's range to temp bitmap
-            for tile_id in entry.tile_id..range_end {
-                tmp.insert(tile_id);
+                // Last entry - bounded by last_tile
+                tmp.insert_range(entry.tile_id..last_tile);
             }
 
-            // Check if this leaf has any relevant tiles
             if bitmap.is_disjoint(&tmp) {
                 // No intersection
                 continue;
             }
-
             leaves.push(entry.clone());
         } else if entry.run_length == 1 {
-            // Single tile - check if relevant
             if bitmap.contains(entry.tile_id) {
                 tiles.push(entry.clone());
             }
         } else {
-            // Run length > 1 - trim to relevant tiles
+            // Run length > 1
             let mut current_id = entry.tile_id;
             let mut current_run_length = 0_u32;
 
@@ -268,19 +258,20 @@ pub fn relevant_entries(
                     } else {
                         current_run_length += 1;
                     }
-                } else if current_run_length > 0 {
-                    // End of a run
-                    tiles.push(DirEntry {
-                        tile_id: current_id,
-                        offset: entry.offset,
-                        length: entry.length,
-                        run_length: current_run_length,
-                    });
+                } else {
+                    if current_run_length > 0 {
+                        // End of a run
+                        tiles.push(DirEntry {
+                            tile_id: current_id,
+                            offset: entry.offset,
+                            length: entry.length,
+                            run_length: current_run_length,
+                        });
+                    }
                     current_run_length = 0;
                 }
             }
 
-            // Handle remaining run
             if current_run_length > 0 {
                 tiles.push(DirEntry {
                     tile_id: current_id,
