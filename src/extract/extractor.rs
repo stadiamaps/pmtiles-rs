@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 use crate::async_reader::{AsyncBackend, AsyncPmTilesReader};
 use crate::extract::{BoundingBox, CopyDiscard, ExtractStats, ExtractionPlan};
 use crate::header::HEADER_SIZE;
+use crate::writer::try_into_usize;
 use crate::{DirectoryCache, Header, PmtError, PmtResult};
 
 /// Progress callback receiving a value between 0.0 and 1.0.
@@ -351,8 +352,8 @@ impl<'a, B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> Extract
                     async move {
                         use futures_util::TryStreamExt;
 
-                        let src_offset = usize::try_from(data_offset + overfetch_range.range.src_offset).map_err(PmtError::IoRangeOverflow)?;
-                        let length = usize::try_from(overfetch_range.range.length).map_err(PmtError::IoRangeOverflow)?;
+                        let src_offset = try_into_usize(data_offset + overfetch_range.range.src_offset)?;
+                        let length = try_into_usize(overfetch_range.range.length)?;
                         log::debug!(
                                 "Request {}/{total_request_count}: offset={src_offset}, length={length} bytes",
                                 idx + 1,
@@ -363,10 +364,7 @@ impl<'a, B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> Extract
                         futures_util::pin_mut!(byte_stream);
 
                         // Write the fetched data to output, streaming chunks as they arrive
-                        let dst_offset = new_header.data_offset + overfetch_range.range.dst_offset;
-
-                        let mut output = output.write().await;
-                        output.seek(SeekFrom::Start(dst_offset))?;
+                        let mut dst_offset = new_header.data_offset + overfetch_range.range.dst_offset;
 
                         let mut cd_iter = overfetch_range.copy_discards.iter();
 
@@ -393,15 +391,20 @@ impl<'a, B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> Extract
                             };
 
                             if *wanted > 0 {
+                                let mut output = output.write().await;
+                                // re-seek since other threads may have seeked in the meanwhile.
+                                output.seek(SeekFrom::Start(dst_offset))?;
+
                                 // In copy portion - write bytes
                                 let copy_len = (*wanted).min(bytes.len() as u64);
-                                let bytes_to_copy = bytes.split_to(copy_len as usize);
+                                let bytes_to_copy = bytes.split_to(try_into_usize(copy_len)?);
                                 output.write_all(&bytes_to_copy)?;
                                 *wanted -= copy_len;
+                                dst_offset += copy_len;
                             } else {
                                 // In discard portion - skip bytes
                                 let discard_len = (*discard).min(bytes.len() as u64);
-                                bytes.advance(discard_len as usize);
+                                bytes.advance(try_into_usize(discard_len)?);
                                 *discard -= discard_len;
                             }
 

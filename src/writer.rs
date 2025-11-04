@@ -295,7 +295,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
                 let offset = self.prev_written_tile_offset;
                 let len = data.write_compressed_to_counted(&mut self.out, tile_compression)?;
                 self.prev_written_tile_offset += len as u64;
-                let length = into_u32(len)?;
+                let length = try_into_u32(len)?;
                 e.insert(TileContentLocation { offset, length })
             }
         };
@@ -380,8 +380,11 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     }
 }
 
-pub(crate) fn into_u32(v: usize) -> PmtResult<u32> {
+pub(crate) fn try_into_u32(v: usize) -> PmtResult<u32> {
     v.try_into().map_err(|_| PmtError::IndexEntryOverflow)
+}
+pub(crate) fn try_into_usize(v: u64) -> PmtResult<usize> {
+    v.try_into().map_err(PmtError::IoRangeOverflow)
 }
 
 #[cfg(test)]

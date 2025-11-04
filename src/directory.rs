@@ -6,7 +6,7 @@ use varint_rs::VarintReader as _;
 use varint_rs::VarintWriter as _;
 
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
-use crate::writer::WriteTo;
+use crate::writer::{WriteTo, try_into_u32};
 use crate::{Compression, PmtError, PmtResult, TileId};
 
 /// Maximum size of the root directory in bytes.
@@ -214,7 +214,7 @@ fn build_roots_leaves(
         root_dir.push(DirEntry {
             tile_id: chunk[0].tile_id,
             offset,
-            length: crate::writer::into_u32(leaf_size)?,
+            length: try_into_u32(leaf_size)?,
             run_length: 0,
         });
         offset += leaf_size as u64;
