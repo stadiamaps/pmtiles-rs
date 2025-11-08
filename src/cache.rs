@@ -120,7 +120,9 @@ impl DirectoryCache for MokaCache {
 
 #[cfg(test)]
 mod tests {
-    use crate::{DirEntry, Directory, DirectoryCache, HashMapCache, MokaCache};
+    use crate::{DirEntry, Directory, DirectoryCache, HashMapCache};
+    #[cfg(feature = "moka")]
+    use crate::MokaCache;
 
     #[tokio::test]
     async fn test_hash_map_cache() {
