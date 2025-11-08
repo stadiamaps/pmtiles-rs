@@ -30,8 +30,8 @@ pub trait DirectoryCache {
         &self,
         offset: usize,
         tile_id: TileId,
-        fetcher: impl Future<Output = PmtResult<Directory>>,
-    ) -> impl Future<Output = PmtResult<Option<DirEntry>>>;
+        fetcher: impl Future<Output = PmtResult<Directory>> + Send,
+    ) -> impl Future<Output = PmtResult<Option<DirEntry>>> + Send;
 }
 
 /// A cache that does not cache anything.
@@ -43,7 +43,7 @@ impl DirectoryCache for NoCache {
         &self,
         _: usize,
         tile_id: TileId,
-        fetcher: impl Future<Output = PmtResult<Directory>>,
+        fetcher: impl Future<Output=PmtResult<Directory>> + Send,
     ) -> PmtResult<Option<DirEntry>> {
         let dir = fetcher.await?;
         Ok(dir.find_tile_id(tile_id).cloned())
@@ -79,7 +79,7 @@ impl DirectoryCache for HashMapCache {
         &self,
         offset: usize,
         tile_id: TileId,
-        fetcher: impl Future<Output = PmtResult<Directory>>,
+        fetcher: impl Future<Output = PmtResult<Directory>> + Send,
     ) -> PmtResult<Option<DirEntry>> {
         let dir_entry = self.get_dir_entry(offset, tile_id).await;
         match dir_entry {
@@ -108,7 +108,7 @@ impl DirectoryCache for MokaCache {
         &self,
         offset: usize,
         tile_id: TileId,
-        fetcher: impl Future<Output = PmtResult<Directory>>,
+        fetcher: impl Future<Output = PmtResult<Directory>> + Send,
     ) -> PmtResult<Option<DirEntry>> {
         let directory = self.cache.try_get_with(offset, fetcher).await;
         let directory = directory.map_err(|e| {
