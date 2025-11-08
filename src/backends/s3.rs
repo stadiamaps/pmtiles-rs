@@ -2,7 +2,7 @@ use bytes::Bytes;
 use s3::Bucket;
 
 use crate::PmtError::ResponseBodyTooLong;
-use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCacheV2, NoCache, PmtResult};
+use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCache, NoCache, PmtResult};
 
 impl AsyncPmTilesReader<S3Backend, NoCache> {
     /// Creates a new `PMTiles` reader from a bucket and path to the
@@ -20,7 +20,7 @@ impl AsyncPmTilesReader<S3Backend, NoCache> {
     }
 }
 
-impl<C: DirectoryCacheV2 + Sync + Send> AsyncPmTilesReader<S3Backend, C> {
+impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<S3Backend, C> {
     /// Creates a new `PMTiles` reader from a bucket and path to the
     /// archive using the `rust-s3` backend with a given `cache` backend.
     ///

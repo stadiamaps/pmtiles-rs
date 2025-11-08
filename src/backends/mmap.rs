@@ -4,7 +4,7 @@ use std::path::Path;
 use bytes::{Buf, Bytes};
 use fmmap::tokio::{AsyncMmapFile, AsyncMmapFileExt as _, AsyncOptions};
 
-use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCacheV2, NoCache, PmtError, PmtResult};
+use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCache, NoCache, PmtError, PmtResult};
 
 impl AsyncPmTilesReader<MmapBackend, NoCache> {
     /// Creates a new `PMTiles` reader from a file path using the async mmap backend.
@@ -22,7 +22,7 @@ impl AsyncPmTilesReader<MmapBackend, NoCache> {
     }
 }
 
-impl<C: DirectoryCacheV2 + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
+impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
     /// Creates a new cached `PMTiles` reader from a file path using the async mmap backend.
     ///
     /// Fails if `path` does not exist or is an invalid archive.

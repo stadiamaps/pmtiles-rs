@@ -18,7 +18,7 @@ use crate::PmtError::UnsupportedCompression;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::{Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileId};
 #[cfg(feature = "__async")]
-use crate::{DirectoryCacheV2, NoCache};
+use crate::{DirectoryCache, NoCache};
 
 /// An asynchronous reader for `PMTiles` archives.
 pub struct AsyncPmTilesReader<B, C = NoCache> {
@@ -43,7 +43,7 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
     }
 }
 
-impl<B: AsyncBackend + Sync + Send, C: DirectoryCacheV2 + Sync + Send> AsyncPmTilesReader<B, C> {
+impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTilesReader<B, C> {
     /// Creates a new cached reader from a specified source and validates the provided `PMTiles` archive is valid.
     ///
     /// Note: Prefer using `new_with_*` methods.

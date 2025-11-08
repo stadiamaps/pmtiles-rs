@@ -1,7 +1,7 @@
 use aws_sdk_s3::Client;
 use bytes::Bytes;
 
-use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCacheV2, NoCache, PmtError, PmtResult};
+use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCache, NoCache, PmtError, PmtResult};
 
 impl AsyncPmTilesReader<AwsS3Backend, NoCache> {
     /// Creates a new `PMTiles` reader from a client, bucket and key to the
@@ -23,7 +23,7 @@ impl AsyncPmTilesReader<AwsS3Backend, NoCache> {
     }
 }
 
-impl<C: DirectoryCacheV2 + Sync + Send> AsyncPmTilesReader<AwsS3Backend, C> {
+impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<AwsS3Backend, C> {
     /// Creates a new `PMTiles` reader from a client, bucket and key to the
     /// archive using the `aws-sdk-s3` backend. Caches using the designated
     /// `cache`.
