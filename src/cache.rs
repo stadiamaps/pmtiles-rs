@@ -43,7 +43,7 @@ impl DirectoryCache for NoCache {
         &self,
         _: usize,
         tile_id: TileId,
-        fetcher: impl Future<Output=PmtResult<Directory>>
+        fetcher: impl Future<Output = PmtResult<Directory>>,
     ) -> PmtResult<Option<DirEntry>> {
         let dir = fetcher.await?;
         Ok(dir.find_tile_id(tile_id).cloned())
@@ -110,10 +110,7 @@ impl DirectoryCache for MokaCache {
         tile_id: TileId,
         fetcher: impl Future<Output = PmtResult<Directory>>,
     ) -> PmtResult<Option<DirEntry>> {
-        let directory = self
-            .cache
-            .try_get_with(offset, fetcher)
-            .await;
+        let directory = self.cache.try_get_with(offset, fetcher).await;
         let directory = directory.map_err(|e| {
             crate::PmtError::DirectoryCacheError(format!("Moka cache fetch error: {}", e))
         })?;
@@ -123,9 +120,7 @@ impl DirectoryCache for MokaCache {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        DirEntry, Directory, DirectoryCache, HashMapCache, MokaCache,
-    };
+    use crate::{DirEntry, Directory, DirectoryCache, HashMapCache, MokaCache};
 
     #[tokio::test]
     async fn test_hash_map_cache() {
