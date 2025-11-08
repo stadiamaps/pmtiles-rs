@@ -95,7 +95,7 @@ impl DirectoryCache for HashMapCache {
     }
 }
 
-/// Provides an implemention of `DirectoryCache` using the `moka` crate.
+/// Provides an implementation of `DirectoryCache` using the `moka` crate.
 #[cfg(feature = "moka")]
 pub struct MokaCache {
     /// This is the internal moka future cache.
