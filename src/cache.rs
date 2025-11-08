@@ -43,7 +43,7 @@ impl DirectoryCache for NoCache {
         &self,
         _: usize,
         tile_id: TileId,
-        fetcher: impl Future<Output=PmtResult<Directory>> + Send,
+        fetcher: impl Future<Output = PmtResult<Directory>> + Send,
     ) -> PmtResult<Option<DirEntry>> {
         let dir = fetcher.await?;
         Ok(dir.find_tile_id(tile_id).cloned())
