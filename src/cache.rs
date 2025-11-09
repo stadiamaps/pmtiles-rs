@@ -142,7 +142,7 @@ mod tests {
         // Insert a directory into the cache.
         cache.insert_dir(offset, dir_to_cache).await;
 
-        // Now, the cache should return NotFound since the directory is empty.
+        // Now, the cache should return Found since the directory contains an entry.
         let get_result = cache.get_dir_entry(offset, tile_id.unwrap()).await;
         assert!(matches!(get_result, crate::cache::DirCacheResult::Found(_)));
 
