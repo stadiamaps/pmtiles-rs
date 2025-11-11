@@ -58,7 +58,7 @@ pub struct HashMapCache {
 }
 
 impl HashMapCache {
-    async fn get_dir_entry(&self, offset: usize, tile_id: TileId) -> DirCacheResult {
+    fn get_dir_entry(&self, offset: usize, tile_id: TileId) -> DirCacheResult {
         // Panic if the lock is poisoned is not something the user can handle
         #[expect(clippy::unwrap_used)]
         if let Some(dir) = self.cache.read().unwrap().get(&offset) {
@@ -67,7 +67,7 @@ impl HashMapCache {
         DirCacheResult::NotCached
     }
 
-    async fn insert_dir(&self, offset: usize, directory: Directory) {
+    fn insert_dir(&self, offset: usize, directory: Directory) {
         // Panic if the lock is poisoned is not something the user can handle
         #[expect(clippy::unwrap_used)]
         self.cache.write().unwrap().insert(offset, directory);
@@ -81,14 +81,14 @@ impl DirectoryCache for HashMapCache {
         tile_id: TileId,
         fetcher: impl Future<Output = PmtResult<Directory>> + Send,
     ) -> PmtResult<Option<DirEntry>> {
-        let dir_entry = self.get_dir_entry(offset, tile_id).await;
+        let dir_entry = self.get_dir_entry(offset, tile_id);
         match dir_entry {
             DirCacheResult::Found(entry) => Ok(Some(entry)),
             DirCacheResult::NotFound => Ok(None),
             DirCacheResult::NotCached => {
                 let directory = fetcher.await?;
                 let dir_entry = directory.find_tile_id(tile_id).cloned();
-                self.insert_dir(offset, directory).await;
+                self.insert_dir(offset, directory);
                 Ok(dir_entry)
             }
         }
@@ -133,17 +133,17 @@ mod tests {
         dir_to_cache.entries.push(DirEntry::default());
 
         // Initially, the cache should be empty.
-        let get_result = cache.get_dir_entry(offset, tile_id.unwrap()).await;
+        let get_result = cache.get_dir_entry(offset, tile_id.unwrap());
         assert!(matches!(
             get_result,
             crate::cache::DirCacheResult::NotCached
         ));
 
         // Insert a directory into the cache.
-        cache.insert_dir(offset, dir_to_cache).await;
+        cache.insert_dir(offset, dir_to_cache);
 
         // Now, the cache should return Found since the directory contains an entry.
-        let get_result = cache.get_dir_entry(offset, tile_id.unwrap()).await;
+        let get_result = cache.get_dir_entry(offset, tile_id.unwrap());
         assert!(matches!(get_result, crate::cache::DirCacheResult::Found(_)));
 
         // The fetcher won't get called, because the entry is already cached.
