@@ -276,9 +276,8 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         let entry = self
             .cache
             .get_dir_entry_or_insert(offset, tile_id, async move {
-                let this = &self;
                 let length = entry.length as _;
-                this.read_directory(offset, length).await
+                self.read_directory(offset, length).await
             })
             .await?;
 
