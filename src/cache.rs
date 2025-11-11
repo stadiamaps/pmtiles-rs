@@ -112,7 +112,7 @@ impl DirectoryCache for MokaCache {
     ) -> PmtResult<Option<DirEntry>> {
         let directory = self.cache.try_get_with(offset, fetcher).await;
         let directory = directory.map_err(|e| {
-            crate::PmtError::DirectoryCacheError(format!("Moka cache fetch error: {}", e))
+            crate::PmtError::DirectoryCacheError(format!("Moka cache fetch error: {e}"))
         })?;
         Ok(directory.find_tile_id(tile_id).cloned())
     }
