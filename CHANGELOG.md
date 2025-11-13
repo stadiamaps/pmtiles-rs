@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2](https://github.com/stadiamaps/pmtiles-rs/compare/v0.18.1...v0.18.2) - 2025-11-13
+
+### Other
+
+- Add AVIF to the list of tile types ([#92](https://github.com/stadiamaps/pmtiles-rs/pull/92))
+
 ## [0.18.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.18.0...v0.18.1) - 2025-11-11
 
 ### Other
