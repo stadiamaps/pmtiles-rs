@@ -176,6 +176,8 @@ pub enum TileType {
     Jpeg,
     /// WebP image tile.
     Webp,
+    /// AVIF image tile.
+    Avif,
 }
 
 impl TileType {
@@ -187,6 +189,7 @@ impl TileType {
             TileType::Png => "image/png",
             TileType::Webp => "image/webp",
             TileType::Jpeg => "image/jpeg",
+            TileType::Avif => "image/avif",
             TileType::Unknown => "application/octet-stream",
         }
     }
@@ -202,6 +205,7 @@ impl TryInto<TileType> for u8 {
             2 => Ok(TileType::Png),
             3 => Ok(TileType::Jpeg),
             4 => Ok(TileType::Webp),
+            5 => Ok(TileType::Avif),
             _ => Err(PmtError::InvalidTileType),
         }
     }
