@@ -404,7 +404,7 @@ mod tests {
     #[tokio::test]
     #[cfg(feature = "object-store")]
     async fn get_tiles_object_store(#[case] coord: TileCoord, #[case] fixture_bytes: &[u8]) {
-        use object_store::{ObjectStore, WriteMultipart};
+        use object_store::{ObjectStoreExt, WriteMultipart};
 
         let store = Box::new(object_store::memory::InMemory::new());
 

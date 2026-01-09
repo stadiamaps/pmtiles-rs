@@ -100,6 +100,8 @@ impl ObjectStoreBackend {
 
 impl AsyncBackend for ObjectStoreBackend {
     async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
+        use object_store::ObjectStoreExt;
+
         let range = Range {
             start: offset as u64,
             end: offset as u64 + length as u64,
