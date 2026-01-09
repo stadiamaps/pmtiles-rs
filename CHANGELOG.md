@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
-- *(deps)* [**breaking**] bump `reqwest` and `object_store` dependencys ([#98](https://github.com/stadiamaps/pmtiles-rs/pull/98))
+- *(deps)* [**breaking**] bump `reqwest` and `object_store` dependencys, modifying the list of available features ([#98](https://github.com/stadiamaps/pmtiles-rs/pull/98))
 - Bump actions/checkout from 5 to 6 in the all-actions-version-updates group ([#94](https://github.com/stadiamaps/pmtiles-rs/pull/94))
 
 ## [0.18.2](https://github.com/stadiamaps/pmtiles-rs/compare/v0.18.1...v0.18.2) - 2025-11-13
