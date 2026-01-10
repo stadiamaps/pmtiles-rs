@@ -319,6 +319,12 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                     .read_to_end(&mut decompressed_bytes)
                     .await?;
             }
+            #[cfg(feature = "brotli")]
+            Compression::Brotli => {
+                async_compression::tokio::bufread::BrotliDecoder::new(&bytes[..])
+                    .read_to_end(&mut decompressed_bytes)
+                    .await?;
+            }
             Compression::None => {
                 return Ok(bytes);
             }
@@ -505,6 +511,28 @@ mod tests {
         assert_ne!(0, tiles.get_header().leaf_length);
         let tile = tiles.get_tile(coord).await.unwrap().unwrap();
         assert_eq!(tile, expected_contents);
+    }
+
+    #[cfg(feature = "brotli")]
+    #[tokio::test]
+    async fn test_brotli_decompression() {
+        // This fixture has brotli internal and tile compression, and one tile 0_0_0.png.
+        let backend = MmapBackend::try_from("fixtures/single_tile_brotli.pmtiles")
+            .await
+            .unwrap();
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+        let tile = tiles
+            .get_tile_decompressed(TileCoord::new(0, 0, 0).unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            tiles.header.internal_compression,
+            crate::Compression::Brotli
+        );
+        assert_eq!(tiles.header.tile_compression, crate::Compression::Brotli);
+        assert_eq!(tile.as_ref(), include_bytes!("../fixtures/0_0_0.png"));
     }
 
     #[tokio::test]

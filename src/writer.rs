@@ -62,6 +62,12 @@ pub(crate) trait WriteTo {
                 self.write_to(&mut encoder)?;
                 encoder.finish()?;
             }
+            #[cfg(feature = "brotli")]
+            Compression::Brotli => {
+                let params = brotli::enc::BrotliEncoderParams::default();
+                let mut encoder = brotli::CompressorWriter::with_params(writer, 4096, &params);
+                self.write_to(&mut encoder)?;
+            }
             v => Err(UnsupportedCompression(v))?,
         }
         Ok(())
@@ -437,6 +443,7 @@ mod tests {
     use std::sync::Arc;
 
     use futures_util::TryStreamExt;
+    use rstest::rstest;
     use tempfile::NamedTempFile;
 
     use crate::tests::RASTER_FILE;
@@ -593,12 +600,15 @@ mod tests {
         writer.finalize().unwrap();
     }
 
+    #[rstest]
+    #[case(Compression::Gzip)]
+    #[cfg_attr(feature = "brotli", case(Compression::Brotli))]
     #[tokio::test]
-    async fn raw_tiles() {
+    async fn raw_tiles(#[case] compression: Compression) {
         let path = get_temp_file_path("pmtiles").unwrap();
         let file = File::create(&path).unwrap();
         let mut writer = PmTilesWriter::new(TileType::Mvt)
-            .tile_compression(Compression::Gzip)
+            .tile_compression(compression)
             .create(file)
             .unwrap();
 
@@ -617,7 +627,7 @@ mod tests {
         let tiles_out = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let header = tiles_out.get_header();
-        assert_eq!(header.tile_compression, Compression::Gzip);
+        assert_eq!(header.tile_compression, compression);
 
         let precompressed_tile_raw = tiles_out.get_tile(precompressed_id).await.unwrap().unwrap();
         assert_eq!(*precompressed_tile_raw, [0]);
