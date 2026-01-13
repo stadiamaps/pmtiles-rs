@@ -36,6 +36,7 @@ check:
     cargo check {{packages}} {{targets}} --no-default-features --features s3-async-rustls
     cargo check {{packages}} {{targets}} --no-default-features --features tilejson
     cargo check {{packages}} {{targets}} --no-default-features --features write
+    cargo check {{packages}} {{targets}} --no-default-features --features brotli
 
 # Generate code coverage report to upload to codecov.io
 ci-coverage: env-info && \
@@ -127,6 +128,7 @@ test:
     cargo test {{packages}} {{targets}} --no-default-features --features s3-async-rustls
     cargo test {{packages}} {{targets}} --no-default-features --features tilejson
     cargo test {{packages}} {{targets}} --no-default-features --features write
+    cargo test {{packages}} {{targets}} --no-default-features --features brotli
 
 # Test documentation generation
 test-doc:  (docs '')
