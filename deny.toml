@@ -1,0 +1,22 @@
+[bans]
+# We have tons of these, not certain if this should be a goal to fix them all.
+# For now, just allow multiple versions of the same crate.
+multiple-versions = "allow"
+
+# This section is considered when running `cargo deny check licenses`
+# More documentation for the licenses section can be found here:
+# https://embarkstudios.github.io/cargo-deny/checks/licenses/cfg.html
+[licenses]
+# List of explicitly allowed licenses
+# See https://spdx.org/licenses/ for list of possible licenses
+# [possible values: any SPDX 3.11 short identifier (+ optional exception)].
+allow = [
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "OpenSSL",
+    "Unicode-3.0",
+    "Zlib",
+]
