@@ -70,7 +70,8 @@ pub(crate) trait WriteTo {
             }
             #[cfg(feature = "zstd")]
             Compression::Zstd => {
-                let mut encoder = zstd::stream::Encoder::new(writer, zstd::DEFAULT_COMPRESSION_LEVEL)?;
+                let mut encoder =
+                    zstd::stream::Encoder::new(writer, zstd::DEFAULT_COMPRESSION_LEVEL)?;
                 self.write_to(&mut encoder)?;
                 encoder.finish()?;
             }
