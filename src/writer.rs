@@ -68,6 +68,12 @@ pub(crate) trait WriteTo {
                 let mut encoder = brotli::CompressorWriter::with_params(writer, 4096, &params);
                 self.write_to(&mut encoder)?;
             }
+            #[cfg(feature = "zstd")]
+            Compression::Zstd => {
+                let mut encoder = zstd::stream::Encoder::new(writer, zstd::DEFAULT_COMPRESSION_LEVEL)?;
+                self.write_to(&mut encoder)?;
+                encoder.finish()?;
+            }
             v => Err(UnsupportedCompression(v))?,
         }
         Ok(())
@@ -603,6 +609,7 @@ mod tests {
     #[rstest]
     #[case(Compression::Gzip)]
     #[cfg_attr(feature = "brotli", case(Compression::Brotli))]
+    #[cfg_attr(feature = "zstd", case(Compression::Zstd))]
     #[tokio::test]
     async fn raw_tiles(#[case] compression: Compression) {
         let path = get_temp_file_path("pmtiles").unwrap();

@@ -26,6 +26,7 @@ tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
 write = ["dep:countio", "dep:flate2", "dep:twox-hash"]
 object-store = ["__async", "dep:object_store"]
 brotli = ["dep:brotli", "async-compression/brotli"]
+zstd = ["dep:zstd", "async-compression/zstd"]
 
 # Forward some of the common features to reqwest dependency
 reqwest-default = ["reqwest?/default"]
@@ -48,6 +49,7 @@ __all_non_conflicting = [
     "write",
     "object-store",
     "brotli",
+    "zstd",
 ]
 __async = ["dep:tokio", "async-compression/tokio"]
 __async-s3 = ["__async", "dep:rust-s3"]
@@ -61,6 +63,7 @@ async-compression = { version = "0.4", features = ["gzip"] }
 async-stream = { version = "0.3", optional = true }
 aws-sdk-s3 = { version = "1.49.0", optional = true }
 brotli = { version = "8.0.2", optional = true }
+zstd = { version = "0.13", optional = true }
 bytes = "1"
 countio = { version = "0.3.0", optional = true }
 fast_hilbert = "2.0.1"
