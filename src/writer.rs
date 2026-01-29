@@ -68,6 +68,13 @@ pub(crate) trait WriteTo {
                 let mut encoder = brotli::CompressorWriter::with_params(writer, 4096, &params);
                 self.write_to(&mut encoder)?;
             }
+            #[cfg(feature = "zstd")]
+            Compression::Zstd => {
+                let mut encoder =
+                    zstd::stream::Encoder::new(writer, zstd::DEFAULT_COMPRESSION_LEVEL)?;
+                self.write_to(&mut encoder)?;
+                encoder.finish()?;
+            }
             v => Err(UnsupportedCompression(v))?,
         }
         Ok(())
@@ -603,6 +610,7 @@ mod tests {
     #[rstest]
     #[case(Compression::Gzip)]
     #[cfg_attr(feature = "brotli", case(Compression::Brotli))]
+    #[cfg_attr(feature = "zstd", case(Compression::Zstd))]
     #[tokio::test]
     async fn raw_tiles(#[case] compression: Compression) {
         let path = get_temp_file_path("pmtiles").unwrap();
@@ -639,6 +647,70 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(*regular_tile, [1]);
+    }
+
+    /// Tests that internal compression (for directories/metadata) roundtrips correctly
+    /// with all supported codecs.
+    #[rstest]
+    #[case(Compression::Gzip)]
+    #[cfg_attr(feature = "brotli", case(Compression::Brotli))]
+    #[cfg_attr(feature = "zstd", case(Compression::Zstd))]
+    #[tokio::test]
+    async fn internal_compression_roundtrip(#[case] compression: Compression) {
+        let path = get_temp_file_path("pmtiles").unwrap();
+        let file = File::create(&path).unwrap();
+
+        let test_metadata = r#"{"name":"test","description":"internal compression test"}"#;
+
+        let mut writer = PmTilesWriter::new(TileType::Mvt)
+            .internal_compression(compression)
+            .metadata(test_metadata)
+            .create(file)
+            .unwrap();
+
+        // Add enough tiles to exercise directory compression
+        for tile_id in 0..100u64 {
+            let data: Vec<u8> = tile_id.to_le_bytes().to_vec();
+            writer
+                .add_tile(TileId::new(tile_id).unwrap().into(), &data)
+                .unwrap();
+        }
+        writer.finalize().unwrap();
+
+        // Read it back and verify internal compression was used
+        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let tiles_out = Arc::new(AsyncPmTilesReader::try_from_source(backend).await.unwrap());
+
+        let header = tiles_out.get_header();
+        assert_eq!(header.internal_compression, compression);
+
+        // Verify metadata can be decompressed and read
+        let metadata_out = tiles_out.get_metadata().await.unwrap();
+        assert_eq!(metadata_out, test_metadata);
+
+        // Verify directory entries can be read (exercises directory decompression)
+        let entries = tiles_out
+            .clone()
+            .entries()
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 100);
+
+        // Verify tiles can be decompressed
+        let tile_0 = tiles_out
+            .get_tile_decompressed(TileId::new(0).unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(*tile_0, 0u64.to_le_bytes());
+
+        let tile_99 = tiles_out
+            .get_tile_decompressed(TileId::new(99).unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(*tile_99, 99u64.to_le_bytes());
     }
 
     #[tokio::test]

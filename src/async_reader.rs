@@ -325,6 +325,12 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                     .read_to_end(&mut decompressed_bytes)
                     .await?;
             }
+            #[cfg(feature = "zstd")]
+            Compression::Zstd => {
+                async_compression::tokio::bufread::ZstdDecoder::new(&bytes[..])
+                    .read_to_end(&mut decompressed_bytes)
+                    .await?;
+            }
             Compression::None => {
                 return Ok(bytes);
             }
