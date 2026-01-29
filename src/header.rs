@@ -107,6 +107,7 @@ impl Compression {
         Some(match self {
             Compression::Gzip => "gzip",
             Compression::Brotli => "br",
+            Compression::Zstd => "zstd",
             _ => None?,
         })
     }
