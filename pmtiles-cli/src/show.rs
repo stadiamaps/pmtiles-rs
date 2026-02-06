@@ -17,6 +17,7 @@ pub struct Args {
 /// Format `TileType` as lowercase string matching go-pmtiles output
 fn format_tile_type(tile_type: pmtiles::TileType) -> &'static str {
     match tile_type {
+        pmtiles::TileType::Avif => "avif",
         pmtiles::TileType::Mvt => "mvt",
         pmtiles::TileType::Png => "png",
         pmtiles::TileType::Jpeg => "jpeg",

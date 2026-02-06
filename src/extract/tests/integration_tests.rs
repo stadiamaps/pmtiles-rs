@@ -16,14 +16,14 @@ async fn test_extract_firenze_small_bbox() {
     let backend = MmapBackend::try_from(crate::tests::VECTOR_FILE)
         .await
         .unwrap();
-    let mut reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+    let reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
     // Small bbox in the center of Florence
     let bbox = BoundingBox::from_nesw(43.78, 11.26, 43.77, 11.24);
 
     // Extract to memory
     let mut output = Cursor::new(Vec::new());
-    let extractor = Extractor::new(&mut reader);
+    let extractor = Extractor::new(&reader);
     let stats = extractor
         .extract_bbox_to_writer(bbox, &mut output)
         .await
@@ -68,13 +68,13 @@ async fn test_extract_with_zoom_range() {
     let backend = MmapBackend::try_from(crate::tests::VECTOR_FILE)
         .await
         .unwrap();
-    let mut reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+    let reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
     // Bbox covering most of Florence
     let bbox = BoundingBox::from_nesw(43.83, 11.33, 43.73, 11.15);
 
     let mut output = Cursor::new(Vec::new());
-    let extractor = Extractor::new(&mut reader).min_zoom(10).max_zoom(12);
+    let extractor = Extractor::new(&reader).min_zoom(10).max_zoom(12);
     let stats = extractor
         .extract_bbox_to_writer(bbox, &mut output)
         .await
@@ -102,45 +102,58 @@ async fn test_extract_with_zoom_range() {
 
 #[tokio::test]
 async fn test_extract_overfetch_reduces_requests() {
-    // Test that higher overfetch reduces number of requests
-    let backend = MmapBackend::try_from(crate::tests::VECTOR_FILE)
-        .await
-        .unwrap();
-    let mut reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
-
     let bbox = BoundingBox::from_nesw(43.80, 11.28, 43.75, 11.20);
 
     // Extract with low overfetch
-    let mut output1 = Cursor::new(Vec::new());
-    let extractor = Extractor::new(&mut reader);
-    let stats_low = extractor
-        .extract_bbox_to_writer(bbox, &mut output1)
-        .await
-        .unwrap();
+    let stats_low = {
+        let backend = MmapBackend::try_from(crate::tests::VECTOR_FILE)
+            .await
+            .unwrap();
+        let reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
-    // Re-open the reader for second extraction
-    let backend2 = MmapBackend::try_from(crate::tests::VECTOR_FILE)
-        .await
-        .unwrap();
-    let mut reader2 = AsyncPmTilesReader::try_from_source(backend2).await.unwrap();
+        let mut output1 = Cursor::new(Vec::new());
+        let extractor = Extractor::new(&reader);
+        extractor
+            .overfetch(0.01)
+            .extract_bbox_to_writer(bbox, &mut output1)
+            .await
+            .unwrap()
+    };
 
     // Extract with high overfetch
-    let mut output2 = Cursor::new(Vec::new());
-    let extractor2 = Extractor::new(&mut reader2);
-    let stats_high = extractor2
-        .extract_bbox_to_writer(bbox, &mut output2)
-        .await
-        .unwrap();
+    let stats_high = {
+        // Re-open the reader for second extraction
+        let backend2 = MmapBackend::try_from(crate::tests::VECTOR_FILE)
+            .await
+            .unwrap();
+        let reader2 = AsyncPmTilesReader::try_from_source(backend2).await.unwrap();
 
-    // Higher overfetch should reduce requests (but may transfer more bytes)
+        let mut output2 = Cursor::new(Vec::new());
+        let extractor2 = Extractor::new(&reader2);
+        extractor2
+            .overfetch(0.05)
+            .extract_bbox_to_writer(bbox, &mut output2)
+            .await
+            .unwrap()
+    };
+
+    // Higher overfetch may transfer more bytes...
     assert!(
-        stats_high.num_tile_reqs() <= stats_low.num_tile_reqs(),
+        stats_high.num_tile_reqs() < stats_low.num_tile_reqs(),
         "Higher overfetch should reduce requests: low={} high={}",
         stats_low.num_tile_reqs(),
         stats_high.num_tile_reqs()
     );
 
-    // Both should extract same tiles
+    // ...but it should reduce the number of requests
+    assert!(
+        stats_high.total_tile_transfer_bytes() > stats_low.total_tile_transfer_bytes(),
+        "Higher overfetch should increase requested bytes: low={} high={}",
+        stats_low.total_tile_transfer_bytes(),
+        stats_high.total_tile_transfer_bytes()
+    );
+
+    // The same number of tiles should be extracted
     assert_eq!(
         stats_low.addressed_tiles(),
         stats_high.addressed_tiles(),

@@ -28,15 +28,9 @@ s3-async-rustls = ["__async-s3", "__async-s3-rustls"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
 write = ["dep:countio", "dep:flate2", "dep:twox-hash"]
 object-store = ["__async", "dep:object_store"]
-<<<<<<< HEAD
 brotli = ["dep:brotli", "async-compression/brotli"]
 zstd = ["dep:zstd", "async-compression/zstd"]
-extract = ["write", "dep:roaring", "dep:futures-util", "iter-async"]
-||||||| parent of 3786a14 (Stream tile data for less RAM)
-extract = ["write", "dep:roaring", "dep:futures-util", "iter-async"]
-=======
 extract = ["write", "dep:roaring", "dep:futures-util", "iter-async", "reqwest?/stream"]
->>>>>>> 3786a14 (Stream tile data for less RAM)
 
 # Forward some of the common features to reqwest dependency
 reqwest-default = ["reqwest?/default"]

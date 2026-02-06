@@ -33,7 +33,7 @@ pub struct Extractor<'a, 'b, B, C> {
 
 impl<'a, B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> Extractor<'a, '_, B, C> {
     /// Creates a new extractor.
-    pub fn new(reader: &'a mut AsyncPmTilesReader<B, C>) -> Self {
+    pub fn new(reader: &'a AsyncPmTilesReader<B, C>) -> Self {
         Self {
             reader,
             min_zoom: None,
@@ -65,7 +65,7 @@ impl<'a, B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> Extract
     /// Sets the overfetch parameter for range merging (0.0 - 1.0).
     ///
     /// Higher values allow downloading more unused data to reduce the number of HTTP requests.
-    /// Default is 0.2 (20%).
+    /// Default is 0.05 (5%).
     #[must_use]
     pub fn overfetch(mut self, overfetch: f32) -> Self {
         self.overfetch = overfetch;
@@ -74,7 +74,7 @@ impl<'a, B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> Extract
 
     /// Sets the number of concurrent requests for fetching data.
     ///
-    /// Default is 8.
+    /// Default is 4.
     #[must_use]
     pub fn concurrency(mut self, concurrency: usize) -> Self {
         self.concurrency = concurrency;

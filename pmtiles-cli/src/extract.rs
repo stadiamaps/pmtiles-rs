@@ -196,7 +196,11 @@ pub async fn extract_with_backend(
 
     let overfetch_bytes = stats.total_tile_transfer_bytes() - stats.tile_data_length();
     #[allow(clippy::cast_precision_loss)]
-    let overfetch_pct = (overfetch_bytes as f64 / stats.tile_data_length() as f64) * 100.0;
+    let overfetch_pct = if stats.tile_data_length() > 0 {
+        overfetch_bytes as f64 / stats.tile_data_length() as f64 * 100.0
+    } else {
+        0.0
+    };
     println!(
         "Overfetch:              {overfetch_bytes} ({overfetch_pct:.1}%)",
         overfetch_bytes = format_bytes(overfetch_bytes)

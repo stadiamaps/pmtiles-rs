@@ -54,7 +54,7 @@
 //!     .prepare(bbox)
 //!     .await?;
 //!
-//! println!("Would extract {} tiles using {} tile requests", plan.reencoded_entries().len(), plan.overfetch_ranges().len());
+//! println!("Would extract {} tiles using {} tile requests", plan.addressed_tiles(), plan.overfetch_ranges().len());
 //! println!("Would transfer {} bytes", plan.total_tile_transfer_bytes());
 //!
 //! // Only proceed if reasonable size
