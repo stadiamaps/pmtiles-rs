@@ -1,0 +1,33 @@
+[package]
+name = "pmtiles-cli"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "CLI tool for working with PMTiles archives"
+repository = "https://github.com/stadiamaps/pmtiles-rs"
+rust-version = "1.88"
+
+[[bin]]
+name = "pmtiles"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5.0", features = ["derive"] }
+env_logger = "0.11.0"
+pmtiles = { path = "..", features = ["mmap-async-tokio", "http-async", "reqwest-rustls"] }
+reqwest = { version = "0.13.1", default-features = false }
+serde_json = "1.0.0"
+tokio = { version = "1.0.0", features = ["rt-multi-thread", "macros"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+unused_qualifications = "warn"
+
+[lints.clippy]
+panic_in_result_fn = "warn"
+todo = "warn"
+unwrap_used = "warn"
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+module_name_repetitions = "allow"
+similar_names = "allow"
