@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "pmtiles-cli"]
+
 [package]
 name = "pmtiles"
 version = "0.19.2"
