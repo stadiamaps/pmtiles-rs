@@ -126,20 +126,23 @@ impl TileCoord {
 pub struct TileId(u64);
 
 impl TileId {
-    /// Create a new `TileId` from the u64 value, or return `None` if the value is invalid.
+    /// Create a new `TileId` from the u64 value, or return an error if the value is invalid.
     ///
     /// ```
     /// # use pmtiles::TileId;
     /// assert_eq!(TileId::new(0).unwrap().value(), 0);
-    /// assert!(TileId::new(6148914691236517204).is_some());
-    /// assert!(TileId::new(6148914691236517205).is_none());
+    /// assert!(TileId::new(6148914691236517204).is_ok());
+    /// assert!(TileId::new(6148914691236517205).is_err());
     /// ```
-    #[must_use]
-    pub fn new(id: u64) -> Option<Self> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tile ID is greater than `MAX_TILE_ID`.
+    pub fn new(id: u64) -> PmtResult<Self> {
         if id <= MAX_TILE_ID {
-            Some(Self(id))
+            Ok(Self(id))
         } else {
-            None
+            Err(PmtError::InvalidTileId(id))
         }
     }
 
@@ -201,7 +204,7 @@ impl From<TileCoord> for TileId {
 
 #[cfg(test)]
 pub(crate) mod test {
-    use crate::{MAX_TILE_ID, PYRAMID_SIZE_BY_ZOOM, TileCoord, TileId};
+    use crate::{MAX_TILE_ID, PYRAMID_SIZE_BY_ZOOM, PmtError, TileCoord, TileId};
 
     pub fn coord(z: u8, x: u32, y: u32) -> TileCoord {
         TileCoord::new(z, x, y).unwrap()
@@ -217,10 +220,15 @@ pub(crate) mod test {
     }
 
     #[test]
+    #[expect(clippy::panic)]
     #[expect(clippy::unreadable_literal)]
     fn test_tile_id() {
         assert_eq!(TileId::new(0).unwrap().value(), 0);
-        assert_eq!(TileId::new(MAX_TILE_ID + 1), None);
+        let too_big = MAX_TILE_ID + 1;
+        let Err(PmtError::InvalidTileId(invalid_tile_id)) = TileId::new(too_big) else {
+            panic!("Expected error");
+        };
+        assert_eq!(invalid_tile_id, too_big);
         assert_eq!(TileId::new(MAX_TILE_ID).unwrap().value(), MAX_TILE_ID);
 
         assert_eq!(coord_to_id(0, 0, 0), 0);

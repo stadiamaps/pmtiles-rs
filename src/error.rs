@@ -88,6 +88,9 @@ pub enum PmtError {
     /// The tile coordinate is invalid.
     #[error("Invalid coordinate {0}/{1}/{2}")]
     InvalidCoordinate(u8, u32, u32),
+    /// The tile ID is invalid.
+    #[error("Tile ID is too large. Got {0}")]
+    InvalidTileId(u64),
     /// Indicates an error occurred with the directory cache.
     #[error("An error occurred with the directory cache: {0}")]
     DirectoryCacheError(String),
