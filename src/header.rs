@@ -84,8 +84,7 @@ impl Header {
         }
     }
 
-    #[allow(clippy::doc_markdown)]
-    /// Get the PMTiles spec version of the archive.
+    /// Get the `PMTiles` spec version of the archive.
     #[must_use]
     pub fn spec_version(&self) -> u8 {
         self.version
