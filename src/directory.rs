@@ -137,21 +137,23 @@ impl crate::writer::WriteTo for Directory {
 
         // Write Offsets
         let mut last_offset = 0;
-        for entry in &self.entries {
-            let offset_to_write = if entry.offset == last_offset + u64::from(entry.length) {
+        let mut last_length = 0;
+        for (i, entry) in self.entries.iter().enumerate() {
+            let offset_to_write = if i > 0 && entry.offset == last_offset + u64::from(last_length) {
                 0
             } else {
                 entry.offset + 1
             };
             writer.write_u64_varint(offset_to_write)?;
             last_offset = entry.offset;
+            last_length = entry.length;
         }
 
         Ok(())
     }
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, PartialEq)]
 /// An entry in the `PMTiles` directory, representing a tile or a range of tiles.
 pub struct DirEntry {
     pub(crate) tile_id: u64,
@@ -259,24 +261,256 @@ mod tests {
         );
     }
 
-    #[test]
     #[cfg(feature = "write")]
-    fn write_directory() {
-        use crate::writer::WriteTo as _;
+    mod write_tests {
+        use super::*;
+        use crate::{Compression, DirEntry, TileId};
 
-        let root_dir = read_root_directory(RASTER_FILE);
-        let mut buf = vec![];
-        root_dir.write_to(&mut buf).unwrap();
-        let dir = Directory::try_from(bytes::Bytes::from(buf)).unwrap();
-        assert!(
-            root_dir
-                .entries
-                .iter()
-                .enumerate()
-                .all(|(idx, entry)| dir.entries[idx].tile_id == entry.tile_id
+        #[test]
+        fn write_directory() {
+            use crate::writer::WriteTo as _;
+
+            let root_dir = read_root_directory(RASTER_FILE);
+            let mut buf = vec![];
+            root_dir.write_to(&mut buf).unwrap();
+            let dir = Directory::try_from(bytes::Bytes::from(buf)).unwrap();
+            assert!(root_dir.entries.iter().enumerate().all(
+                |(idx, entry)| dir.entries[idx].tile_id == entry.tile_id
                     && dir.entries[idx].run_length == entry.run_length
                     && dir.entries[idx].offset == entry.offset
-                    && dir.entries[idx].length == entry.length)
-        );
+                    && dir.entries[idx].length == entry.length
+            ));
+        }
+
+        fn roundtrip(entries: Vec<DirEntry>, compression: Compression) -> Vec<DirEntry> {
+            use flate2::read::GzDecoder;
+            use std::io::Read as _;
+
+            use crate::writer::WriteTo as _;
+
+            let dir = Directory::from_entries(entries);
+            let mut buf = vec![];
+            dir.write_compressed_to(&mut buf, compression).unwrap();
+
+            let raw = match compression {
+                Compression::Gzip => {
+                    let mut decoded = vec![];
+                    GzDecoder::new(buf.as_slice())
+                        .read_to_end(&mut decoded)
+                        .unwrap();
+                    decoded
+                }
+                Compression::None => buf,
+                _ => unimplemented!("This compression not handled by tests (yet)"),
+            };
+            Directory::try_from(bytes::Bytes::from(raw))
+                .unwrap()
+                .entries
+        }
+
+        // Ported from go-pmtiles/pmtiles/directory_test.go:TestDirectoryRoundtrip (line 10)
+        #[test]
+        fn directory_roundtrip_gzip() {
+            let entries = vec![
+                DirEntry {
+                    tile_id: 0,
+                    offset: 0,
+                    length: 0,
+                    run_length: 0,
+                },
+                DirEntry {
+                    tile_id: 1,
+                    offset: 1,
+                    length: 1,
+                    run_length: 1,
+                },
+                DirEntry {
+                    tile_id: 2,
+                    offset: 2,
+                    length: 2,
+                    run_length: 2,
+                },
+            ];
+            let result = roundtrip(entries, Compression::Gzip);
+            assert_eq!(result.len(), 3);
+            assert_eq!(
+                result[0],
+                DirEntry {
+                    tile_id: 0,
+                    offset: 0,
+                    length: 0,
+                    run_length: 0
+                }
+            );
+            assert_eq!(
+                result[1],
+                DirEntry {
+                    tile_id: 1,
+                    offset: 1,
+                    length: 1,
+                    run_length: 1
+                }
+            );
+            assert_eq!(
+                result[2],
+                DirEntry {
+                    tile_id: 2,
+                    offset: 2,
+                    length: 2,
+                    run_length: 2
+                }
+            );
+        }
+
+        // Ported from go-pmtiles/pmtiles/directory_test.go:TestDirectoryRoundtripNoCompress (line 33)
+        #[test]
+        fn directory_roundtrip_no_compression() {
+            let entries = vec![
+                DirEntry {
+                    tile_id: 0,
+                    offset: 0,
+                    length: 0,
+                    run_length: 0,
+                },
+                DirEntry {
+                    tile_id: 1,
+                    offset: 1,
+                    length: 1,
+                    run_length: 1,
+                },
+                DirEntry {
+                    tile_id: 2,
+                    offset: 2,
+                    length: 2,
+                    run_length: 2,
+                },
+            ];
+            let result = roundtrip(entries, Compression::None);
+            assert_eq!(result.len(), 3);
+            assert_eq!(
+                result[0],
+                DirEntry {
+                    tile_id: 0,
+                    offset: 0,
+                    length: 0,
+                    run_length: 0
+                }
+            );
+            assert_eq!(
+                result[1],
+                DirEntry {
+                    tile_id: 1,
+                    offset: 1,
+                    length: 1,
+                    run_length: 1
+                }
+            );
+            assert_eq!(
+                result[2],
+                DirEntry {
+                    tile_id: 2,
+                    offset: 2,
+                    length: 2,
+                    run_length: 2
+                }
+            );
+        }
+
+        // Ported from go-pmtiles/pmtiles/directory_test.go:TestFindTileMissing (line 157)
+        #[test]
+        fn find_tile_missing() {
+            let dir = Directory::from_entries(vec![]);
+            assert!(dir.find_tile_id(TileId::new(0).unwrap()).is_none());
+        }
+
+        // Ported from go-pmtiles/pmtiles/directory_test.go:TestFindTileFirstEntry (line 163)
+        #[test]
+        fn find_tile_first_entry() {
+            let dir = Directory::from_entries(vec![DirEntry {
+                tile_id: 100,
+                offset: 1,
+                length: 1,
+                run_length: 1,
+            }]);
+            let entry = dir.find_tile_id(TileId::new(100).unwrap()).unwrap();
+            assert_eq!(entry.offset, 1);
+            assert_eq!(entry.length, 1);
+            assert!(dir.find_tile_id(TileId::new(101).unwrap()).is_none());
+        }
+
+        // Ported from go-pmtiles/pmtiles/directory_test.go:TestFindTileMultipleEntries (line 173)
+        #[test]
+        fn find_tile_multiple_entries() {
+            // Tile found via run_length on a single entry
+            let dir = Directory::from_entries(vec![DirEntry {
+                tile_id: 100,
+                offset: 1,
+                length: 1,
+                run_length: 2,
+            }]);
+            let entry = dir.find_tile_id(TileId::new(101).unwrap()).unwrap();
+            assert_eq!(entry.offset, 1);
+            assert_eq!(entry.length, 1);
+
+            // Tile found via run_length on a later entry
+            let dir = Directory::from_entries(vec![
+                DirEntry {
+                    tile_id: 100,
+                    offset: 1,
+                    length: 1,
+                    run_length: 1,
+                },
+                DirEntry {
+                    tile_id: 150,
+                    offset: 2,
+                    length: 2,
+                    run_length: 2,
+                },
+            ]);
+            let entry = dir.find_tile_id(TileId::new(151).unwrap()).unwrap();
+            assert_eq!(entry.offset, 2);
+            assert_eq!(entry.length, 2);
+
+            // Tile found via run_length on the first of three entries
+            let dir = Directory::from_entries(vec![
+                DirEntry {
+                    tile_id: 50,
+                    offset: 1,
+                    length: 1,
+                    run_length: 2,
+                },
+                DirEntry {
+                    tile_id: 100,
+                    offset: 2,
+                    length: 2,
+                    run_length: 1,
+                },
+                DirEntry {
+                    tile_id: 150,
+                    offset: 3,
+                    length: 3,
+                    run_length: 1,
+                },
+            ]);
+            let entry = dir.find_tile_id(TileId::new(51).unwrap()).unwrap();
+            assert_eq!(entry.offset, 1);
+            assert_eq!(entry.length, 1);
+        }
+
+        // Ported from go-pmtiles/pmtiles/directory_test.go:TestFindTileLeafSearch (line 202)
+        #[test]
+        fn find_tile_leaf_search() {
+            // run_length == 0 marks a leaf directory pointer; find_tile_id returns
+            // the leaf entry for any tile_id past it so the caller can fetch that leaf.
+            let dir = Directory::from_entries(vec![DirEntry {
+                tile_id: 100,
+                offset: 1,
+                length: 1,
+                run_length: 0,
+            }]);
+            let entry = dir.find_tile_id(TileId::new(150).unwrap()).unwrap();
+            assert_eq!(entry.offset, 1);
+            assert_eq!(entry.length, 1);
+        }
     }
 }
