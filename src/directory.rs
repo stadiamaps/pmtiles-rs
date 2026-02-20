@@ -137,14 +137,16 @@ impl crate::writer::WriteTo for Directory {
 
         // Write Offsets
         let mut last_offset = 0;
-        for entry in &self.entries {
-            let offset_to_write = if entry.offset == last_offset + u64::from(entry.length) {
+        let mut last_length = 0;
+        for (i, entry) in self.entries.iter().enumerate() {
+            let offset_to_write = if i > 0 && entry.offset == last_offset + u64::from(last_length) {
                 0
             } else {
                 entry.offset + 1
             };
             writer.write_u64_varint(offset_to_write)?;
             last_offset = entry.offset;
+            last_length = entry.length;
         }
 
         Ok(())
