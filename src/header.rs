@@ -83,6 +83,42 @@ impl Header {
             center_latitude: 0.0,
         }
     }
+
+    /// Get the `PMTiles` spec version of the archive.
+    #[must_use]
+    pub fn spec_version(&self) -> u8 {
+        self.version
+    }
+
+    /// Get the number of addressed tiles (sum of all run lengths)
+    #[must_use]
+    pub fn n_addressed_tiles(&self) -> Option<NonZeroU64> {
+        self.n_addressed_tiles
+    }
+
+    /// Get the number of tile entries in the directory
+    #[must_use]
+    pub fn n_tile_entries(&self) -> Option<NonZeroU64> {
+        self.n_tile_entries
+    }
+
+    /// Get the number of unique tile contents
+    #[must_use]
+    pub fn n_tile_contents(&self) -> Option<NonZeroU64> {
+        self.n_tile_contents
+    }
+
+    /// Check if the archive is clustered (tiles stored in Hilbert curve order)
+    #[must_use]
+    pub fn clustered(&self) -> bool {
+        self.clustered
+    }
+
+    /// Get the internal compression used for directories
+    #[must_use]
+    pub fn internal_compression(&self) -> Compression {
+        self.internal_compression
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
