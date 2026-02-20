@@ -5,7 +5,12 @@ use varint_rs::VarintReader as _;
 #[cfg(feature = "write")]
 use varint_rs::VarintWriter as _;
 
-use crate::{PmtError, TileId};
+use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
+use crate::writer::WriteTo;
+use crate::{Compression, PmtError, PmtResult, TileId};
+
+/// Maximum size of the root directory in bytes.
+pub(crate) const MAX_ROOT_DIR_BYTES: usize = MAX_INITIAL_BYTES - HEADER_SIZE;
 
 #[derive(Default, Clone)]
 /// A directory of tile entries in a `PMTiles` file.
@@ -113,7 +118,7 @@ impl TryFrom<Bytes> for Directory {
 }
 
 #[cfg(feature = "write")]
-impl crate::writer::WriteTo for Directory {
+impl WriteTo for Directory {
     fn write_to<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         // Write number of entries
         writer.write_usize_varint(self.entries.len())?;
@@ -137,18 +142,85 @@ impl crate::writer::WriteTo for Directory {
 
         // Write Offsets
         let mut last_offset = 0;
-        for entry in &self.entries {
-            let offset_to_write = if entry.offset == last_offset + u64::from(entry.length) {
+        let mut last_length = 0u32;
+        for (i, entry) in self.entries.iter().enumerate() {
+            let offset_to_write = if i > 0 && entry.offset == last_offset + u64::from(last_length) {
                 0
             } else {
                 entry.offset + 1
             };
             writer.write_u64_varint(offset_to_write)?;
             last_offset = entry.offset;
+            last_length = entry.length;
         }
 
         Ok(())
     }
+}
+
+#[cfg(feature = "write")]
+/// Returns `(root_directory, leaf_directories)`
+pub(crate) fn optimize_directories(
+    mut entries: Vec<DirEntry>,
+    target_root_len: usize,
+    compression: Compression,
+) -> PmtResult<(Directory, Vec<Directory>)> {
+    // Same logic as go-pmtiles (https://github.com/protomaps/go-pmtiles/blob/f1c24e6/pmtiles/directory.go#L368-L396)
+    // and planetiler (https://github.com/onthegomap/planetiler/blob/6b3e152/planetiler-core/src/main/java/com/onthegomap/planetiler/pmtiles/WriteablePmtiles.java#L96-L118)
+
+    // Case 1: let's see if the root directory fits without leaves
+    if entries.len() < 16_384 {
+        // we don't need self.entries anymore, so we'll put it in the root_dir directly
+        let root_dir = Directory::from_entries(entries);
+        let root_bytes = root_dir.compressed_size(compression)?;
+        if root_bytes <= target_root_len {
+            return Ok((root_dir, vec![]));
+        }
+        // it didn't fit - go to the next case; put the entries back
+        entries = root_dir.entries;
+    }
+
+    // TODO: case 2: mixed tile entries/directory entries in root
+
+    // case 3: root directory is leaf pointers only
+    // use an iterative method, increasing the size of the leaf directory until the root fits
+
+    let mut leaf_size = (entries.len() / 3500).max(4096);
+    loop {
+        let (root_dir, leaf_dirs) = build_roots_leaves(&entries, leaf_size, compression)?;
+        let root_bytes = root_dir.compressed_size(compression)?;
+        if root_bytes <= target_root_len {
+            return Ok((root_dir, leaf_dirs));
+        }
+        leaf_size += leaf_size / 5; // go-pmtiles: leaf_size *= 1.2
+    }
+}
+
+#[cfg(feature = "write")]
+/// Build root and leaf directories from entries, given a leaf size.
+fn build_roots_leaves(
+    entries: &[DirEntry],
+    leaf_size: usize,
+    compression: Compression,
+) -> PmtResult<(Directory, Vec<Directory>)> {
+    let mut root_dir = Directory::with_capacity(entries.len() / leaf_size);
+    let mut leaves = Vec::with_capacity(entries.len() / leaf_size);
+    let mut offset = 0;
+    for chunk in entries.chunks(leaf_size) {
+        let leaf = Directory::from_entries(chunk.to_vec());
+        let leaf_size = leaf.compressed_size(compression)?;
+        leaves.push(leaf);
+
+        root_dir.push(DirEntry {
+            tile_id: chunk[0].tile_id,
+            offset,
+            length: crate::writer::into_u32(leaf_size)?,
+            run_length: 0,
+        });
+        offset += leaf_size as u64;
+    }
+
+    Ok((root_dir, leaves))
 }
 
 #[derive(Clone, Default, Debug)]

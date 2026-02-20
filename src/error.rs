@@ -1,3 +1,4 @@
+use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
 
 use thiserror::Error;
@@ -94,4 +95,8 @@ pub enum PmtError {
     /// Indicates an error occurred with the directory cache.
     #[error("An error occurred with the directory cache: {0}")]
     DirectoryCacheError(String),
+    /// Overflow when computing which chunks to read during archive extraction.
+    /// This could happen due to a malformed header or a large file on a 32bit system
+    #[error("System cannot read files this large or header is corrupt")]
+    IoRangeOverflow(TryFromIntError),
 }

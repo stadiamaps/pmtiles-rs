@@ -119,6 +119,65 @@ impl TileCoord {
     pub fn y(&self) -> u32 {
         self.y
     }
+
+    /// Convert lon/lat coordinates to tile coordinates at a given zoom level.
+    ///
+    /// Returns (x, y) tile coordinates using Web Mercator projection.
+    ///
+    /// # Arguments
+    /// * `lon` - Longitude in degrees (-180 to 180)
+    /// * `lat` - Latitude in degrees (-90 to 90)
+    /// * `zoom` - Zoom level (0-31)
+    ///
+    /// # Example
+    /// ```
+    /// # use pmtiles::TileCoord;
+    /// let tile = TileCoord::from_lon_lat_zoom(-122.4, 37.8, 10).unwrap();
+    /// assert!(tile.x() < 1024); // 2^10 = 1024 tiles at zoom 10
+    /// assert!(tile.y() < 1024);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the computed tile coordinates are invalid.
+    pub fn from_lon_lat_zoom(lon: f64, lat: f64, zoom: u8) -> PmtResult<Self> {
+        let n = 2_f64.powi(zoom.into());
+        let x = ((lon + 180.0) / 360.0 * n).floor();
+        let lat_rad = lat.to_radians();
+        let y = ((1.0 - lat_rad.tan().asinh() / std::f64::consts::PI) / 2.0 * n).floor();
+
+        let x = x.clamp(0.0, n - 1.0);
+        let y = y.clamp(0.0, n - 1.0);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        Self::new(zoom, x as u32, y as u32)
+    }
+
+    /// Convert tile coordinates to the northwest corner lon/lat.
+    ///
+    /// Returns the longitude and latitude of the northwest (top-left) corner of the tile.
+    ///
+    /// # Arguments
+    /// * `x` - Tile X coordinate
+    /// * `y` - Tile Y coordinate
+    /// * `zoom` - Zoom level (0-31)
+    ///
+    /// # Example
+    /// ```
+    /// # use pmtiles::TileCoord;
+    /// let (lon, lat) = TileCoord::new(0, 0, 0).unwrap().lon_lat();
+    /// assert!((lon - (-180.0)).abs() < 0.001);
+    /// assert!((lat - 85.051129).abs() < 0.001);
+    /// ```
+    #[must_use]
+    pub fn lon_lat(&self) -> (f64, f64) {
+        let n = 2_f64.powi(self.z.into());
+        let lon = f64::from(self.x) / n * 360.0 - 180.0;
+        let lat_rad = ((1.0 - f64::from(self.y) / n * 2.0) * std::f64::consts::PI)
+            .sinh()
+            .atan();
+        let lat = lat_rad.to_degrees();
+        (lon, lat)
+    }
 }
 
 /// Represents a unique identifier for a tile in the `PMTiles` format.
@@ -150,6 +209,19 @@ impl TileId {
     #[must_use]
     pub fn value(self) -> u64 {
         self.0
+    }
+
+    /// Get the parent tile ID for a given tile.
+    /// Returns None if tile is at zoom 0.
+    #[must_use]
+    pub(crate) fn parent_id(self) -> Option<Self> {
+        let coord = TileCoord::from(self);
+        if coord.z() == 0 {
+            return None;
+        }
+
+        let parent_coord = TileCoord::new(coord.z() - 1, coord.x() / 2, coord.y() / 2).ok()?;
+        Some(Self::from(parent_coord))
     }
 }
 
@@ -284,6 +356,75 @@ pub(crate) mod test {
     }
 
     #[test]
+    fn test_from_lon_lat_zoom() {
+        // Test known conversions
+        let tile_coord = TileCoord::from_lon_lat_zoom(0.0, 0.0, 0).unwrap();
+        assert_eq!((tile_coord.x(), tile_coord.y()), (0, 0));
+
+        // Test bounds - tile at 0,0 for any valid input at zoom 0
+        let tile_coord = TileCoord::from_lon_lat_zoom(-180.0, 85.0, 0).unwrap();
+        assert_eq!((tile_coord.x(), tile_coord.y()), (0, 0));
+
+        // San Francisco at zoom 10
+        let tile_coord = TileCoord::from_lon_lat_zoom(-122.4, 37.8, 10).unwrap();
+        let (x, y) = (tile_coord.x(), tile_coord.y());
+        assert!(x > 0 && x < 1024);
+        assert!(y > 0 && y < 1024);
+        assert_eq!((x, y), (163, 395)); // Known tile for SF
+
+        // Test zoom 1
+        let tile_coord = TileCoord::from_lon_lat_zoom(-122.4, 37.8, 1).unwrap();
+        assert_eq!((tile_coord.x(), tile_coord.y()), (0, 0));
+    }
+
+    #[test]
+    fn test_tile_to_lon_lat() {
+        // Test tile 0,0,0 (northwest corner of world)
+        let (lon, lat) = TileCoord::new(0, 0, 0).unwrap().lon_lat();
+        assert!((lon - (-180.0)).abs() < 0.001);
+        assert!((lat - 85.051_129).abs() < 0.001);
+
+        // Test tile at zoom 1
+        let (lon, lat) = TileCoord::new(1, 0, 0).unwrap().lon_lat();
+        assert!((lon - (-180.0)).abs() < 0.001);
+        assert!((lat - 85.051_129).abs() < 0.001);
+
+        let (lon, lat) = TileCoord::new(1, 1, 0).unwrap().lon_lat();
+        assert!((lon - 0.0).abs() < 0.001);
+        assert!((lat - 85.051_129).abs() < 0.001);
+
+        let (lon, lat) = TileCoord::new(1, 0, 1).unwrap().lon_lat();
+        assert!((lon - (-180.0)).abs() < 0.001);
+        assert!((lat - 0.0).abs() < 0.001);
+
+        let (lon, lat) = TileCoord::new(1, 1, 1).unwrap().lon_lat();
+        assert!((lon - 0.0).abs() < 0.001);
+        assert!((lat - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_lon_lat_tile_roundtrip() {
+        // Test that converting lon_lat -> tile -> lon_lat gets us back to the northwest corner
+        let test_cases = [
+            (-122.4, 37.8, 10),
+            (0.0, 0.0, 5),
+            (-180.0, 85.0, 8),
+            (179.9, -85.0, 12),
+        ];
+
+        for (lon, lat, zoom) in test_cases {
+            let tile_coord = TileCoord::from_lon_lat_zoom(lon, lat, zoom).unwrap();
+            let (x, y) = (tile_coord.x(), tile_coord.y());
+            let (lon_back, lat_back) = TileCoord::new(zoom, x, y).unwrap().lon_lat();
+
+            // The roundtrip should give us the northwest corner of the tile
+            // So lon_back <= lon and lat_back >= lat (approximately)
+            assert!(lon_back <= lon + 0.001, "lon: {lon}, lon_back: {lon_back}");
+            assert!(lat_back >= lat - 0.001, "lat: {lat}, lat_back: {lat_back}");
+        }
+    }
+
+    #[test]
     fn test_calc_tile_coords() {
         // Test round-trip conversion
         let test_cases = [
@@ -310,5 +451,16 @@ pub(crate) mod test {
                 "Failed round-trip for z={z}, x={x}, y={y}",
             );
         }
+    }
+
+    #[test]
+    fn test_parent_id() {
+        // Tile 0/0/0 has no parent
+        let tile_0_0_0 = TileId::from(TileCoord::new(0, 0, 0).unwrap());
+        assert_eq!(tile_0_0_0.parent_id(), None);
+
+        // Tile 1/0/1 parent is 0/0/0
+        let tile_1_0_1 = TileId::from(TileCoord::new(1, 0, 1).unwrap());
+        assert_eq!(tile_1_0_1.parent_id(), Some(tile_0_0_0));
     }
 }

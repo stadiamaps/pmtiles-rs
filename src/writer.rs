@@ -8,13 +8,11 @@ use flate2::write::GzEncoder;
 use twox_hash::XxHash3_64;
 
 use crate::PmtError::UnsupportedCompression;
-use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
+use crate::directory::MAX_ROOT_DIR_BYTES;
+use crate::header::MAX_INITIAL_BYTES;
 use crate::{
     Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileCoord, TileId, TileType,
 };
-
-/// Maximum size of the root directory in bytes.
-const MAX_ROOT_DIR_BYTES: usize = MAX_INITIAL_BYTES - HEADER_SIZE;
 
 /// Builder for creating a new writer.
 pub struct PmTilesWriter {
@@ -326,7 +324,11 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
             // but sorted directories are better for readers anyway.
             self.entries.sort_by_key(|entry| entry.tile_id);
         }
-        let (root_dir, leaf_dirs) = self.optimize_directories(MAX_ROOT_DIR_BYTES)?;
+        let (root_dir, leaf_dirs) = crate::directory::optimize_directories(
+            std::mem::take(&mut self.entries),
+            MAX_ROOT_DIR_BYTES,
+            self.header.internal_compression,
+        )?;
         let mut leaves_bytes = 0usize;
 
         // If we have leaf directories, record their starting offset before writing them.
@@ -342,65 +344,6 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
 
         self.header.leaf_length = leaves_bytes as u64;
         Ok(root_dir)
-    }
-
-    fn optimize_directories(
-        &mut self,
-        target_root_len: usize,
-    ) -> PmtResult<(Directory, Vec<Directory>)> {
-        // Same logic as go-pmtiles (https://github.com/protomaps/go-pmtiles/blob/f1c24e6/pmtiles/directory.go#L368-L396)
-        // and planetiler (https://github.com/onthegomap/planetiler/blob/6b3e152/planetiler-core/src/main/java/com/onthegomap/planetiler/pmtiles/WriteablePmtiles.java#L96-L118)
-
-        // Case 1: let's see if the root directory fits without leaves
-        if self.entries.len() < 16_384 {
-            // we don't need self.entries anymore, so we'll put it in the root_dir directly
-            let root_dir = Directory::from_entries(std::mem::take(&mut self.entries));
-            let root_bytes = root_dir.compressed_size(self.header.internal_compression)?;
-            if root_bytes <= target_root_len {
-                return Ok((root_dir, vec![]));
-            }
-            // it didn't fit - go to the next case; put the entries back
-            self.entries = root_dir.entries;
-        }
-
-        // TODO: case 2: mixed tile entries/directory entries in root
-
-        // case 3: root directory is leaf pointers only
-        // use an iterative method, increasing the size of the leaf directory until the root fits
-
-        let mut leaf_size = (self.entries.len() / 3500).max(4096);
-        loop {
-            let (root_dir, leaf_dirs) = self.build_roots_leaves(leaf_size)?;
-            let root_bytes = root_dir.compressed_size(self.header.internal_compression)?;
-            if root_bytes <= target_root_len {
-                return Ok((root_dir, leaf_dirs));
-            }
-            leaf_size += leaf_size / 5; // go-pmtiles: leaf_size *= 1.2
-        }
-    }
-
-    /// Build root directory and leaf directories from entries, given a leaf size.
-    /// The leaf directories are not written to output.
-    /// The root directory is returned.
-    fn build_roots_leaves(&self, leaf_size: usize) -> PmtResult<(Directory, Vec<Directory>)> {
-        let mut root_dir = Directory::with_capacity(self.entries.len() / leaf_size);
-        let mut leaves = Vec::with_capacity(self.entries.len() / leaf_size);
-        let mut offset = 0;
-        for chunk in self.entries.chunks(leaf_size) {
-            let leaf = Directory::from_entries(chunk.to_vec());
-            let leaf_size = leaf.compressed_size(self.header.internal_compression)?;
-            leaves.push(leaf);
-
-            root_dir.push(DirEntry {
-                tile_id: chunk[0].tile_id,
-                offset,
-                length: into_u32(leaf_size)?,
-                run_length: 0,
-            });
-            offset += leaf_size as u64;
-        }
-
-        Ok((root_dir, leaves))
     }
 
     /// Finish writing the `PMTiles` file.
@@ -437,7 +380,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     }
 }
 
-fn into_u32(v: usize) -> PmtResult<u32> {
+pub(crate) fn into_u32(v: usize) -> PmtResult<u32> {
     v.try_into().map_err(|_| PmtError::IndexEntryOverflow)
 }
 
