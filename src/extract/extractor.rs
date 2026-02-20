@@ -362,10 +362,7 @@ impl<'a, B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> Extract
                         futures_util::pin_mut!(byte_stream);
 
                         // Write the fetched data to output, streaming chunks as they arrive
-                        let dst_offset = new_header.data_offset + overfetch_range.range.dst_offset;
-
-                        let mut output = output.write().await;
-                        output.seek(SeekFrom::Start(dst_offset))?;
+                        let mut dst_offset = new_header.data_offset + overfetch_range.range.dst_offset;
 
                         let mut cd_iter = overfetch_range.copy_discards.iter();
 
@@ -392,11 +389,16 @@ impl<'a, B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> Extract
                             };
 
                             if *wanted > 0 {
+                                let mut output = output.write().await;
+                                // re-seek since other threads may have seeked in the meanwhile.
+                                output.seek(SeekFrom::Start(dst_offset))?;
+
                                 // In copy portion - write bytes
                                 let copy_len = (*wanted).min(bytes.len() as u64);
                                 let bytes_to_copy = bytes.split_to(try_into_usize(copy_len)?);
                                 output.write_all(&bytes_to_copy)?;
                                 *wanted -= copy_len;
+                                dst_offset += copy_len;
                             } else {
                                 // In discard portion - skip bytes
                                 let discard_len = (*discard).min(bytes.len() as u64);
