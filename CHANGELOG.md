@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.19.2...v0.20.0) - 2026-02-20
+
+### Other
+
+- Make header methods publicly readable ([#110](https://github.com/stadiamaps/pmtiles-rs/pull/110))
+- Return Result from TileId::new instead of Option ([#107](https://github.com/stadiamaps/pmtiles-rs/pull/107))
+
 ## [0.19.2](https://github.com/stadiamaps/pmtiles-rs/compare/v0.19.1...v0.19.2) - 2026-01-29
 
 ### Other
