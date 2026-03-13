@@ -63,8 +63,7 @@ impl Compressor for BrotliCompressor {
     fn compress(&self, input: &[u8], output: &mut dyn Write) -> PmtResult<()> {
         let mut encoder = brotli::CompressorWriter::with_params(output, 4096, &self.0);
         encoder.write_all(input)?;
-        // CompressorWriter flushes on drop; explicit drop to catch errors via Write trait
-        drop(encoder);
+        encoder.flush()?;
         Ok(())
     }
 }
