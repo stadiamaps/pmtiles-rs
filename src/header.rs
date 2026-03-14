@@ -369,7 +369,7 @@ mod tests {
     use bytes::{Bytes, BytesMut};
 
     use crate::header::HEADER_SIZE;
-    use crate::tests::{RASTER_FILE, VECTOR_FILE, MLT_VECTOR_FILE};
+    use crate::tests::{MLT_VECTOR_FILE, RASTER_FILE, VECTOR_FILE};
     use crate::{Header, TileType};
 
     #[test]
