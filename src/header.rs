@@ -215,7 +215,7 @@ pub enum TileType {
     Webp,
     /// AVIF image tile.
     Avif,
-    /// MapLibre Vector TIle.
+    /// MapLibre Vector Tile.
     Mlt,
 }
 
