@@ -215,6 +215,8 @@ pub enum TileType {
     Webp,
     /// AVIF image tile.
     Avif,
+    /// MapLibre Vector TIle.
+    Mlt,
 }
 
 impl TileType {
@@ -227,6 +229,7 @@ impl TileType {
             TileType::Webp => "image/webp",
             TileType::Jpeg => "image/jpeg",
             TileType::Avif => "image/avif",
+            TileType::Mlt => "application/vnd.maplibre-vector-tile",
             TileType::Unknown => "application/octet-stream",
         }
     }
@@ -243,6 +246,7 @@ impl TryInto<TileType> for u8 {
             3 => Ok(TileType::Jpeg),
             4 => Ok(TileType::Webp),
             5 => Ok(TileType::Avif),
+            6 => Ok(TileType::Mlt),
             _ => Err(PmtError::InvalidTileType),
         }
     }
@@ -365,7 +369,7 @@ mod tests {
     use bytes::{Bytes, BytesMut};
 
     use crate::header::HEADER_SIZE;
-    use crate::tests::{RASTER_FILE, VECTOR_FILE};
+    use crate::tests::{RASTER_FILE, VECTOR_FILE, MLT_VECTOR_FILE};
     use crate::{Header, TileType};
 
     #[test]
