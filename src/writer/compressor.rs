@@ -80,8 +80,6 @@ impl Compressor for BrotliCompressor {
     ) -> PmtResult<()> {
         let mut encoder = brotli::CompressorWriter::with_params(output, 4096, &self.0);
         input(&mut encoder)?;
-        // CompressorWriter flushes on drop
-        drop(encoder);
         Ok(())
     }
 }
