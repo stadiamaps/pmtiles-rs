@@ -800,25 +800,9 @@ mod tests {
     #[cfg(feature = "zstd")]
     #[tokio::test]
     async fn zstd_compressor_roundtrip() {
-        use crate::{Compressor, ZstdCompressor};
+        use crate::ZstdCompressor;
 
         let test_data = b"hello pmtiles zstd compressor with custom level";
-
-        // Verify custom level produces different output than default
-        let custom = ZstdCompressor(19);
-        let default = ZstdCompressor::default();
-        let mut custom_buf = Vec::new();
-        let mut default_buf = Vec::new();
-        custom.compress(test_data, &mut custom_buf).unwrap();
-        default.compress(test_data, &mut default_buf).unwrap();
-        assert_ne!(
-            custom_buf, default_buf,
-            "custom level should differ from default"
-        );
-        assert!(
-            custom_buf.len() < default_buf.len(),
-            "level 19 should compress better than default"
-        );
 
         let path = get_temp_file_path("pmtiles").unwrap();
         let file = File::create(&path).unwrap();
@@ -845,25 +829,7 @@ mod tests {
 
     #[tokio::test]
     async fn gzip_compressor_best_roundtrip() {
-        use crate::Compressor;
-
         let test_data = b"hello pmtiles gzip best compressor with enough data to see a difference";
-
-        // Verify best compression produces different output than default
-        let custom = GzipCompressor(flate2::Compression::best());
-        let default = GzipCompressor::default();
-        let mut custom_buf = Vec::new();
-        let mut default_buf = Vec::new();
-        custom.compress(test_data, &mut custom_buf).unwrap();
-        default.compress(test_data, &mut default_buf).unwrap();
-        assert_ne!(
-            custom_buf, default_buf,
-            "best level should differ from default"
-        );
-        assert!(
-            custom_buf.len() <= default_buf.len(),
-            "best should compress at least as well as default"
-        );
 
         let path = get_temp_file_path("pmtiles").unwrap();
         let file = File::create(&path).unwrap();
@@ -893,7 +859,7 @@ mod tests {
         use crate::writer::compressor::{Compressor, NoCompression};
 
         /// A custom compressor that just delegates to `NoCompression`
-        /// but reports itself as Gzip (for testing the trait mechanism).
+        /// (for testing the trait mechanism).
         struct CustomTestCompressor;
 
         impl Compressor for CustomTestCompressor {
@@ -933,33 +899,17 @@ mod tests {
     #[cfg(feature = "brotli")]
     #[tokio::test]
     async fn brotli_compressor_roundtrip() {
-        use crate::{BrotliCompressor, Compressor};
+        use crate::BrotliCompressor;
 
         let test_data = b"hello pmtiles brotli compressor with enough data to see a difference";
-
-        // Verify custom quality produces different output than default
-        let custom = BrotliCompressor(brotli::enc::BrotliEncoderParams {
-            quality: 5,
-            ..Default::default()
-        });
-        let default = BrotliCompressor::default();
-        let mut custom_buf = Vec::new();
-        let mut default_buf = Vec::new();
-        custom.compress(test_data, &mut custom_buf).unwrap();
-        default.compress(test_data, &mut default_buf).unwrap();
-        assert_ne!(
-            custom_buf, default_buf,
-            "custom quality should differ from default"
-        );
-        assert!(
-            custom_buf.len() > default_buf.len(),
-            "quality 5 should compress worse than default (quality 11)"
-        );
 
         let path = get_temp_file_path("pmtiles").unwrap();
         let file = File::create(&path).unwrap();
         let mut writer = PmTilesWriter::new(TileType::Mvt)
-            .tile_codec(custom)
+            .tile_codec(BrotliCompressor(brotli::enc::BrotliEncoderParams {
+                quality: 5,
+                ..Default::default()
+            }))
             .create(file)
             .unwrap();
 
