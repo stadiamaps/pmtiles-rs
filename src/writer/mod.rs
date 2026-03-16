@@ -113,12 +113,12 @@ impl PmTilesWriter {
     /// Create a new `PMTiles` writer with default values.
     #[must_use]
     pub fn new(tile_type: TileType) -> Self {
-        let (tile_compression, tile_compressor): (_, Box<dyn Compressor>) = match tile_type {
-            TileType::Mvt => (Compression::Gzip, Box::new(GzipCompressor::default())),
-            _ => (Compression::None, Box::new(NoCompression)),
+        let tile_compressor: Box<dyn Compressor> = match tile_type {
+            TileType::Mvt => Box::new(GzipCompressor::default()),
+            _ => Box::new(NoCompression),
         };
-        let header = Header::new(tile_compression, tile_type);
         let internal_compressor: Box<dyn Compressor> = Box::new(GzipCompressor::default());
+        let header = Header::new(tile_compressor.compression(), tile_type);
         Self {
             header,
             metadata: "{}".to_string(),
