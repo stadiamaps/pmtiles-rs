@@ -8,11 +8,8 @@ use std::io::{BufWriter, Seek, Write};
 use countio::Counter;
 use twox_hash::XxHash3_64;
 
-#[cfg(feature = "brotli")]
-pub use compressor::BrotliCompressor;
-#[cfg(feature = "zstd")]
-pub use compressor::ZstdCompressor;
-pub use compressor::{Compressor, GzipCompressor, NoCompression};
+pub use compressor::Compressor;
+pub(crate) use compressor::{GzipCompressor, NoCompression};
 
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::{
@@ -503,9 +500,10 @@ mod tests {
 
     use crate::tests::RASTER_FILE;
     use crate::{
-        AsyncPmTilesReader, Compression, GzipCompressor, MmapBackend, PmTilesWriter, TileCoord,
-        TileId, TileType,
+        AsyncPmTilesReader, Compression, MmapBackend, PmTilesWriter, TileCoord, TileId, TileType,
     };
+
+    use super::GzipCompressor;
 
     fn get_temp_file_path(suffix: &str) -> std::io::Result<String> {
         let temp_file = NamedTempFile::with_suffix(suffix)?;
@@ -812,7 +810,7 @@ mod tests {
     #[cfg(feature = "zstd")]
     #[tokio::test]
     async fn zstd_compressor_roundtrip() {
-        use crate::ZstdCompressor;
+        use super::compressor::ZstdCompressor;
 
         let test_data = b"hello pmtiles zstd compressor with custom level";
 
@@ -868,7 +866,7 @@ mod tests {
 
     #[tokio::test]
     async fn custom_compressor_roundtrip() {
-        use crate::writer::compressor::{Compressor, NoCompression};
+        use super::{Compressor, NoCompression};
 
         /// A custom compressor that just delegates to `NoCompression`
         /// (for testing the trait mechanism).
@@ -911,7 +909,7 @@ mod tests {
     #[cfg(feature = "brotli")]
     #[tokio::test]
     async fn brotli_compressor_roundtrip() {
-        use crate::BrotliCompressor;
+        use super::compressor::BrotliCompressor;
 
         let test_data = b"hello pmtiles brotli compressor with enough data to see a difference";
 

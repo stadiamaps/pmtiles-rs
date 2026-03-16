@@ -24,7 +24,7 @@ pub trait Compressor {
 }
 
 /// Passthrough (no compression).
-pub struct NoCompression;
+pub(crate) struct NoCompression;
 
 impl Compressor for NoCompression {
     fn compression(&self) -> Compression {
@@ -43,7 +43,7 @@ impl Compressor for NoCompression {
 
 /// Gzip compression. Wraps [`flate2::Compression`] for level configuration.
 #[derive(Default)]
-pub struct GzipCompressor(pub flate2::Compression);
+pub(crate) struct GzipCompressor(pub(crate) flate2::Compression);
 
 impl Compressor for GzipCompressor {
     fn compression(&self) -> Compression {
@@ -65,7 +65,7 @@ impl Compressor for GzipCompressor {
 /// Brotli compression. Wraps [`brotli::enc::BrotliEncoderParams`].
 #[cfg(feature = "brotli")]
 #[derive(Default)]
-pub struct BrotliCompressor(pub brotli::enc::BrotliEncoderParams);
+pub(crate) struct BrotliCompressor(pub(crate) brotli::enc::BrotliEncoderParams);
 
 #[cfg(feature = "brotli")]
 impl Compressor for BrotliCompressor {
@@ -88,7 +88,7 @@ impl Compressor for BrotliCompressor {
 
 /// Zstd compression with configurable level.
 #[cfg(feature = "zstd")]
-pub struct ZstdCompressor(pub i32);
+pub(crate) struct ZstdCompressor(pub(crate) i32);
 
 #[cfg(feature = "zstd")]
 impl Compressor for ZstdCompressor {

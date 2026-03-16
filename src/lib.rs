@@ -44,12 +44,8 @@ pub use tile::{MAX_TILE_ID, MAX_ZOOM, PYRAMID_SIZE_BY_ZOOM, TileCoord, TileId};
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "tilejson")]
 pub use tilejson;
-#[cfg(all(feature = "write", feature = "brotli"))]
-pub use writer::BrotliCompressor;
-#[cfg(all(feature = "write", feature = "zstd"))]
-pub use writer::ZstdCompressor;
 #[cfg(feature = "write")]
-pub use writer::{Compressor, GzipCompressor, NoCompression, PmTilesStreamWriter, PmTilesWriter};
+pub use writer::{Compressor, PmTilesStreamWriter, PmTilesWriter};
 
 #[cfg(test)]
 mod tests {
