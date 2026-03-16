@@ -63,6 +63,19 @@ struct WriterState<W: Write + Seek> {
     prev_written_tile_offset: u64,
 }
 
+/// Sized wrapper around `&mut dyn Write` so it can be passed to generic `W: Write` methods.
+struct DynWriter<'a>(&'a mut dyn Write);
+
+impl Write for DynWriter<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush()
+    }
+}
+
 pub(crate) trait WriteTo {
     fn write_to<W: Write>(&self, writer: &mut W) -> std::io::Result<()>;
 
@@ -71,10 +84,9 @@ pub(crate) trait WriteTo {
         writer: &mut W,
         compressor: &dyn Compressor,
     ) -> PmtResult<()> {
-        let mut buf = Vec::new();
-        self.write_to(&mut buf)?;
-        compressor.compress(&buf, writer)?;
-        Ok(())
+        compressor.compress(writer, &mut |encoder| {
+            self.write_to(&mut DynWriter(encoder))
+        })
     }
 
     fn write_compressed_to_counted<W: Write>(
@@ -870,10 +882,10 @@ mod tests {
 
             fn compress(
                 &self,
-                input: &[u8],
                 output: &mut dyn std::io::Write,
+                input: &mut dyn FnMut(&mut dyn std::io::Write) -> std::io::Result<()>,
             ) -> crate::PmtResult<()> {
-                NoCompression.compress(input, output)
+                NoCompression.compress(output, input)
             }
         }
 

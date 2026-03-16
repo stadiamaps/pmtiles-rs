@@ -10,12 +10,17 @@ pub trait Compressor {
     /// Returns the compression type for the `PMTiles` header.
     fn compression(&self) -> Compression;
 
-    /// Compress `input` and write the compressed data to `output`.
+    /// Create an encoder wrapping `output`, invoke `input` to write
+    /// uncompressed data into it, then finalize the encoder.
     ///
     /// # Errors
     ///
     /// Returns an error if writing to `output` fails or the compression fails.
-    fn compress(&self, input: &[u8], output: &mut dyn Write) -> PmtResult<()>;
+    fn compress(
+        &self,
+        output: &mut dyn Write,
+        input: &mut dyn FnMut(&mut dyn Write) -> std::io::Result<()>,
+    ) -> PmtResult<()>;
 }
 
 /// Passthrough (no compression).
@@ -26,8 +31,12 @@ impl Compressor for NoCompression {
         Compression::None
     }
 
-    fn compress(&self, input: &[u8], output: &mut dyn Write) -> PmtResult<()> {
-        output.write_all(input)?;
+    fn compress(
+        &self,
+        output: &mut dyn Write,
+        input: &mut dyn FnMut(&mut dyn Write) -> std::io::Result<()>,
+    ) -> PmtResult<()> {
+        input(output)?;
         Ok(())
     }
 }
@@ -41,9 +50,13 @@ impl Compressor for GzipCompressor {
         Compression::Gzip
     }
 
-    fn compress(&self, input: &[u8], output: &mut dyn Write) -> PmtResult<()> {
+    fn compress(
+        &self,
+        output: &mut dyn Write,
+        input: &mut dyn FnMut(&mut dyn Write) -> std::io::Result<()>,
+    ) -> PmtResult<()> {
         let mut encoder = GzEncoder::new(output, self.0);
-        encoder.write_all(input)?;
+        input(&mut encoder)?;
         encoder.finish()?;
         Ok(())
     }
@@ -60,10 +73,15 @@ impl Compressor for BrotliCompressor {
         Compression::Brotli
     }
 
-    fn compress(&self, input: &[u8], output: &mut dyn Write) -> PmtResult<()> {
+    fn compress(
+        &self,
+        output: &mut dyn Write,
+        input: &mut dyn FnMut(&mut dyn Write) -> std::io::Result<()>,
+    ) -> PmtResult<()> {
         let mut encoder = brotli::CompressorWriter::with_params(output, 4096, &self.0);
-        encoder.write_all(input)?;
-        encoder.flush()?;
+        input(&mut encoder)?;
+        // CompressorWriter flushes on drop
+        drop(encoder);
         Ok(())
     }
 }
@@ -78,9 +96,13 @@ impl Compressor for ZstdCompressor {
         Compression::Zstd
     }
 
-    fn compress(&self, input: &[u8], output: &mut dyn Write) -> PmtResult<()> {
+    fn compress(
+        &self,
+        output: &mut dyn Write,
+        input: &mut dyn FnMut(&mut dyn Write) -> std::io::Result<()>,
+    ) -> PmtResult<()> {
         let mut encoder = zstd::stream::Encoder::new(output, self.0)?;
-        encoder.write_all(input)?;
+        input(&mut encoder)?;
         encoder.finish()?;
         Ok(())
     }
@@ -116,7 +138,11 @@ impl Compressor for UnsupportedCompressor {
         self.0
     }
 
-    fn compress(&self, _input: &[u8], _output: &mut dyn Write) -> PmtResult<()> {
+    fn compress(
+        &self,
+        _output: &mut dyn Write,
+        _input: &mut dyn FnMut(&mut dyn Write) -> std::io::Result<()>,
+    ) -> PmtResult<()> {
         Err(PmtError::UnsupportedCompression(self.0))
     }
 }
