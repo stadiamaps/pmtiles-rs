@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use futures_util::stream::{Stream, StreamExt};
 use reqwest::header::{HeaderValue, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
 
@@ -64,23 +65,58 @@ impl HttpBackend {
 
 impl AsyncBackend for HttpBackend {
     async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
-        let end = offset + length - 1;
-        let range = format!("bytes={offset}-{end}");
-        let range = HeaderValue::try_from(range)?;
+        use futures_util::TryStreamExt;
 
-        let mut req = Request::new(Method::GET, self.url.clone());
-        req.headers_mut().insert(RANGE, range);
+        let stream = self.read_stream(offset, length);
+        futures_util::pin_mut!(stream);
 
-        let response = self.client.execute(req).await?.error_for_status()?;
-        if response.status() != StatusCode::PARTIAL_CONTENT {
-            return Err(PmtError::RangeRequestsUnsupported);
+        let mut chunks = Vec::new();
+
+        while let Some(chunk) = stream.try_next().await? {
+            chunks.push(chunk);
         }
 
-        let response_bytes = response.bytes().await?;
-        if response_bytes.len() > length {
-            Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
-        } else {
-            Ok(response_bytes)
+        let total_len: usize = chunks.iter().map(Bytes::len).sum();
+        let mut result = Vec::with_capacity(total_len);
+        for chunk in chunks {
+            result.extend_from_slice(&chunk);
+        }
+        Ok(Bytes::from(result))
+    }
+
+    fn read_stream(
+        &self,
+        offset: usize,
+        length: usize,
+    ) -> impl Stream<Item = PmtResult<Bytes>> + Send {
+        let end = offset + length - 1;
+        let range = format!("bytes={offset}-{end}");
+
+        let client = self.client.clone();
+        let url = self.url.clone();
+
+        async_stream::try_stream! {
+            let range = HeaderValue::try_from(range)?;
+            let mut req = Request::new(Method::GET, url);
+            req.headers_mut().insert(RANGE, range);
+
+            let response = client.execute(req).await?.error_for_status()?;
+            if response.status() != StatusCode::PARTIAL_CONTENT {
+                Err(PmtError::RangeRequestsUnsupported)?;
+            }
+
+            let mut length_so_far = 0;
+            let mut stream = response.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                length_so_far += chunk.len();
+
+                if length_so_far > length {
+                    Err(PmtError::ResponseBodyTooLong(length_so_far, length))?;
+                }
+
+                yield chunk;
+            }
         }
     }
 }
