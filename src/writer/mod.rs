@@ -233,7 +233,7 @@ impl PmTilesWriter {
         let metadata_length = self
             .metadata
             .as_bytes()
-            .write_compressed_to_counted(&mut out, &*self.internal_compressor)?
+            .write_compressed_to_counted(&mut out, &self.internal_compressor)?
             as u64;
 
         let mut state = WriterState {
@@ -270,7 +270,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
     /// If writing to the output stream fails
     pub fn add_tile(&mut self, coord: TileCoord, data: &[u8]) -> PmtResult<()> {
         self.state
-            .add_tile_by_id(coord.into(), data, &*self.tile_compressor)
+            .add_tile_by_id(coord.into(), data, &self.tile_compressor)
     }
 
     /// Add a pre-compressed tile to the writer.
@@ -461,7 +461,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
             - state.header.metadata_length;
 
         // Write leaf directories and get a root directory
-        let root_dir = state.build_directories(&*self.internal_compressor)?;
+        let root_dir = state.build_directories(&self.internal_compressor)?;
 
         state.header.n_addressed_tiles = state.n_addressed_tiles.try_into().ok();
         state.header.n_tile_contents = (state.tile_content_map.len() as u64).try_into().ok();
@@ -469,7 +469,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W> {
 
         // Determine compressed root directory length
         let mut root_dir_buf = vec![];
-        root_dir.write_compressed_to(&mut root_dir_buf, &*self.internal_compressor)?;
+        root_dir.write_compressed_to(&mut root_dir_buf, &self.internal_compressor)?;
         state.header.root_length = root_dir_buf.len() as u64;
 
         // Write header and root directory

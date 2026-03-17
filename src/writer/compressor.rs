@@ -23,6 +23,20 @@ pub trait Compressor {
     ) -> PmtResult<()>;
 }
 
+impl<T: Compressor + ?Sized> Compressor for Box<T> {
+    fn compression(&self) -> Compression {
+        (**self).compression()
+    }
+
+    fn compress(
+        &self,
+        output: &mut dyn Write,
+        input: &mut dyn FnMut(&mut dyn Write) -> std::io::Result<()>,
+    ) -> PmtResult<()> {
+        (**self).compress(output, input)
+    }
+}
+
 /// Passthrough (no compression).
 pub(crate) struct NoCompression;
 
