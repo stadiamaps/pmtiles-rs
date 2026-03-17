@@ -881,10 +881,10 @@ mod tests {
 
             fn compress(
                 &self,
-                input: &mut dyn FnMut(&mut dyn std::io::Write) -> std::io::Result<()>,
-                output: &mut dyn std::io::Write,
+                f: &mut dyn FnMut(&mut dyn std::io::Write) -> std::io::Result<()>,
+                writer: &mut dyn std::io::Write,
             ) -> crate::PmtResult<()> {
-                NoCompression.compress(input, output)
+                NoCompression.compress(f, writer)
             }
         }
 
