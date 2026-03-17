@@ -81,9 +81,10 @@ pub(crate) trait WriteTo {
         writer: &mut W,
         compressor: &dyn Compressor,
     ) -> PmtResult<()> {
-        compressor.compress(writer, &mut |encoder| {
-            self.write_to(&mut DynWriter(encoder))
-        })
+        compressor.compress(
+            &mut |encoder| self.write_to(&mut DynWriter(encoder)),
+            writer,
+        )
     }
 
     fn write_compressed_to_counted<W: Write>(
@@ -880,10 +881,10 @@ mod tests {
 
             fn compress(
                 &self,
-                output: &mut dyn std::io::Write,
                 input: &mut dyn FnMut(&mut dyn std::io::Write) -> std::io::Result<()>,
+                output: &mut dyn std::io::Write,
             ) -> crate::PmtResult<()> {
-                NoCompression.compress(output, input)
+                NoCompression.compress(input, output)
             }
         }
 
