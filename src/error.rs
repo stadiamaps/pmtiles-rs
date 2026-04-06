@@ -85,6 +85,9 @@ pub enum PmtError {
     /// An object store error occurred.
     #[error(transparent)]
     ObjectStore(#[from] object_store::Error),
+    /// The underlying data source was modified since the reader was created.
+    #[error("Underlying data source was modified")]
+    SourceModified,
     /// The tile coordinate is invalid.
     #[error("Invalid coordinate {0}/{1}/{2}")]
     InvalidCoordinate(u8, u32, u32),
