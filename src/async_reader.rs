@@ -20,6 +20,34 @@ use crate::{Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileI
 #[cfg(feature = "__async")]
 use crate::{DirectoryCache, NoCache};
 
+/// The response from a backend [`AsyncBackend::read`] call.
+pub struct BackendResponse {
+    /// The bytes read from the backend.
+    pub bytes: Bytes,
+    /// An optional version string for detecting source data changes (e.g. HTTP ETags).
+    /// A None means the backend does not have a way of discriminating PMTiles data versions
+    /// or a data version was not able to be acquired for a given request.
+    pub data_version_string: Option<String>,
+}
+
+impl BackendResponse {
+    /// Creates a `BackendResponse` with no version string.
+    pub fn new(bytes: Bytes) -> Self {
+        Self {
+            bytes,
+            data_version_string: None,
+        }
+    }
+
+    /// Creates a `BackendResponse` with a version string.
+    pub fn new_with_version(bytes: Bytes, data_version_string: String) -> Self {
+        Self {
+            bytes,
+            data_version_string: Some(data_version_string),
+        }
+    }
+}
+
 /// An asynchronous reader for `PMTiles` archives.
 pub struct AsyncPmTilesReader<B, C = NoCache> {
     backend: B,
