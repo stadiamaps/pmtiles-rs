@@ -11,11 +11,10 @@
 
 use std::ops::Range;
 
-use bytes::Bytes;
 use object_store::ObjectStore;
 use object_store::path::Path;
 
-use crate::{AsyncBackend, PmtResult};
+use crate::{AsyncBackend, BackendResponse, PmtResult};
 
 /// Backend implementation using the [`object_store`] crate for unified storage access.
 ///
@@ -99,7 +98,7 @@ impl ObjectStoreBackend {
 }
 
 impl AsyncBackend for ObjectStoreBackend {
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
+    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
         use object_store::ObjectStoreExt;
 
         let range = Range {
@@ -109,7 +108,7 @@ impl AsyncBackend for ObjectStoreBackend {
 
         let result = self.store.get_range(&self.path, range).await?;
 
-        Ok(result)
+        Ok(BackendResponse::new(result))
     }
 }
 

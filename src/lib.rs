@@ -6,7 +6,7 @@
 #[cfg(feature = "__async")]
 mod async_reader;
 #[cfg(feature = "__async")]
-pub use async_reader::{AsyncBackend, AsyncPmTilesReader};
+pub use async_reader::{AsyncBackend, AsyncPmTilesReader, BackendResponse};
 
 mod backends;
 #[allow(unused_imports, reason = "only a warning if no backends are enabled")]

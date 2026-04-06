@@ -83,7 +83,8 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// - or if the root directory is malformed
     pub async fn try_from_cached_source(backend: B, cache: C) -> PmtResult<Self> {
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
-        let mut initial_bytes = backend.read(0, MAX_INITIAL_BYTES).await?;
+        let initial_response = backend.read(0, MAX_INITIAL_BYTES).await?;
+        let mut initial_bytes = initial_response.bytes;
         if initial_bytes.len() < HEADER_SIZE {
             return Err(PmtError::InvalidHeader);
         }
@@ -381,21 +382,25 @@ pub trait AsyncBackend {
         Self: Sync,
     {
         async move {
-            let data = self.read(offset, length).await?;
+            let response = self.read(offset, length).await?;
 
-            if data.len() == length {
-                Ok(data)
-            } else {
-                Err(PmtError::UnexpectedNumberOfBytesReturned(
+            if response.bytes.len() != length {
+                return Err(PmtError::UnexpectedNumberOfBytesReturned(
                     length,
-                    data.len(),
-                ))
+                    response.bytes.len(),
+                ));
             }
+
+            Ok(response.bytes)
         }
     }
 
     /// Reads up to `length` bytes starting at `offset`.
-    fn read(&self, offset: usize, length: usize) -> impl Future<Output = PmtResult<Bytes>> + Send;
+    fn read(
+        &self,
+        offset: usize,
+        length: usize,
+    ) -> impl Future<Output = PmtResult<BackendResponse>> + Send;
 }
 
 #[cfg(test)]

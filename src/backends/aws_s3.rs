@@ -1,7 +1,6 @@
 use aws_sdk_s3::Client;
-use bytes::Bytes;
 
-use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCache, NoCache, PmtError, PmtResult};
+use crate::{AsyncBackend, AsyncPmTilesReader, BackendResponse, DirectoryCache, NoCache, PmtError, PmtResult};
 
 impl AsyncPmTilesReader<AwsS3Backend, NoCache> {
     /// Creates a new `PMTiles` reader from a client, bucket and key to the
@@ -68,7 +67,7 @@ impl AwsS3Backend {
 }
 
 impl AsyncBackend for AwsS3Backend {
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
+    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
         let range_end = offset + length - 1;
         let range = format!("bytes={offset}-{range_end}");
 
@@ -92,7 +91,7 @@ impl AsyncBackend for AwsS3Backend {
         if response_bytes.len() > length {
             Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
         } else {
-            Ok(response_bytes)
+            Ok(BackendResponse::new(response_bytes))
         }
     }
 }
