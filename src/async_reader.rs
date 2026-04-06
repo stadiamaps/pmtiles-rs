@@ -21,6 +21,7 @@ use crate::{Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileI
 use crate::{DirectoryCache, NoCache};
 
 /// The response from a backend [`AsyncBackend::read`] call.
+#[derive(Debug)]
 pub struct BackendResponse {
     /// The bytes read from the backend.
     pub bytes: Bytes,
