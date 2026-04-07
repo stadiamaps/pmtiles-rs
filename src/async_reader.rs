@@ -135,7 +135,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         let offset = (self.header.data_offset + entry.offset) as _;
         let length = entry.length as _;
 
-        Ok(Some(self.backend.read_exact(offset, length).await?))
+        Ok(Some(self.backend.read_exact(offset, length).await?.bytes))
     }
 
     /// Fetches tile bytes from the archive.
@@ -177,7 +177,8 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     pub async fn get_metadata(&self) -> PmtResult<String> {
         let offset = self.header.metadata_offset as _;
         let length = self.header.metadata_length as _;
-        let metadata = self.backend.read_exact(offset, length).await?;
+        let response = self.backend.read_exact(offset, length).await?;
+        let metadata = response.bytes;
 
         let decompressed_metadata =
             Self::decompress(self.header.internal_compression, metadata).await?;
@@ -326,7 +327,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
     async fn read_directory(&self, offset: usize, length: usize) -> PmtResult<Directory> {
         let data = self.backend.read_exact(offset, length).await?;
-        Self::read_compressed_directory(self.header.internal_compression, data).await
+        Self::read_compressed_directory(self.header.internal_compression, data.bytes).await
     }
 
     async fn read_compressed_directory(
@@ -378,7 +379,7 @@ pub trait AsyncBackend {
         &self,
         offset: usize,
         length: usize,
-    ) -> impl Future<Output = PmtResult<Bytes>> + Send
+    ) -> impl Future<Output = PmtResult<BackendResponse>> + Send
     where
         Self: Sync,
     {
@@ -392,7 +393,7 @@ pub trait AsyncBackend {
                 ));
             }
 
-            Ok(response.bytes)
+            Ok(response)
         }
     }
 
