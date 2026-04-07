@@ -55,6 +55,7 @@ pub struct AsyncPmTilesReader<B, C = NoCache> {
     cache: C,
     header: Header,
     root_directory: Directory,
+    initial_data_version_string: Option<String>,
 }
 
 impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
@@ -86,6 +87,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
         let initial_response = backend.read(0, MAX_INITIAL_BYTES).await?;
         let mut initial_bytes = initial_response.bytes;
+        let initial_data_version_string = initial_response.data_version_string;
         if initial_bytes.len() < HEADER_SIZE {
             return Err(PmtError::InvalidHeader);
         }
@@ -104,6 +106,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             cache,
             header,
             root_directory,
+            initial_data_version_string,
         })
     }
 
@@ -127,6 +130,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// This function will return an error if the
     /// - header/root directory cannot be read or
     /// - backend fails to read tile data
+    /// - underlying `PMTiles` archive has changed since initialization
     pub async fn get_tile<Id: Into<TileId>>(&self, tile_id: Id) -> PmtResult<Option<Bytes>> {
         let Some(entry) = self.find_tile_entry(tile_id.into()).await? else {
             return Ok(None);
@@ -134,8 +138,27 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
         let offset = (self.header.data_offset + entry.offset) as _;
         let length = entry.length as _;
+        let backend_response = self.backend.read_exact(offset, length).await?;
 
-        Ok(Some(self.backend.read_exact(offset, length).await?.bytes))
+        // Compare the initial data version string (stored at instantiation time based on the `PMTiles` metadata)
+        // against the latest version string, but only if both are set.
+        //
+        // If an initial data version string was not available, the backend does not support exposing version strings.
+        // If a current data version string is not available, this request was unable to extract a data version string,
+        // and the check should be skipped.
+        match (
+            &self.initial_data_version_string,
+            &backend_response.data_version_string,
+        ) {
+            (Some(expected), Some(actual)) => {
+                if expected != actual {
+                    return Err(PmtError::SourceModified);
+                }
+            }
+            _ => (),
+        }
+
+        Ok(Some(backend_response.bytes))
     }
 
     /// Fetches tile bytes from the archive.
