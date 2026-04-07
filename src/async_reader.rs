@@ -25,9 +25,9 @@ use crate::{DirectoryCache, NoCache};
 pub struct BackendResponse {
     /// The bytes read from the backend.
     pub bytes: Bytes,
-    /// An optional version string for detecting source data changes (e.g. HTTP ETags).
-    /// A None means the backend does not have a way of discriminating PMTiles data versions
-    /// or a data version was not able to be acquired for a given request.
+    /// An optional version string for detecting source data changes (e.g. HTTP E-Tags).
+    /// A None means the backend does not have a way of discriminating `PMTiles` data versions
+    /// or a data version was not able to be acquired for this request.
     pub data_version_string: Option<String>,
 }
 
