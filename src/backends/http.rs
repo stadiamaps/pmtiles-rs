@@ -110,4 +110,62 @@ mod tests {
 
         AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     }
+
+    async fn make_backend(server: &mockito::Server) -> HttpBackend {
+        HttpBackend::try_from(Client::new(), server.url()).expect("valid url")
+    }
+
+    #[tokio::test]
+    async fn read_no_data_version_header() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/")
+            .match_header("range", mockito::Matcher::Any)
+            .with_status(206)
+            .with_body(vec![0u8; 64])
+            .create_async()
+            .await;
+
+        let backend = make_backend(&server).await;
+        let response = backend.read(0, 64).await.expect("read succeeded");
+        assert!(response.data_version_string.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_prefers_etag_over_last_modified() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/")
+            .match_header("range", mockito::Matcher::Any)
+            .with_status(206)
+            .with_header("ETag", "\"abc123\"")
+            .with_header("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")
+            .with_body(vec![0u8; 64])
+            .create_async()
+            .await;
+
+        let backend = make_backend(&server).await;
+        let response = backend.read(0, 64).await.expect("read succeeded");
+        assert_eq!(response.data_version_string.as_deref(), Some("\"abc123\""));
+    }
+
+    #[tokio::test]
+    async fn read_falls_back_to_last_modified() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/")
+            .match_header("range", mockito::Matcher::Any)
+            .with_status(206)
+            .with_header("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")
+            .with_body(vec![0u8; 64])
+            .create_async()
+            .await;
+
+        let backend = make_backend(&server).await;
+        let response = backend.read(0, 64).await.expect("read succeeded");
+        assert_eq!(
+            response.data_version_string.as_deref(),
+            Some("Wed, 01 Jan 2025 00:00:00 GMT")
+        );
+    }
 }
