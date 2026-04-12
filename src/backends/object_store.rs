@@ -9,8 +9,6 @@
 //! - memory and
 //! - custom implementations
 
-use std::ops::Range;
-
 use object_store::ObjectStore;
 use object_store::path::Path;
 
@@ -99,16 +97,22 @@ impl ObjectStoreBackend {
 
 impl AsyncBackend for ObjectStoreBackend {
     async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
-        use object_store::ObjectStoreExt;
+        use object_store::{GetOptions, GetRange};
 
-        let range = Range {
-            start: offset as u64,
-            end: offset as u64 + length as u64,
+        let opts = GetOptions {
+            range: Some(GetRange::Bounded(offset as u64..(offset + length) as u64)),
+            ..Default::default()
         };
 
-        let result = self.store.get_range(&self.path, range).await?;
+        let result = self.store.get_opts(&self.path, opts).await?;
+        let etag = result.meta.e_tag.clone();
+        let bytes = result.bytes().await?;
 
-        Ok(BackendResponse::new(result))
+        Ok(if let Some(version) = etag {
+            BackendResponse::new_with_version(bytes, version)
+        } else {
+            BackendResponse::new(bytes)
+        })
     }
 }
 
