@@ -83,6 +83,11 @@ impl AsyncBackend for AwsS3Backend {
             .await
             .map_err(Box::new)?;
 
+        let data_version = obj
+            .e_tag()
+            .map(str::to_owned)
+            .or_else(|| obj.last_modified.map(|d| d.to_string()));
+
         let response_bytes = obj
             .body
             .collect()
@@ -93,7 +98,10 @@ impl AsyncBackend for AwsS3Backend {
         if response_bytes.len() > length {
             Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
         } else {
-            Ok(BackendResponse::new(response_bytes))
+            Ok(match data_version {
+                Some(v) => BackendResponse::new_with_version(response_bytes, v),
+                None => BackendResponse::new(response_bytes),
+            })
         }
     }
 }

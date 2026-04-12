@@ -74,7 +74,16 @@ impl AsyncBackend for S3Backend {
         if response_bytes.len() > length {
             Err(ResponseBodyTooLong(response_bytes.len(), length))
         } else {
-            Ok(BackendResponse::new(response_bytes.clone()))
+            let headers = response.headers();
+            let data_version = headers
+                .get("etag")
+                .or_else(|| headers.get("last-modified"))
+                .cloned();
+
+            Ok(match data_version {
+                Some(v) => BackendResponse::new_with_version(response_bytes.clone(), v),
+                None => BackendResponse::new(response_bytes.clone()),
+            })
         }
     }
 }
