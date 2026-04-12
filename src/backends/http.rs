@@ -1,4 +1,4 @@
-use reqwest::header::{HeaderValue, RANGE};
+use reqwest::header::{ETAG, HeaderValue, LAST_MODIFIED, RANGE};
 use reqwest::{Client, IntoUrl, Method, Request, StatusCode, Url};
 
 use crate::{
@@ -77,12 +77,21 @@ impl AsyncBackend for HttpBackend {
             return Err(PmtError::RangeRequestsUnsupported);
         }
 
+        let headers = response.headers();
+        let data_version_header_value = headers.get(ETAG).or(headers.get(LAST_MODIFIED));
+        let data_version_string = data_version_header_value
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+
         let response_bytes = response.bytes().await?;
 
         if response_bytes.len() > length {
             Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
         } else {
-            Ok(BackendResponse::new(response_bytes))
+            Ok(match data_version_string {
+                Some(v) => BackendResponse::new_with_version(response_bytes, v.to_string()),
+                None => BackendResponse::new(response_bytes),
+            })
         }
     }
 }
