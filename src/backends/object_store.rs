@@ -118,7 +118,10 @@ impl AsyncBackend for ObjectStoreBackend {
 
 #[cfg(test)]
 mod tests {
+    use bytes::Bytes;
     use object_store::memory::InMemory;
+    use object_store::path::Path;
+    use object_store::{ObjectStore, PutOptions, PutPayload};
 
     use super::*;
     use crate::PmtError;
@@ -142,5 +145,21 @@ mod tests {
             result.unwrap_err(),
             PmtError::ObjectStore(object_store::Error::NotFound { .. })
         ));
+    }
+
+    #[tokio::test]
+    async fn test_read_returns_etag() {
+        let store = Box::new(InMemory::new());
+        let path = Path::from("test.bin");
+        let payload: PutPayload = Bytes::copy_from_slice(&[0u8; 64]).into();
+        store
+            .put_opts(&path, payload, PutOptions::default())
+            .await
+            .unwrap();
+
+        let backend = ObjectStoreBackend::new(store, path);
+
+        let response = backend.read(0, 64).await.unwrap();
+        assert!(response.data_version_string.is_some());
     }
 }
