@@ -78,8 +78,8 @@ impl AsyncBackend for HttpBackend {
         }
 
         let headers = response.headers();
-        let data_version_header_value = headers.get(ETAG).or(headers.get(LAST_MODIFIED));
-        let data_version_string = data_version_header_value
+        let data_version_header_value = headers.get(ETAG).or_else(|| headers.get(LAST_MODIFIED));
+        let data_version = data_version_header_value
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
 
@@ -88,7 +88,7 @@ impl AsyncBackend for HttpBackend {
         if response_bytes.len() > length {
             Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
         } else {
-            Ok(match data_version_string {
+            Ok(match data_version {
                 Some(v) => BackendResponse::new_with_version(response_bytes, v.to_string()),
                 None => BackendResponse::new(response_bytes),
             })

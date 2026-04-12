@@ -105,13 +105,16 @@ impl AsyncBackend for ObjectStoreBackend {
         };
 
         let result = self.store.get_opts(&self.path, opts).await?;
-        let etag = result.meta.e_tag.clone();
+        let data_version = result
+            .meta
+            .e_tag
+            .clone()
+            .or_else(|| Some(result.meta.last_modified.to_rfc3339()));
         let bytes = result.bytes().await?;
 
-        Ok(if let Some(version) = etag {
-            BackendResponse::new_with_version(bytes, version)
-        } else {
-            BackendResponse::new(bytes)
+        Ok(match data_version {
+            Some(version) => BackendResponse::new_with_version(bytes, version),
+            None => BackendResponse::new(bytes),
         })
     }
 }
