@@ -497,6 +497,49 @@ mod tests {
         assert_eq!(tile, fixture_bytes, "Expected tile to match fixture.");
     }
 
+    #[tokio::test]
+    #[cfg(feature = "object-store")]
+    async fn test_data_version_source_modified() {
+        // Tests that if the underlying storage object changes after initial read of a
+        // pmtiles header, a subsequent read will fail.
+        use object_store::path::Path;
+        use object_store::{ObjectStore, PutOptions, PutPayload};
+        use std::sync::Arc;
+
+        // The test uses the ObjectStoreBackend with an InMemory underlying store since that
+        // makes it easy to modify the ETag of a stored object by putting a new "version".
+        use crate::ObjectStoreBackend;
+
+        // The exact file here does not matter - it is only important that we fetch a valid
+        // tile below.
+        let data: &[u8] = include_bytes!("../fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles");
+        let store = Arc::new(object_store::memory::InMemory::new());
+        let path = Path::from("file.pmtiles");
+
+        let payload: PutPayload = bytes::Bytes::copy_from_slice(data).into();
+        store
+            .put_opts(&path, payload, PutOptions::default())
+            .await
+            .unwrap();
+
+        // Create the AsyncReader and fetch a tile. The first tile fetch will succeed.
+        let backend = ObjectStoreBackend::new(Box::new(store.as_ref().clone()), path.clone());
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+        let result = tiles.get_tile(id(0, 0, 0)).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+
+        // Overwrite the object — InMemory underlying storage will increment the ETag.
+        let payload: PutPayload = bytes::Bytes::copy_from_slice(data).into();
+        store
+            .put_opts(&path, payload, PutOptions::default())
+            .await
+            .unwrap();
+
+        let result = tiles.get_tile(id(0, 0, 0)).await;
+        assert!(matches!(result, Err(crate::PmtError::SourceModified)));
+    }
+
     #[rstest]
     #[case(id(6, 31, 23), false)] // missing tile
     #[case(id(12, 2174, 1492), true)] // existing leaf tile
