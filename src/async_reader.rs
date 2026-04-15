@@ -146,9 +146,10 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         // If an initial data version string was not available, the backend does not support exposing version strings.
         // If a current data version string is not available, this request was unable to extract a data version string,
         // and the check should be skipped.
-        if let Some(expected) = &self.initial_data_version_string
-            && let Some(actual) = &backend_response.data_version_string
-            && expected != actual
+        if let (Some(expected), Some(actual)) = (
+            &self.initial_data_version_string,
+            &backend_response.data_version_string,
+        ) && expected != actual
         {
             return Err(PmtError::SourceModified);
         }

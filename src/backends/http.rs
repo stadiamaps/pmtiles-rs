@@ -89,7 +89,7 @@ impl AsyncBackend for HttpBackend {
             Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
         } else {
             Ok(match data_version {
-                Some(v) => BackendResponse::new_with_version(response_bytes, v.to_string()),
+                Some(v) => BackendResponse::new_with_version(response_bytes, v.clone()),
                 None => BackendResponse::new(response_bytes),
             })
         }
@@ -111,7 +111,7 @@ mod tests {
         AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     }
 
-    async fn make_backend(server: &mockito::Server) -> HttpBackend {
+    fn make_backend(server: &mockito::Server) -> HttpBackend {
         HttpBackend::try_from(Client::new(), server.url()).expect("valid url")
     }
 
@@ -126,7 +126,7 @@ mod tests {
             .create_async()
             .await;
 
-        let backend = make_backend(&server).await;
+        let backend = make_backend(&server);
         let response = backend.read(0, 64).await.expect("read succeeded");
         assert!(response.data_version_string.is_none());
     }
@@ -144,7 +144,7 @@ mod tests {
             .create_async()
             .await;
 
-        let backend = make_backend(&server).await;
+        let backend = make_backend(&server);
         let response = backend.read(0, 64).await.expect("read succeeded");
         assert_eq!(response.data_version_string.as_deref(), Some("\"abc123\""));
     }
@@ -161,7 +161,7 @@ mod tests {
             .create_async()
             .await;
 
-        let backend = make_backend(&server).await;
+        let backend = make_backend(&server);
         let response = backend.read(0, 64).await.expect("read succeeded");
         assert_eq!(
             response.data_version_string.as_deref(),
