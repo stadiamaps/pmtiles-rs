@@ -266,6 +266,15 @@ mod tests {
         use super::*;
         use crate::{Compression, DirEntry, TileId};
 
+        fn new_dir_entry(tile_id: u64, offset: u64, length: u32, run_length: u32) -> DirEntry {
+            DirEntry {
+                tile_id,
+                offset,
+                length,
+                run_length,
+            }
+        }
+
         #[test]
         fn write_directory() {
             use crate::writer::WriteTo as _;
@@ -283,8 +292,9 @@ mod tests {
         }
 
         fn roundtrip(entries: Vec<DirEntry>, compression: Compression) -> Vec<DirEntry> {
-            use flate2::read::GzDecoder;
             use std::io::Read as _;
+
+            use flate2::read::GzDecoder;
 
             use crate::writer::WriteTo as _;
             use crate::writer::{Compressor, GzipCompressor, NoCompression};
@@ -318,108 +328,30 @@ mod tests {
         #[test]
         fn directory_roundtrip_gzip() {
             let entries = vec![
-                DirEntry {
-                    tile_id: 0,
-                    offset: 0,
-                    length: 0,
-                    run_length: 0,
-                },
-                DirEntry {
-                    tile_id: 1,
-                    offset: 1,
-                    length: 1,
-                    run_length: 1,
-                },
-                DirEntry {
-                    tile_id: 2,
-                    offset: 2,
-                    length: 2,
-                    run_length: 2,
-                },
+                new_dir_entry(0, 0, 0, 0),
+                new_dir_entry(1, 1, 1, 1),
+                new_dir_entry(2, 2, 2, 2),
             ];
             let result = roundtrip(entries, Compression::Gzip);
             assert_eq!(result.len(), 3);
-            assert_eq!(
-                result[0],
-                DirEntry {
-                    tile_id: 0,
-                    offset: 0,
-                    length: 0,
-                    run_length: 0
-                }
-            );
-            assert_eq!(
-                result[1],
-                DirEntry {
-                    tile_id: 1,
-                    offset: 1,
-                    length: 1,
-                    run_length: 1
-                }
-            );
-            assert_eq!(
-                result[2],
-                DirEntry {
-                    tile_id: 2,
-                    offset: 2,
-                    length: 2,
-                    run_length: 2
-                }
-            );
+            assert_eq!(result[0], new_dir_entry(0, 0, 0, 0));
+            assert_eq!(result[1], new_dir_entry(1, 1, 1, 1));
+            assert_eq!(result[2], new_dir_entry(2, 2, 2, 2));
         }
 
         // Ported from go-pmtiles/pmtiles/directory_test.go:TestDirectoryRoundtripNoCompress (line 33)
         #[test]
         fn directory_roundtrip_no_compression() {
             let entries = vec![
-                DirEntry {
-                    tile_id: 0,
-                    offset: 0,
-                    length: 0,
-                    run_length: 0,
-                },
-                DirEntry {
-                    tile_id: 1,
-                    offset: 1,
-                    length: 1,
-                    run_length: 1,
-                },
-                DirEntry {
-                    tile_id: 2,
-                    offset: 2,
-                    length: 2,
-                    run_length: 2,
-                },
+                new_dir_entry(0, 0, 0, 0),
+                new_dir_entry(1, 1, 1, 1),
+                new_dir_entry(2, 2, 2, 2),
             ];
             let result = roundtrip(entries, Compression::None);
             assert_eq!(result.len(), 3);
-            assert_eq!(
-                result[0],
-                DirEntry {
-                    tile_id: 0,
-                    offset: 0,
-                    length: 0,
-                    run_length: 0
-                }
-            );
-            assert_eq!(
-                result[1],
-                DirEntry {
-                    tile_id: 1,
-                    offset: 1,
-                    length: 1,
-                    run_length: 1
-                }
-            );
-            assert_eq!(
-                result[2],
-                DirEntry {
-                    tile_id: 2,
-                    offset: 2,
-                    length: 2,
-                    run_length: 2
-                }
-            );
+            assert_eq!(result[0], new_dir_entry(0, 0, 0, 0));
+            assert_eq!(result[1], new_dir_entry(1, 1, 1, 1));
+            assert_eq!(result[2], new_dir_entry(2, 2, 2, 2));
         }
 
         // Ported from go-pmtiles/pmtiles/directory_test.go:TestFindTileMissing (line 157)
@@ -432,12 +364,7 @@ mod tests {
         // Ported from go-pmtiles/pmtiles/directory_test.go:TestFindTileFirstEntry (line 163)
         #[test]
         fn find_tile_first_entry() {
-            let dir = Directory::from_entries(vec![DirEntry {
-                tile_id: 100,
-                offset: 1,
-                length: 1,
-                run_length: 1,
-            }]);
+            let dir = Directory::from_entries(vec![new_dir_entry(100, 1, 1, 1)]);
             let entry = dir.find_tile_id(TileId::new(100).unwrap()).unwrap();
             assert_eq!(entry.offset, 1);
             assert_eq!(entry.length, 1);
@@ -448,30 +375,15 @@ mod tests {
         #[test]
         fn find_tile_multiple_entries() {
             // Tile found via run_length on a single entry
-            let dir = Directory::from_entries(vec![DirEntry {
-                tile_id: 100,
-                offset: 1,
-                length: 1,
-                run_length: 2,
-            }]);
+            let dir = Directory::from_entries(vec![new_dir_entry(100, 1, 1, 2)]);
             let entry = dir.find_tile_id(TileId::new(101).unwrap()).unwrap();
             assert_eq!(entry.offset, 1);
             assert_eq!(entry.length, 1);
 
             // Tile found via run_length on a later entry
             let dir = Directory::from_entries(vec![
-                DirEntry {
-                    tile_id: 100,
-                    offset: 1,
-                    length: 1,
-                    run_length: 1,
-                },
-                DirEntry {
-                    tile_id: 150,
-                    offset: 2,
-                    length: 2,
-                    run_length: 2,
-                },
+                new_dir_entry(100, 1, 1, 1),
+                new_dir_entry(150, 2, 2, 2),
             ]);
             let entry = dir.find_tile_id(TileId::new(151).unwrap()).unwrap();
             assert_eq!(entry.offset, 2);
@@ -479,24 +391,9 @@ mod tests {
 
             // Tile found via run_length on the first of three entries
             let dir = Directory::from_entries(vec![
-                DirEntry {
-                    tile_id: 50,
-                    offset: 1,
-                    length: 1,
-                    run_length: 2,
-                },
-                DirEntry {
-                    tile_id: 100,
-                    offset: 2,
-                    length: 2,
-                    run_length: 1,
-                },
-                DirEntry {
-                    tile_id: 150,
-                    offset: 3,
-                    length: 3,
-                    run_length: 1,
-                },
+                new_dir_entry(50, 1, 1, 2),
+                new_dir_entry(100, 2, 2, 1),
+                new_dir_entry(150, 3, 3, 1),
             ]);
             let entry = dir.find_tile_id(TileId::new(51).unwrap()).unwrap();
             assert_eq!(entry.offset, 1);
@@ -508,12 +405,7 @@ mod tests {
         fn find_tile_leaf_search() {
             // run_length == 0 marks a leaf directory pointer; find_tile_id returns
             // the leaf entry for any tile_id past it so the caller can fetch that leaf.
-            let dir = Directory::from_entries(vec![DirEntry {
-                tile_id: 100,
-                offset: 1,
-                length: 1,
-                run_length: 0,
-            }]);
+            let dir = Directory::from_entries(vec![new_dir_entry(100, 1, 1, 0)]);
             let entry = dir.find_tile_id(TileId::new(150).unwrap()).unwrap();
             assert_eq!(entry.offset, 1);
             assert_eq!(entry.length, 1);
