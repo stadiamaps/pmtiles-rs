@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.22.0...v0.23.0) - 2026-04-18
+
+### Added
+
+- [**breaking**] teach AsyncPmTilesReader to check data version strings ([#117](https://github.com/stadiamaps/pmtiles-rs/pull/117))
+
+### Other
+
+- *(deps)* bump the all-actions-version-updates group across 1 directory with 2 updates ([#118](https://github.com/stadiamaps/pmtiles-rs/pull/118))
+
 ## [0.22.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.21.0...v0.22.0) - 2026-04-18
 
 ### Fixed
