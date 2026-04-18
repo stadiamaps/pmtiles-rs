@@ -498,9 +498,10 @@ mod tests {
     async fn test_data_version_source_modified() {
         // Tests that if the underlying storage object changes after initial read of a
         // pmtiles header, a subsequent read will fail.
+        use std::sync::Arc;
+
         use object_store::path::Path;
         use object_store::{ObjectStore, PutOptions, PutPayload};
-        use std::sync::Arc;
 
         // The test uses the ObjectStoreBackend with an InMemory underlying store since that
         // makes it easy to modify the ETag of a stored object by putting a new "version".

@@ -73,7 +73,7 @@ impl AsyncBackend for AwsS3Backend {
         let range_end = offset + length - 1;
         let range = format!("bytes={offset}-{range_end}");
 
-        let obj = self
+        let mut obj = self
             .client
             .get_object()
             .bucket(self.bucket.clone())
@@ -83,10 +83,12 @@ impl AsyncBackend for AwsS3Backend {
             .await
             .map_err(Box::new)?;
 
-        let data_version = obj
-            .e_tag()
-            .map(str::to_owned)
-            .or_else(|| obj.last_modified.map(|d| d.to_string()));
+        let mut data_version = obj.e_tag.take();
+        if data_version.is_none()
+            && let Some(last_modified) = obj.last_modified
+        {
+            data_version = Some(last_modified.to_string());
+        }
 
         let response_bytes = obj
             .body

@@ -296,8 +296,7 @@ mod tests {
 
             use flate2::read::GzDecoder;
 
-            use crate::writer::WriteTo as _;
-            use crate::writer::{Compressor, GzipCompressor, NoCompression};
+            use crate::writer::{Compressor, GzipCompressor, NoCompression, WriteTo as _};
 
             let dir = Directory::from_entries(entries);
             let mut buf = vec![];

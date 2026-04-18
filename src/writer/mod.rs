@@ -5,11 +5,10 @@ use std::collections::hash_map::Entry;
 use std::hash::BuildHasherDefault;
 use std::io::{BufWriter, Seek, Write};
 
-use countio::Counter;
-use twox_hash::XxHash3_64;
-
 pub use compressor::Compressor;
 pub(crate) use compressor::{GzipCompressor, NoCompression};
+use countio::Counter;
+use twox_hash::XxHash3_64;
 
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::{
@@ -500,11 +499,10 @@ mod tests {
     use tempfile::NamedTempFile;
 
     use crate::tests::RASTER_FILE;
+    use crate::writer::GzipCompressor;
     use crate::{
         AsyncPmTilesReader, Compression, MmapBackend, PmTilesWriter, TileCoord, TileId, TileType,
     };
-
-    use super::GzipCompressor;
 
     fn get_temp_file_path(suffix: &str) -> std::io::Result<String> {
         let temp_file = NamedTempFile::with_suffix(suffix)?;
