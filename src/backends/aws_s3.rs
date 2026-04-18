@@ -86,7 +86,7 @@ impl AsyncBackend for AwsS3Backend {
         let data_version = obj
             .e_tag
             .take()
-            .or_else(|| obj.last_modified.as_ref().map(|v| v.to_string()));
+            .or_else(|| obj.last_modified.as_ref().map(ToString::to_string));
 
         let response_bytes = obj
             .body
