@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.21.0...v0.22.0) - 2026-04-18
+
+### Fixed
+
+- directory offset encoding ([#111](https://github.com/stadiamaps/pmtiles-rs/pull/111))
+
+### Other
+
+- update object_store dependency and fix build ([#119](https://github.com/stadiamaps/pmtiles-rs/pull/119))
+- Configurable compression parameters via Compressor trait ([#112](https://github.com/stadiamaps/pmtiles-rs/pull/112))
+
 ## [0.21.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.20.0...v0.21.0) - 2026-03-14
 
 ### Added
