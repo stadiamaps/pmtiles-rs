@@ -89,7 +89,7 @@ impl AsyncBackend for HttpBackend {
             Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
         } else {
             Ok(match data_version {
-                Some(v) => BackendResponse::new_with_version(response_bytes, v.clone()),
+                Some(v) => BackendResponse::new_with_version(response_bytes, v),
                 None => BackendResponse::new(response_bytes),
             })
         }
