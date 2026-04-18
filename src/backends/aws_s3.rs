@@ -83,12 +83,10 @@ impl AsyncBackend for AwsS3Backend {
             .await
             .map_err(Box::new)?;
 
-        let mut data_version = obj.e_tag.take();
-        if data_version.is_none()
-            && let Some(last_modified) = obj.last_modified
-        {
-            data_version = Some(last_modified.to_string());
-        }
+        let data_version = obj
+            .e_tag
+            .take()
+            .or_else(|| obj.last_modified.as_ref().map(|v| v.to_string()));
 
         let response_bytes = obj
             .body
