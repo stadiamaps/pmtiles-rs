@@ -1,10 +1,12 @@
 use std::io;
 use std::path::Path;
 
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 use fmmap::tokio::{AsyncMmapFile, AsyncMmapFileExt as _, AsyncOptions};
 
-use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCache, NoCache, PmtError, PmtResult};
+use crate::{
+    AsyncBackend, AsyncPmTilesReader, BackendResponse, DirectoryCache, NoCache, PmtError, PmtResult,
+};
 
 impl AsyncPmTilesReader<MmapBackend, NoCache> {
     /// Creates a new `PMTiles` reader from a file path using the async mmap backend.
@@ -67,9 +69,11 @@ impl From<fmmap::error::Error> for PmtError {
 }
 
 impl AsyncBackend for MmapBackend {
-    async fn read_exact(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
+    async fn read_exact(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
         if self.file.len() >= offset + length {
-            Ok(self.file.reader(offset)?.copy_to_bytes(length))
+            Ok(BackendResponse::new(
+                self.file.reader(offset)?.copy_to_bytes(length),
+            ))
         } else {
             Err(PmtError::Reading(io::Error::from(
                 io::ErrorKind::UnexpectedEof,
@@ -77,11 +81,13 @@ impl AsyncBackend for MmapBackend {
         }
     }
 
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
+    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
         let reader = self.file.reader(offset)?;
 
         let read_length = length.min(reader.len());
 
-        Ok(self.file.reader(offset)?.copy_to_bytes(read_length))
+        Ok(BackendResponse::new(
+            self.file.reader(offset)?.copy_to_bytes(read_length),
+        ))
     }
 }

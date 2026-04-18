@@ -20,12 +20,42 @@ use crate::{Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileI
 #[cfg(feature = "__async")]
 use crate::{DirectoryCache, NoCache};
 
+/// The response from a backend [`AsyncBackend::read`] call.
+#[derive(Debug)]
+pub struct BackendResponse {
+    /// The bytes read from the backend.
+    pub bytes: Bytes,
+    /// An optional version string for detecting source data changes (e.g. HTTP E-Tags).
+    /// A None means the backend does not have a way of discriminating `PMTiles` data versions
+    /// or a data version was not able to be acquired for this request.
+    pub data_version_string: Option<String>,
+}
+
+impl BackendResponse {
+    /// Creates a `BackendResponse` with no version string.
+    pub fn new(bytes: Bytes) -> Self {
+        Self {
+            bytes,
+            data_version_string: None,
+        }
+    }
+
+    /// Creates a `BackendResponse` with a version string.
+    pub fn new_with_version(bytes: Bytes, data_version_string: String) -> Self {
+        Self {
+            bytes,
+            data_version_string: Some(data_version_string),
+        }
+    }
+}
+
 /// An asynchronous reader for `PMTiles` archives.
 pub struct AsyncPmTilesReader<B, C = NoCache> {
     backend: B,
     cache: C,
     header: Header,
     root_directory: Directory,
+    initial_data_version_string: Option<String>,
 }
 
 impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
@@ -55,7 +85,9 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// - or if the root directory is malformed
     pub async fn try_from_cached_source(backend: B, cache: C) -> PmtResult<Self> {
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
-        let mut initial_bytes = backend.read(0, MAX_INITIAL_BYTES).await?;
+        let initial_response = backend.read(0, MAX_INITIAL_BYTES).await?;
+        let mut initial_bytes = initial_response.bytes;
+        let initial_data_version_string = initial_response.data_version_string;
         if initial_bytes.len() < HEADER_SIZE {
             return Err(PmtError::InvalidHeader);
         }
@@ -74,6 +106,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             cache,
             header,
             root_directory,
+            initial_data_version_string,
         })
     }
 
@@ -97,6 +130,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// This function will return an error if the
     /// - header/root directory cannot be read or
     /// - backend fails to read tile data
+    /// - underlying `PMTiles` archive has changed since initialization
     pub async fn get_tile<Id: Into<TileId>>(&self, tile_id: Id) -> PmtResult<Option<Bytes>> {
         let Some(entry) = self.find_tile_entry(tile_id.into()).await? else {
             return Ok(None);
@@ -104,8 +138,23 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
         let offset = (self.header.data_offset + entry.offset) as _;
         let length = entry.length as _;
+        let backend_response = self.backend.read_exact(offset, length).await?;
 
-        Ok(Some(self.backend.read_exact(offset, length).await?))
+        // Compare the initial data version string (stored at instantiation time based on the `PMTiles` metadata)
+        // against the latest version string, but only if both are set.
+        //
+        // If an initial data version string was not available, the backend does not support exposing version strings.
+        // If a current data version string is not available, this request was unable to extract a data version string,
+        // and the check should be skipped.
+        if let (Some(expected), Some(actual)) = (
+            &self.initial_data_version_string,
+            &backend_response.data_version_string,
+        ) && expected != actual
+        {
+            return Err(PmtError::SourceModified);
+        }
+
+        Ok(Some(backend_response.bytes))
     }
 
     /// Fetches tile bytes from the archive.
@@ -147,7 +196,8 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     pub async fn get_metadata(&self) -> PmtResult<String> {
         let offset = self.header.metadata_offset as _;
         let length = self.header.metadata_length as _;
-        let metadata = self.backend.read_exact(offset, length).await?;
+        let response = self.backend.read_exact(offset, length).await?;
+        let metadata = response.bytes;
 
         let decompressed_metadata =
             Self::decompress(self.header.internal_compression, metadata).await?;
@@ -296,7 +346,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
     async fn read_directory(&self, offset: usize, length: usize) -> PmtResult<Directory> {
         let data = self.backend.read_exact(offset, length).await?;
-        Self::read_compressed_directory(self.header.internal_compression, data).await
+        Self::read_compressed_directory(self.header.internal_compression, data.bytes).await
     }
 
     async fn read_compressed_directory(
@@ -348,26 +398,30 @@ pub trait AsyncBackend {
         &self,
         offset: usize,
         length: usize,
-    ) -> impl Future<Output = PmtResult<Bytes>> + Send
+    ) -> impl Future<Output = PmtResult<BackendResponse>> + Send
     where
         Self: Sync,
     {
         async move {
-            let data = self.read(offset, length).await?;
+            let response = self.read(offset, length).await?;
 
-            if data.len() == length {
-                Ok(data)
-            } else {
-                Err(PmtError::UnexpectedNumberOfBytesReturned(
+            if response.bytes.len() != length {
+                return Err(PmtError::UnexpectedNumberOfBytesReturned(
                     length,
-                    data.len(),
-                ))
+                    response.bytes.len(),
+                ));
             }
+
+            Ok(response)
         }
     }
 
     /// Reads up to `length` bytes starting at `offset`.
-    fn read(&self, offset: usize, length: usize) -> impl Future<Output = PmtResult<Bytes>> + Send;
+    fn read(
+        &self,
+        offset: usize,
+        length: usize,
+    ) -> impl Future<Output = PmtResult<BackendResponse>> + Send;
 }
 
 #[cfg(test)]
@@ -437,6 +491,50 @@ mod tests {
             "Expected tile length to match."
         );
         assert_eq!(tile, fixture_bytes, "Expected tile to match fixture.");
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "object-store")]
+    async fn test_data_version_source_modified() {
+        // Tests that if the underlying storage object changes after initial read of a
+        // pmtiles header, a subsequent read will fail.
+        use std::sync::Arc;
+
+        use object_store::path::Path;
+        use object_store::{ObjectStore, PutOptions, PutPayload};
+
+        // The test uses the ObjectStoreBackend with an InMemory underlying store since that
+        // makes it easy to modify the ETag of a stored object by putting a new "version".
+        use crate::ObjectStoreBackend;
+
+        // The exact file here does not matter - it is only important that we fetch a valid
+        // tile below.
+        let data: &[u8] = include_bytes!("../fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles");
+        let store = Arc::new(object_store::memory::InMemory::new());
+        let path = Path::from("file.pmtiles");
+
+        let payload: PutPayload = bytes::Bytes::copy_from_slice(data).into();
+        store
+            .put_opts(&path, payload, PutOptions::default())
+            .await
+            .unwrap();
+
+        // Create the AsyncReader and fetch a tile. The first tile fetch will succeed.
+        let backend = ObjectStoreBackend::new(Box::new(store.as_ref().clone()), path.clone());
+        let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+        let result = tiles.get_tile(id(0, 0, 0)).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+
+        // Overwrite the object — InMemory underlying storage will increment the ETag.
+        let payload: PutPayload = bytes::Bytes::copy_from_slice(data).into();
+        store
+            .put_opts(&path, payload, PutOptions::default())
+            .await
+            .unwrap();
+
+        let result = tiles.get_tile(id(0, 0, 0)).await;
+        assert!(matches!(result, Err(crate::PmtError::SourceModified)));
     }
 
     #[rstest]

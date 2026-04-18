@@ -1,8 +1,9 @@
-use bytes::Bytes;
 use s3::Bucket;
 
 use crate::PmtError::ResponseBodyTooLong;
-use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCache, NoCache, PmtResult};
+use crate::{
+    AsyncBackend, AsyncPmTilesReader, BackendResponse, DirectoryCache, NoCache, PmtResult,
+};
 
 impl AsyncPmTilesReader<S3Backend, NoCache> {
     /// Creates a new `PMTiles` reader from a bucket and path to the
@@ -58,7 +59,7 @@ impl S3Backend {
 }
 
 impl AsyncBackend for S3Backend {
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
+    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
         let response = self
             .bucket
             .get_object_range(
@@ -73,7 +74,16 @@ impl AsyncBackend for S3Backend {
         if response_bytes.len() > length {
             Err(ResponseBodyTooLong(response_bytes.len(), length))
         } else {
-            Ok(response_bytes.clone())
+            let headers = response.headers();
+            let data_version = headers
+                .get("etag")
+                .or_else(|| headers.get("last-modified"))
+                .cloned();
+
+            Ok(match data_version {
+                Some(v) => BackendResponse::new_with_version(response_bytes.clone(), v),
+                None => BackendResponse::new(response_bytes.clone()),
+            })
         }
     }
 }

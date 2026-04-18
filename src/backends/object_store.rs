@@ -9,13 +9,10 @@
 //! - memory and
 //! - custom implementations
 
-use std::ops::Range;
-
-use bytes::Bytes;
 use object_store::ObjectStore;
 use object_store::path::Path;
 
-use crate::{AsyncBackend, PmtResult};
+use crate::{AsyncBackend, BackendResponse, PmtResult};
 
 /// Backend implementation using the [`object_store`] crate for unified storage access.
 ///
@@ -99,23 +96,35 @@ impl ObjectStoreBackend {
 }
 
 impl AsyncBackend for ObjectStoreBackend {
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
-        use object_store::ObjectStoreExt;
+    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
+        use object_store::{GetOptions, GetRange};
 
-        let range = Range {
-            start: offset as u64,
-            end: offset as u64 + length as u64,
+        let opts = GetOptions {
+            range: Some(GetRange::Bounded(offset as u64..(offset + length) as u64)),
+            ..Default::default()
         };
 
-        let result = self.store.get_range(&self.path, range).await?;
+        let mut result = self.store.get_opts(&self.path, opts).await?;
+        let data_version = result
+            .meta
+            .e_tag
+            .take()
+            .or_else(|| Some(result.meta.last_modified.to_rfc3339()));
+        let bytes = result.bytes().await?;
 
-        Ok(result)
+        Ok(match data_version {
+            Some(version) => BackendResponse::new_with_version(bytes, version),
+            None => BackendResponse::new(bytes),
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use bytes::Bytes;
     use object_store::memory::InMemory;
+    use object_store::path::Path;
+    use object_store::{ObjectStore, PutOptions, PutPayload};
 
     use super::*;
     use crate::PmtError;
@@ -139,5 +148,21 @@ mod tests {
             result.unwrap_err(),
             PmtError::ObjectStore(object_store::Error::NotFound { .. })
         ));
+    }
+
+    #[tokio::test]
+    async fn test_read_returns_etag() {
+        let store = Box::new(InMemory::new());
+        let path = Path::from("test.bin");
+        let payload: PutPayload = Bytes::copy_from_slice(&[0u8; 64]).into();
+        store
+            .put_opts(&path, payload, PutOptions::default())
+            .await
+            .unwrap();
+
+        let backend = ObjectStoreBackend::new(store, path);
+
+        let response = backend.read(0, 64).await.unwrap();
+        assert!(response.data_version_string.is_some());
     }
 }

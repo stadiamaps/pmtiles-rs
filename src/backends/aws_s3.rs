@@ -1,7 +1,8 @@
 use aws_sdk_s3::Client;
-use bytes::Bytes;
 
-use crate::{AsyncBackend, AsyncPmTilesReader, DirectoryCache, NoCache, PmtError, PmtResult};
+use crate::{
+    AsyncBackend, AsyncPmTilesReader, BackendResponse, DirectoryCache, NoCache, PmtError, PmtResult,
+};
 
 impl AsyncPmTilesReader<AwsS3Backend, NoCache> {
     /// Creates a new `PMTiles` reader from a client, bucket and key to the
@@ -68,11 +69,11 @@ impl AwsS3Backend {
 }
 
 impl AsyncBackend for AwsS3Backend {
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
+    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
         let range_end = offset + length - 1;
         let range = format!("bytes={offset}-{range_end}");
 
-        let obj = self
+        let mut obj = self
             .client
             .get_object()
             .bucket(self.bucket.clone())
@@ -81,6 +82,11 @@ impl AsyncBackend for AwsS3Backend {
             .send()
             .await
             .map_err(Box::new)?;
+
+        let data_version = obj
+            .e_tag
+            .take()
+            .or_else(|| obj.last_modified.as_ref().map(ToString::to_string));
 
         let response_bytes = obj
             .body
@@ -92,7 +98,10 @@ impl AsyncBackend for AwsS3Backend {
         if response_bytes.len() > length {
             Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
         } else {
-            Ok(response_bytes)
+            Ok(match data_version {
+                Some(v) => BackendResponse::new_with_version(response_bytes, v),
+                None => BackendResponse::new(response_bytes),
+            })
         }
     }
 }
