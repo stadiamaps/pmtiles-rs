@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Convert `MBTiles` and `x/y/z` tile directories into `PMTiles` via `mbtiles_to_pmtiles` and `tile_dir_to_pmtiles`, behind the new `mbtiles` and `tile-convert` features. Tiles are streamed in `TileId` order (clustered output), `TMS` rows are flipped to `XYZ`, and tile bytes are stored verbatim.
+
 ## [0.23.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.22.0...v0.23.0) - 2026-04-18
 
 ### Added

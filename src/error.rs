@@ -97,4 +97,12 @@ pub enum PmtError {
     /// Indicates an error occurred with the directory cache.
     #[error("An error occurred with the directory cache: {0}")]
     DirectoryCacheError(String),
+    #[cfg(feature = "tile-convert")]
+    /// A tile source could not be converted into a `PMTiles` archive.
+    #[error("Tile conversion error: {0}")]
+    Conversion(String),
+    #[cfg(feature = "mbtiles")]
+    /// An error occurred while reading the `MBTiles` `SQLite` database.
+    #[error(transparent)]
+    Sqlite(#[from] rusqlite::Error),
 }
