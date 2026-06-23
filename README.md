@@ -20,11 +20,15 @@ originally created by Brandon Liu for Protomaps.
   - Async `s3` (Rust-S3 + Tokio) for S3-compatible buckets
   - Async `s3`/`azure`/`gcp`/`fs`/`http`/`mem`/custom ([`object_store`](https://docs.rs/object_store))
 - Creating `PMTile` archives
+- Converting `MBTiles` and `x/y/z` tile directories into `PMTiles` (`mbtiles` / `tile-convert` features)
 
 ## Plans & TODOs
 
 - [ ] Documentation and example code
-- [ ] Support conversion to and from `MBTiles` + `x/y/z`
+- Conversion to and from `MBTiles` + `x/y/z`:
+  - [x] `MBTiles` → `PMTiles`
+  - [x] `x/y/z` tile directory → `PMTiles`
+  - [ ] `PMTiles` → `MBTiles` / `x/y/z`
 - [ ] Support additional backends (sync `mmap` and `http` at least)
 - [ ] Support additional async styles (e.g., `async-std`)
 
@@ -96,6 +100,24 @@ let mut writer = PmTilesWriter::new(TileType::Mvt).create(file).unwrap();
 let coord = TileCoord::new(0, 0, 0).unwrap();
 writer.add_tile(coord, &[/*...*/]).unwrap();
 writer.finalize().unwrap();
+```
+
+### Converting `MBTiles` or an `x/y/z` directory to `PMTiles`
+
+Both converters stream tiles in `PMTiles` (Hilbert) order, so the output is
+clustered and benefits from run-length and content de-duplication. `MBTiles`
+(and `gdal2tiles`' default mercator output) store rows in the `TMS` scheme; the
+`y` axis is flipped to the `XYZ` scheme `PMTiles` uses.
+
+```rust,no_run
+use pmtiles::{mbtiles_to_pmtiles, tile_dir_to_pmtiles, TileScheme, TileType};
+
+// MBTiles -> PMTiles (requires the `mbtiles` feature)
+mbtiles_to_pmtiles("input.mbtiles", "output.pmtiles").unwrap();
+
+// A directory of `z/x/y.webp` tiles -> PMTiles (requires the `tile-convert` feature).
+// Use `TileScheme::Xyz` for "slippy"/Google tiles (e.g. `gdal2tiles --xyz`).
+tile_dir_to_pmtiles("./tiles", "tiles.pmtiles", TileType::Webp, TileScheme::Tms).unwrap();
 ```
 
 ## Development

@@ -35,6 +35,8 @@ check:
     cargo check --workspace --all-targets --no-default-features --features tilejson
     cargo check --workspace --all-targets --no-default-features --features write
     cargo check --workspace --all-targets --no-default-features --features brotli
+    cargo check --workspace --all-targets --no-default-features --features tile-convert
+    cargo check --workspace --all-targets --no-default-features --features mbtiles
 
 # Generate code coverage report to upload to codecov.io
 ci-coverage: env-info && \

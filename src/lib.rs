@@ -19,6 +19,8 @@ pub use cache::MokaCache;
 #[cfg(feature = "__async")]
 pub use cache::{DirCacheResult, DirectoryCache, HashMapCache, NoCache};
 
+#[cfg(feature = "tile-convert")]
+mod convert;
 mod directory;
 mod error;
 mod header;
@@ -29,6 +31,10 @@ mod writer;
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "__async-aws-s3")]
 pub use aws_sdk_s3;
+#[cfg(feature = "mbtiles")]
+pub use convert::mbtiles_to_pmtiles;
+#[cfg(feature = "tile-convert")]
+pub use convert::{ConvertStats, TileScheme, tile_dir_to_pmtiles};
 #[cfg(feature = "iter-async")]
 pub use directory::DirEntryCoordsIter;
 pub use directory::{DirEntry, Directory};
