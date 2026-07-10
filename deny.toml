@@ -1,10 +1,14 @@
 [advisories]
-# rustls-webpki 0.101.7 vulnerabilities transitively pulled in via aws-sdk-s3.
-# This version of rustls-webpki is pulled in via a legacy feature flag, which we're not actually using.
-# See https://github.com/awslabs/aws-sdk-rust/issues/1339
 ignore = [
+    # rustls-webpki 0.101.7 vulnerabilities transitively pulled in via aws-sdk-s3.
+    # This version of rustls-webpki is pulled in via a legacy feature flag, which we're not actually using.
+    # See https://github.com/awslabs/aws-sdk-rust/issues/1339
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0104",
+    # quick-xml 0.38 advisories, transitively pulled in via rust-s3/aws-creds, which pin `quick-xml = "0.38"`.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
 ]
 
 [bans]
@@ -20,6 +24,7 @@ multiple-versions = "allow"
 # See https://spdx.org/licenses/ for list of possible licenses
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
 allow = [
+    "0BSD",
     "Apache-2.0",
     "BSD-3-Clause",
     "CC0-1.0",
