@@ -32,8 +32,6 @@ zstd = ["dep:zstd", "async-compression/zstd"]
 reqwest-default = ["reqwest?/default"]
 reqwest-native-tls = ["reqwest?/native-tls"]
 reqwest-rustls = ["reqwest?/rustls"]
-reqwest-rustls-native-certs = ["reqwest?/rustls-native-certs"]
-reqwest-webpki-roots = ["reqwest?/webpki-roots"]
 
 #### These features are for the internal usage only
 # This is a list of features we use in docs.rs and other places where we want everything.
@@ -84,8 +82,7 @@ varint-rs = "2"
 
 [dev-dependencies]
 flate2 = "1"
-fmmap = { version = "0.4", features = ["tokio"] }
-reqwest = { version = "0.13.1", features = ["rustls", "webpki-roots"] }
+reqwest = { version = "0.13.1", features = ["rustls"] }
 rstest = "0.26.1"
 tempfile = "3.13.0"
 tokio = { version = "1", features = ["test-util", "macros", "rt"] }
