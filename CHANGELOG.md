@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.23.1...v0.24.0) - 2026-08-11
+
+### Added
+
+- [**breaking**] replaced the `fmmap` dependency with `memmap2`
+- [**breaking**] removed the `reqwest-webpki-roots` and `reqwest-rustls-native-certs` features.
+
+### Other
+
+- *(deps)* bump the all-actions-version-updates group across 1 directory with 3 updates ([#129](https://github.com/stadiamaps/pmtiles-rs/pull/129))
+
 ## [0.23.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.23.0...v0.23.1) - 2026-07-10
 
 ### Other
