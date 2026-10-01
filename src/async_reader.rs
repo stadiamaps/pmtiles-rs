@@ -138,23 +138,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
         let offset = (self.header.data_offset + entry.offset) as _;
         let length = entry.length as _;
-        let backend_response = self.backend.read_exact(offset, length).await?;
-
-        // Compare the initial data version string (stored at instantiation time based on the `PMTiles` metadata)
-        // against the latest version string, but only if both are set.
-        //
-        // If an initial data version string was not available, the backend does not support exposing version strings.
-        // If a current data version string is not available, this request was unable to extract a data version string,
-        // and the check should be skipped.
-        if let (Some(expected), Some(actual)) = (
-            &self.initial_data_version_string,
-            &backend_response.data_version_string,
-        ) && expected != actual
-        {
-            return Err(PmtError::SourceModified);
-        }
-
-        Ok(Some(backend_response.bytes))
+        Ok(Some(self.read_exact_unmodified(offset, length).await?))
     }
 
     /// Fetches tile bytes from the archive.
@@ -192,12 +176,12 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// This function will return an error if the
     /// - backend fails to read the metadata or
     /// - metadata cannot be decompressed or
-    /// - is not valid UTF-8
+    /// - is not valid UTF-8 or
+    /// - underlying `PMTiles` archive has changed since initialization
     pub async fn get_metadata(&self) -> PmtResult<String> {
         let offset = self.header.metadata_offset as _;
         let length = self.header.metadata_length as _;
-        let response = self.backend.read_exact(offset, length).await?;
-        let metadata = response.bytes;
+        let metadata = self.read_exact_unmodified(offset, length).await?;
 
         let decompressed_metadata =
             Self::decompress(self.header.internal_compression, metadata).await?;
@@ -345,8 +329,27 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     async fn read_directory(&self, offset: usize, length: usize) -> PmtResult<Directory> {
-        let data = self.backend.read_exact(offset, length).await?;
-        Self::read_compressed_directory(self.header.internal_compression, data.bytes).await
+        let data = self.read_exact_unmodified(offset, length).await?;
+        Self::read_compressed_directory(self.header.internal_compression, data).await
+    }
+
+    /// Reads exactly `length` bytes starting at `offset`, failing if the archive changed since initialization.
+    ///
+    /// The initial data version string (stored at instantiation time) is compared against the one of this read,
+    /// but only if both are set.
+    /// If an initial data version string was not available, the backend does not support exposing version strings.
+    /// If a current data version string is not available, this request was unable to extract a data version string,
+    /// and the check is skipped.
+    async fn read_exact_unmodified(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
+        let response = self.backend.read_exact(offset, length).await?;
+        if let (Some(expected), Some(actual)) = (
+            &self.initial_data_version_string,
+            &response.data_version_string,
+        ) && expected != actual
+        {
+            return Err(PmtError::SourceModified);
+        }
+        Ok(response.bytes)
     }
 
     async fn read_compressed_directory(
@@ -535,6 +538,99 @@ mod tests {
 
         let result = tiles.get_tile(id(0, 0, 0)).await;
         assert!(matches!(result, Err(crate::PmtError::SourceModified)));
+    }
+
+    struct VersionedBackend(std::sync::Mutex<(bytes::Bytes, Option<String>)>);
+
+    impl VersionedBackend {
+        fn new(data: &[u8], version: Option<&str>) -> Self {
+            Self(std::sync::Mutex::new((
+                bytes::Bytes::copy_from_slice(data),
+                version.map(str::to_owned),
+            )))
+        }
+
+        fn replace(&self, data: &[u8], version: Option<&str>) {
+            *self.0.lock().unwrap() = (
+                bytes::Bytes::copy_from_slice(data),
+                version.map(str::to_owned),
+            );
+        }
+    }
+
+    impl crate::AsyncBackend for VersionedBackend {
+        fn read(
+            &self,
+            offset: usize,
+            length: usize,
+        ) -> impl Future<Output = crate::PmtResult<crate::BackendResponse>> + Send {
+            let (bytes, version) = self.0.lock().unwrap().clone();
+            let start = offset.min(bytes.len());
+            let end = offset.saturating_add(length).min(bytes.len());
+            let response = crate::BackendResponse {
+                bytes: bytes.slice(start..end),
+                data_version_string: version,
+            };
+            std::future::ready(Ok(response))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_data_version_source_modified_leaf_directory() {
+        let data: &[u8] = include_bytes!("../fixtures/leaf.pmtiles");
+        let tiles = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, Some("v1")))
+            .await
+            .unwrap();
+        let header = tiles.get_header();
+        let leaf_start = header.leaf_offset as usize;
+        let leaf_end = leaf_start + header.leaf_length as usize;
+        let mut replaced = data.to_vec();
+        replaced[leaf_start..leaf_end].fill(0);
+        tiles.backend.replace(&replaced, Some("v2"));
+
+        let result = tiles.get_tile(id(1, 1, 0)).await;
+        assert!(
+            matches!(result, Err(crate::PmtError::SourceModified)),
+            "expected SourceModified, got {result:?}"
+        );
+
+        let result = tiles.get_metadata().await;
+        assert!(
+            matches!(result, Err(crate::PmtError::SourceModified)),
+            "expected SourceModified, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_data_version_missing_on_later_read() {
+        let data: &[u8] = include_bytes!("../fixtures/leaf.pmtiles");
+        let tiles = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, Some("v1")))
+            .await
+            .unwrap();
+        tiles.backend.replace(data, None);
+
+        let tile = tiles.get_tile(id(1, 1, 0)).await.unwrap().unwrap();
+        assert_eq!(tile.as_ref(), b"4");
+        assert!(tiles.get_metadata().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_read_error_after_initialization() {
+        let data: &[u8] = include_bytes!("../fixtures/leaf.pmtiles");
+        let tiles = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, Some("v1")))
+            .await
+            .unwrap();
+        let leaf_offset = tiles.get_header().leaf_offset as usize;
+        tiles.backend.replace(&data[..leaf_offset], Some("v1"));
+
+        let result = tiles.get_tile(id(1, 1, 0)).await;
+        assert!(
+            matches!(
+                result,
+                Err(crate::PmtError::UnexpectedNumberOfBytesReturned(_, 0))
+            ),
+            "expected UnexpectedNumberOfBytesReturned, got {result:?}"
+        );
     }
 
     #[rstest]
