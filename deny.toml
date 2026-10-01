@@ -6,6 +6,8 @@ ignore = [
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
     "RUSTSEC-2026-0104",
+    # h2 0.3 (via hyper 0.14) is pulled in by the same legacy aws-sdk-s3 feature flag; only fixed in h2 0.4.
+    "RUSTSEC-2026-0258",
     # quick-xml 0.38 advisories, transitively pulled in via rust-s3/aws-creds, which pin `quick-xml = "0.38"`.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",

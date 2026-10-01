@@ -107,20 +107,29 @@ fn eof() -> PmtError {
 }
 
 impl AsyncBackend for MmapBackend {
-    async fn read_exact(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
-        match offset
+    fn read_exact(
+        &self,
+        offset: usize,
+        length: usize,
+    ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
+        let end = offset
             .checked_add(length)
-            .filter(|end| *end <= self.bytes.len())
-        {
+            .filter(|end| *end <= self.bytes.len());
+        let response = match end {
             Some(end) => Ok(BackendResponse::new(self.bytes.slice(offset..end))),
             None => Err(eof()),
-        }
+        };
+        std::future::ready(response)
     }
 
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
+    fn read(
+        &self,
+        offset: usize,
+        length: usize,
+    ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
         // An offset at exactly the end of the file is a valid empty read; past it is an error.
         if offset > self.bytes.len() {
-            return Err(eof());
+            return std::future::ready(Err(eof()));
         }
 
         // Clamp to what is actually left *after* `offset`. Short reads are the normal path
@@ -128,7 +137,7 @@ impl AsyncBackend for MmapBackend {
         // the total size of a small archive.
         let end = offset.saturating_add(length).min(self.bytes.len());
 
-        Ok(BackendResponse::new(self.bytes.slice(offset..end)))
+        std::future::ready(Ok(BackendResponse::new(self.bytes.slice(offset..end))))
     }
 }
 
