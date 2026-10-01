@@ -60,8 +60,8 @@ __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
 async-compression = { version = "0.4", features = ["gzip"] }
 async-stream = { version = "0.3", optional = true }
 aws-sdk-s3 = { version = "1.49.0", optional = true }
-brotli = { version = "9.0.0", optional = true }
-zstd = { version = "0.14", optional = true }
+brotli = { version = ">=8.0.2, <10.0.0", optional = true }
+zstd = { version = ">=0.13, <0.15", optional = true }
 bytes = "1.10"
 countio = { version = "0.3.0", optional = true }
 fast_hilbert = "2.0.1"
