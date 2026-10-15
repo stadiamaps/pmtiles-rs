@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.24.1...v0.25.0) - 2026-10-15
+
+### Added
+
+- [**breaking**] make only write, mmap and iter default features ([#143](https://github.com/stadiamaps/pmtiles-rs/pull/143))
+- [**breaking**] builder-chosen dedup mode, precompressed tiles, and late header values ([#142](https://github.com/stadiamaps/pmtiles-rs/pull/142))
+
+### Other
+
+- *(deps)* bump taiki-e/install-action from 2.85.12 to 2.87.22 in the all-actions-version-updates group ([#140](https://github.com/stadiamaps/pmtiles-rs/pull/140))
+- *(deps)* update rust-s3 requirement from 0.37.2 to 0.38.0 in the all-cargo-version-updates group across 1 directory ([#141](https://github.com/stadiamaps/pmtiles-rs/pull/141))
+
 ## [0.24.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.24.0...v0.24.1) - 2026-10-01
 
 ### Fixed
