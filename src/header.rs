@@ -360,7 +360,11 @@ impl Header {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unreadable_literal, clippy::float_cmp)]
+    #![expect(clippy::unreadable_literal)]
+    #![allow(
+        clippy::float_cmp,
+        reason = "exact round-trips; clippy versions differ on flagging float `assert_eq!`"
+    )]
 
     use std::fs::File;
     use std::io::Read;

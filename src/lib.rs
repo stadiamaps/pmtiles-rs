@@ -45,7 +45,9 @@ pub use tile::{MAX_TILE_ID, MAX_ZOOM, PYRAMID_SIZE_BY_ZOOM, TileCoord, TileId};
 #[cfg(feature = "tilejson")]
 pub use tilejson;
 #[cfg(feature = "write")]
-pub use writer::{Compressor, PmTilesStreamWriter, PmTilesWriter};
+pub use writer::{
+    CallerKey, Compressor, ContentHash, DedupMode, PmTilesStreamWriter, PmTilesWriter,
+};
 
 #[cfg(test)]
 mod tests {
