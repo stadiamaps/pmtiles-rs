@@ -1,7 +1,7 @@
-#![cfg_attr(all(feature = "default"), doc = include_str!("../README.md"))]
+#![cfg_attr(feature = "__all_non_conflicting", doc = include_str!("../README.md"))]
 // Only here because we warn on `missing_docs`.
 // The first `cfg_attr` is exported to https://docs.rs
-#![cfg_attr(not(feature = "default"), doc = "# `PMTiles` (for Rust)")]
+#![cfg_attr(not(feature = "__all_non_conflicting"), doc = "# `PMTiles` (for Rust)")]
 
 #[cfg(feature = "__async")]
 mod async_reader;
@@ -45,7 +45,9 @@ pub use tile::{MAX_TILE_ID, MAX_ZOOM, PYRAMID_SIZE_BY_ZOOM, TileCoord, TileId};
 #[cfg(feature = "tilejson")]
 pub use tilejson;
 #[cfg(feature = "write")]
-pub use writer::{Compressor, PmTilesStreamWriter, PmTilesWriter};
+pub use writer::{
+    CallerKey, Compressor, ContentHash, DedupMode, PmTilesStreamWriter, PmTilesWriter,
+};
 
 #[cfg(test)]
 mod tests {

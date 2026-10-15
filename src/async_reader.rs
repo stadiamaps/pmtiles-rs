@@ -677,7 +677,7 @@ mod tests {
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let metadata = tiles.get_metadata().await.unwrap();
-        assert!(!metadata.is_empty());
+        assert_ne!(metadata, "");
     }
 
     #[rstest]

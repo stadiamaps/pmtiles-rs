@@ -11,10 +11,7 @@ categories = ["science::geo"]
 rust-version = "1.88"
 
 [features]
-# Default enables everything because semver checker and release-plz cannot pass this through
-# See https://github.com/obi1kenobi/cargo-semver-checks/issues/1355
-# In the future, we might want to change this to a more selective set of features.
-default = ["__all_non_conflicting"]
+default = ["mmap-async-tokio", "iter-async"]
 aws-s3-async = ["__async-aws-s3"]
 http-async = ["__async", "dep:reqwest"]
 iter-async = ["__async", "dep:async-stream", "dep:futures-util"]
@@ -34,7 +31,7 @@ reqwest-native-tls = ["reqwest?/native-tls"]
 reqwest-rustls = ["reqwest?/rustls"]
 
 #### These features are for the internal usage only
-# This is a list of features we use in docs.rs and other places where we want everything.
+# This is a list of features we use in docs.rs, CI and other places where we want everything.
 # This list excludes these conflicting features: s3-async-native
 __all_non_conflicting = [
     "aws-s3-async",
@@ -55,6 +52,9 @@ __async-s3-nativetls = ["rust-s3?/tokio-native-tls"]
 __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]
 __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
 
+[package.metadata.docs.rs]
+features = ["__all_non_conflicting"]
+
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
 async-compression = { version = "0.4", features = ["gzip"] }
@@ -71,13 +71,13 @@ memmap2 = { version = "0.9.11", optional = true }
 moka = { version = "0.12", optional = true, features = ["future"] }
 object_store = { version = "0.14.0", optional = true, default-features = false, features = ["tokio"] }
 reqwest = { version = "0.13.1", default-features = false, optional = true }
-rust-s3 = { version = "0.37.2", optional = true, default-features = false, features = ["fail-on-err"] }
+rust-s3 = { version = "0.38.0", optional = true, default-features = false, features = ["fail-on-err"] }
 serde = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
 thiserror = "2"
 tilejson = { version = "0.4", optional = true }
 tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
-twox-hash = { version = "2", optional = true, default-features = false, features = ["std", "xxhash3_64"] }
+twox-hash = { version = "2.1", optional = true, default-features = false, features = ["std", "xxhash3_64", "xxhash3_128"] }
 varint-rs = "2"
 
 [dev-dependencies]
