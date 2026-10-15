@@ -11,10 +11,7 @@ categories = ["science::geo"]
 rust-version = "1.88"
 
 [features]
-# Default enables everything because semver checker and release-plz cannot pass this through
-# See https://github.com/obi1kenobi/cargo-semver-checks/issues/1355
-# In the future, we might want to change this to a more selective set of features.
-default = ["__all_non_conflicting"]
+default = ["mmap-async-tokio", "iter-async"]
 aws-s3-async = ["__async-aws-s3"]
 http-async = ["__async", "dep:reqwest"]
 iter-async = ["__async", "dep:async-stream", "dep:futures-util"]
@@ -34,7 +31,7 @@ reqwest-native-tls = ["reqwest?/native-tls"]
 reqwest-rustls = ["reqwest?/rustls"]
 
 #### These features are for the internal usage only
-# This is a list of features we use in docs.rs and other places where we want everything.
+# This is a list of features we use in docs.rs, CI and other places where we want everything.
 # This list excludes these conflicting features: s3-async-native
 __all_non_conflicting = [
     "aws-s3-async",
@@ -54,6 +51,9 @@ __async-s3 = ["__async", "dep:rust-s3"]
 __async-s3-nativetls = ["rust-s3?/tokio-native-tls"]
 __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]
 __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
+
+[package.metadata.docs.rs]
+features = ["__all_non_conflicting"]
 
 [dependencies]
 # TODO: determine how we want to handle compression in async & sync environments
