@@ -6,7 +6,8 @@ use crate::{Compression, PmtError, PmtResult};
 
 /// Trait for compression implementations.
 /// Implement this to provide custom compression behavior.
-pub trait Compressor {
+/// `Send`, so a writer can be moved to the thread that feeds it.
+pub trait Compressor: Send {
     /// Returns the compression type for the `PMTiles` header.
     fn compression(&self) -> Compression;
 
