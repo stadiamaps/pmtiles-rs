@@ -35,7 +35,7 @@ pmtiles = { version = "0.25", features = ["write", "http-async", "tilejson"] }
 
 How the stream writer finds identical tiles is now chosen on the builder, and the writer has a single `add_tile`.
 Callers that know which tiles repeat can skip hashing, and the header values can be set after the tiles.
-Identical tiles are keyed by a 128-bit hash, and identical bytes given to `add_tile` and `add_raw_tile` no longer
+Identical tiles are now found by a 128-bit hash (was 64-bit), and identical bytes given to `add_tile` and `add_raw_tile` no longer
 share one stored copy, which returned one of them in the wrong encoding.
 
 ```rust
@@ -73,6 +73,7 @@ Also breaking:
 
 - *(deps)* bump taiki-e/install-action from 2.85.12 to 2.87.22 in the all-actions-version-updates group ([#140](https://github.com/stadiamaps/pmtiles-rs/pull/140))
 - *(deps)* update rust-s3 requirement from 0.37.2 to 0.38.0 in the all-cargo-version-updates group across 1 directory ([#141](https://github.com/stadiamaps/pmtiles-rs/pull/141))
+  - `pmtiles::s3` re-exports `rust-s3`, so code using it moves to the 0.38 API. Applies to the `s3-async-*` features.
 
 ## [0.24.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.24.0...v0.24.1) - 2026-10-01
 
