@@ -9,73 +9,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.25.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.24.1...v0.25.0) - 2026-10-15
 
-This release has two breaking changes: a much smaller set of default features, and a reworked
-stream writer API. Both are mechanical to adopt, see [Upgrading from 0.24](#upgrading-from-024).
-
 ### Added
 
-- [**breaking**] make only mmap and iter default features ([#143](https://github.com/stadiamaps/pmtiles-rs/pull/143))
-  - Builds are much faster by default: the AWS SDK and the other network backends are now opt-in.
-- [**breaking**] builder-chosen dedup mode, precompressed tiles, and late header values ([#142](https://github.com/stadiamaps/pmtiles-rs/pull/142))
-  - Callers that already know which tiles repeat can skip hashing with `dedup_by_key`.
-  - `set_metadata`, `set_zoom_range`, `set_bounds` and `set_center` work after the tiles are written.
-  - Identical tiles are now keyed by a 128-bit hash, making collisions negligible.
-  - Fixes identical bytes given to `add_tile` and `add_raw_tile` sharing one stored copy, which
-    returned one of them in the wrong encoding.
+#### [**breaking**] Only `mmap-async-tokio` and `iter-async` are default features ([#143](https://github.com/stadiamaps/pmtiles-rs/pull/143))
 
-### Upgrading from 0.24
-
-**Default features.** Only `mmap-async-tokio` and `iter-async` are enabled by default now.
-Enable everything else you use explicitly:
+The AWS SDK and the other network backends are a heavy build that most users do not need, so they are now opt-in.
+If something like `PmTilesWriter` or `HttpBackend` is no longer found, enable its feature:
 
 ```toml
-# before
-pmtiles = "0.24"
-# after: list the features you need
 pmtiles = { version = "0.25", features = ["write", "http-async", "tilejson"] }
 ```
 
-The features that are no longer default are `write`, `http-async`, `aws-s3-async`,
-`s3-async-rustls` (or `s3-async-native`), `object-store`, `moka`, `tilejson`, `brotli` and `zstd`.
-A missing item such as `PmTilesWriter` (`write`), `HttpBackend` (`http-async`), `AwsS3Backend`
-(`aws-s3-async`), `ObjectStoreBackend` (`object-store`), `MokaCache` (`moka`) or
-`AsyncPmTilesReader::parse_tilejson` (`tilejson`) means that feature is not enabled.
+| Feature | Provides |
+|---|---|
+| `write` | `PmTilesWriter` |
+| `http-async` | `HttpBackend` |
+| `aws-s3-async` | `AwsS3Backend` |
+| `s3-async-rustls` or `s3-async-native` | `S3Backend` |
+| `object-store` | `ObjectStoreBackend` |
+| `moka` | `MokaCache` |
+| `tilejson` | `AsyncPmTilesReader::parse_tilejson` |
+| `brotli`, `zstd` | those compression codecs |
 
-**Stream writer.** How identical tiles are found is now chosen once on the builder, and the writer
-has a single `add_tile`:
+#### [**breaking**] Dedup mode on the writer builder, precompressed tiles, and late header values ([#142](https://github.com/stadiamaps/pmtiles-rs/pull/142))
+
+How the stream writer finds identical tiles is now chosen on the builder, and the writer has a single `add_tile`.
+Callers that know which tiles repeat can skip hashing, and the header values can be set after the tiles.
+Identical tiles are keyed by a 128-bit hash, and identical bytes given to `add_tile` and `add_raw_tile` no longer
+share one stored copy, which returned one of them in the wrong encoding.
 
 ```rust
-// before
-let mut writer = PmTilesWriter::new(TileType::Mvt).create(file)?;
-writer.add_tile(coord, data)?;          // compressed by the writer
-writer.add_raw_tile(coord, gzipped)?;   // stored as is
-
-// after: default, the writer hashes tiles (unchanged call)
+// Default: unchanged, the writer hashes tiles
 let mut writer = PmTilesWriter::new(TileType::Mvt).create(file)?;
 writer.add_tile(coord, data)?;
 
-// after: tiles are already compressed, replaces `add_raw_tile`
+// `add_raw_tile` is gone: declare already-compressed tiles on the builder
 let mut writer = PmTilesWriter::new(TileType::Mvt)
     .precompressed(Compression::Gzip)
     .create(file)?;
 writer.add_tile(coord, gzipped)?;
 
-// new: you know which tiles repeat, nothing is hashed
+// New: you know which tiles repeat, nothing is hashed
 let mut writer = PmTilesWriter::new(TileType::Mvt).dedup_by_key::<u64>().create(file)?;
-writer.add_tile(coord, ocean, Some(OCEAN))?;  // same key => identical bytes, stored once
-writer.add_tile(coord, land, None)?;          // unique, not remembered
+writer.add_tile(coord, ocean, Some(OCEAN))?; // same key => identical bytes, stored once
+writer.add_tile(coord, land, None)?;         // unique, not remembered
+
+// New: set the header after the tiles
+writer.set_metadata(json);
+writer.set_zoom_range(min_zoom, max_zoom);
+writer.set_bounds(west, south, east, north);
+writer.set_center(lon, lat, zoom);
+writer.finalize()?;
 ```
 
-- `add_raw_tile` is removed. Use `PmTilesWriter::precompressed(compression)`, which sets the header's
-  tile compression and stores tiles as given. An archive can no longer mix writer-compressed and
-  caller-compressed tiles.
-- `PmTilesWriter` and `PmTilesStreamWriter<W>` have a new dedup-mode type parameter that defaults to
-  `ContentHash`, so `PmTilesStreamWriter<File>` in your own types keeps compiling.
-- `Compressor` now requires `Send`. Custom compressors holding non-`Send` state, such as `Rc`, must
-  switch to thread-safe types.
-- `PmTilesWriter::metadata` takes `impl Into<String>` instead of `&str`. Passing `&str` still works,
-  but `&String` needs `.as_str()` or `.clone()`.
-- `twox-hash` 2.1 or newer is now required when the `write` feature is enabled.
+Also breaking:
+- A writer is either `precompressed` or compresses tiles itself, never both.
+- `PmTilesWriter` and `PmTilesStreamWriter` gain a dedup-mode type parameter that defaults to `ContentHash`, so `PmTilesStreamWriter<File>` still compiles.
+- `Compressor` requires `Send`, so custom compressors must not hold `Rc` or similar.
+- `PmTilesWriter::metadata` takes `impl Into<String>`; a `&String` argument needs `.as_str()`.
+- `write` now needs `twox-hash` 2.1 or newer.
 
 ### Other
 
