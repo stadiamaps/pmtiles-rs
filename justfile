@@ -19,11 +19,14 @@ export RUST_BACKTRACE := env('RUST_BACKTRACE', if ci_mode == '1' {'1'} else {'0'
 
 # Build the project
 build:
-    cargo build --workspace --features default --all-targets
+    cargo build --workspace --features __all_non_conflicting --all-targets
 
 # Quick compile without building a binary
 check:
-    cargo check --workspace --features default --all-targets
+    cargo check --workspace --features __all_non_conflicting --all-targets
+    @echo "--------------  Checking default features only, and none at all"
+    cargo check --workspace --all-targets
+    cargo check --workspace --all-targets --no-default-features
     @echo "--------------  Checking individual crate features"
     cargo check --workspace --all-targets --no-default-features --features aws-s3-async
     cargo check --workspace --all-targets --no-default-features --features http-async
@@ -60,19 +63,19 @@ clean:
 
 # Run cargo clippy to lint the code
 clippy *args:
-    cargo clippy --workspace --features default --all-targets {{args}}
+    cargo clippy --workspace --features __all_non_conflicting --all-targets {{args}}
     cargo clippy --workspace --all-targets --no-default-features --features s3-async-native {{args}}
 
 # Generate code coverage report. Will install `cargo llvm-cov` if missing.
 coverage *args='--no-clean --open':  (cargo-install 'cargo-llvm-cov')
-    cargo llvm-cov --workspace --features default --all-targets --include-build-script {{args}}
+    cargo llvm-cov --workspace --features __all_non_conflicting --all-targets --include-build-script {{args}}
 
 deny *args='check': (cargo-install 'cargo-deny')
     cargo deny {{args}}
 
 # Build and open code documentation
 docs *args='--open':
-    DOCS_RS=1 cargo doc --no-deps {{args}} --workspace --features default
+    DOCS_RS=1 cargo doc --no-deps {{args}} --workspace --features __all_non_conflicting
 
 # Print environment info
 env-info:
@@ -111,7 +114,7 @@ get-msrv package=main_crate:  (get-crate-field 'rust_version' package)
 
 # Find the minimum supported Rust version (MSRV) using cargo-msrv extension, and update Cargo.toml
 msrv:  (cargo-install 'cargo-msrv')
-    cargo msrv find --write-msrv --features default -- {{just}} ci-test-msrv
+    cargo msrv find --write-msrv --features __all_non_conflicting -- {{just}} ci-test-msrv
 
 # Initialize Cargo.lock file with minimal versions of dependencies.
 msrv-init:  (cargo-install 'cargo-minimal-versions')
@@ -131,12 +134,14 @@ release *args='':  (cargo-install 'release-plz')
 
 # Check semver compatibility with prior published version. Install it with `cargo install cargo-semver-checks`
 semver *args:  (cargo-install 'cargo-semver-checks')
-    cargo semver-checks --features default {{args}}
+    cargo semver-checks --features __all_non_conflicting {{args}}
 
 # Run all unit and integration tests
 test:
-    cargo test --workspace --features default --all-targets
-    cargo test --doc --workspace --features default
+    cargo test --workspace --features __all_non_conflicting --all-targets
+    cargo test --doc --workspace --features __all_non_conflicting
+    @echo "--------------  Testing default features only"
+    cargo test --workspace --all-targets
     @echo "--------------  Testing individual crate features"
     cargo test --workspace --all-targets --no-default-features --features aws-s3-async
     cargo test --workspace --all-targets --no-default-features --features http-async
@@ -157,7 +162,7 @@ test-fmt:
 
 # Find unused dependencies. Uses `cargo-udeps`
 udeps:  (cargo-install 'cargo-udeps')
-    cargo +nightly udeps --workspace --features default --all-targets
+    cargo +nightly udeps --workspace --features __all_non_conflicting --all-targets
 
 # Update all dependencies, including breaking changes. Requires nightly toolchain (install with `rustup install nightly`)
 update:

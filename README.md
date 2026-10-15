@@ -21,6 +21,26 @@ originally created by Brandon Liu for Protomaps.
   - Async `s3`/`azure`/`gcp`/`fs`/`http`/`mem`/custom ([`object_store`](https://docs.rs/object_store))
 - Creating `PMTile` archives
 
+## Cargo features
+
+Only `mmap-async-tokio` and `iter-async` are enabled by default. The remaining backends
+pull in large dependency trees (the AWS SDK alone is a heavy build), so they are opt-in:
+
+| Feature            | Enables                                                         |
+|--------------------|-----------------------------------------------------------------|
+| `write`            | Creating archives (`PmTilesWriter`)                             |
+| `http-async`       | `http` and `https` backend (Reqwest)                            |
+| `aws-s3-async`     | S3 backend using the AWS SDK                                    |
+| `s3-async-rustls`  | S3 backend using Rust-S3 with rustls (or `s3-async-native`)     |
+| `object-store`     | [`object_store`](https://docs.rs/object_store) backend          |
+| `moka`             | Directory cache based on `moka`                                 |
+| `tilejson`         | `TileJSON` support for metadata                                 |
+| `brotli`, `zstd`   | Additional tile and directory compression codecs                |
+
+```toml
+pmtiles = { version = "0.25", features = ["http-async", "tilejson"] }
+```
+
 ## Plans & TODOs
 
 - [ ] Documentation and example code
