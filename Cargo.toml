@@ -83,7 +83,7 @@ varint-rs = "2"
 [dev-dependencies]
 flate2 = "1"
 reqwest = { version = "0.13.1", features = ["rustls"] }
-rstest = "0.27.0"
+rstest = "0.28.0"
 tempfile = "3.13.0"
 tokio = { version = "1", features = ["test-util", "macros", "rt"] }
 url = "2"
