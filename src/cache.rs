@@ -125,14 +125,16 @@ impl DirectoryCache for MokaCache {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "moka")]
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[cfg(feature = "moka")]
+    use tokio::sync::Notify;
+
     use super::*;
     #[cfg(feature = "moka")]
     use crate::MokaCache;
     use crate::{DirEntry, Directory, DirectoryCache, HashMapCache, PmtError};
-    #[cfg(feature = "moka")]
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    #[cfg(feature = "moka")]
-    use tokio::sync::Notify;
 
     #[tokio::test]
     async fn test_hash_map_cache() {
@@ -183,8 +185,9 @@ mod tests {
     }
 
     #[cfg(feature = "moka")]
+    /// A hit returns the cached directory without calling the fetcher or replacing the entry.
     #[tokio::test]
-    async fn moka_cache_reuses_directory_allocation_on_hits() {
+    async fn moka_cache_hit_keeps_cached_directory() {
         let cache = MokaCache {
             cache: moka::future::Cache::new(100),
         };
@@ -212,7 +215,7 @@ mod tests {
     }
 
     #[cfg(feature = "moka")]
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn moka_cache_coalesces_concurrent_misses() {
         let cache = Arc::new(MokaCache {
             cache: moka::future::Cache::new(100),
@@ -243,13 +246,10 @@ mod tests {
 
         fetch_started.notified().await;
 
-        let second_started = Arc::new(Notify::new());
         let second = {
             let cache = Arc::clone(&cache);
             let fetch_count = Arc::clone(&fetch_count);
-            let second_started = Arc::clone(&second_started);
             tokio::spawn(async move {
-                second_started.notify_one();
                 cache
                     .get_dir_entry_or_insert(0, tile_id, async move {
                         fetch_count.fetch_add(1, Ordering::SeqCst);
@@ -259,7 +259,9 @@ mod tests {
             })
         };
 
-        second_started.notified().await;
+        // On the current-thread runtime, yielding runs the second task until it waits
+        // for the first fetch to finish.
+        tokio::task::yield_now().await;
         release_fetch.notify_one();
 
         assert!(first.await.unwrap().unwrap().is_some());
@@ -269,7 +271,7 @@ mod tests {
 
     #[cfg(feature = "moka")]
     #[tokio::test]
-    async fn moka_cache_caches_missing_entries() {
+    async fn moka_cache_caches_directory_without_tile() {
         let cache = MokaCache {
             cache: moka::future::Cache::new(100),
         };
