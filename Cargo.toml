@@ -81,6 +81,7 @@ twox-hash = { version = "2.1", optional = true, default-features = false, featur
 varint-rs = "2"
 
 [dev-dependencies]
+criterion = { version = "0.8", default-features = false, features = ["async_tokio", "cargo_bench_support"] }
 flate2 = "1"
 reqwest = { version = "0.13.1", features = ["rustls"] }
 rstest = "0.27.0"
@@ -88,6 +89,11 @@ tempfile = "3.13.0"
 tokio = { version = "1", features = ["test-util", "macros", "rt"] }
 url = "2"
 mockito = "1"
+
+[[bench]]
+name = "directory_cache"
+harness = false
+required-features = ["moka", "write"]
 
 [lints.rust]
 # `deny` rather than `forbid`: the mmap backend must call the inherently-unsafe `Mmap::map`,
