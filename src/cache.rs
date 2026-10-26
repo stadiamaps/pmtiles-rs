@@ -99,7 +99,9 @@ impl DirectoryCache for HashMapCache {
 #[cfg(feature = "moka")]
 pub struct MokaCache {
     /// This is the internal moka future cache.
-    pub cache: moka::future::Cache<usize, Directory>,
+    ///
+    /// Directories are reference counted so cache hits do not clone their entry storage.
+    pub cache: moka::future::Cache<usize, Arc<Directory>>,
 }
 
 #[cfg(feature = "moka")]
@@ -110,7 +112,10 @@ impl DirectoryCache for MokaCache {
         tile_id: TileId,
         fetcher: impl Future<Output = PmtResult<Directory>> + Send,
     ) -> PmtResult<Option<DirEntry>> {
-        let directory = self.cache.try_get_with(offset, fetcher).await;
+        let directory = self
+            .cache
+            .try_get_with(offset, async { fetcher.await.map(Arc::new) })
+            .await;
         let directory = directory.map_err(|e| {
             crate::PmtError::DirectoryCacheError(format!("Moka cache fetch error: {e}"))
         })?;
@@ -124,6 +129,10 @@ mod tests {
     #[cfg(feature = "moka")]
     use crate::MokaCache;
     use crate::{DirEntry, Directory, DirectoryCache, HashMapCache, PmtError};
+    #[cfg(feature = "moka")]
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    #[cfg(feature = "moka")]
+    use tokio::sync::Notify;
 
     #[tokio::test]
     async fn test_hash_map_cache() {
@@ -175,7 +184,7 @@ mod tests {
 
     #[cfg(feature = "moka")]
     #[tokio::test]
-    async fn test_moka_cache() {
+    async fn moka_cache_reuses_directory_allocation_on_hits() {
         let cache = MokaCache {
             cache: moka::future::Cache::new(100),
         };
@@ -184,33 +193,122 @@ mod tests {
         let mut dir_to_cache = Directory::default();
         dir_to_cache.entries.push(DirEntry::default());
 
-        // Returns an Err
+        let get_result = cache
+            .get_dir_entry_or_insert(offset, tile_id, async { Ok(dir_to_cache) })
+            .await
+            .unwrap();
+        assert!(get_result.is_some());
+
+        let initially_cached = cache.cache.get(&offset).await.unwrap();
+
         let get_result = cache
             .get_dir_entry_or_insert(offset, tile_id, async { Err(PmtError::InvalidEntry) })
-            .await;
-        assert!(get_result.is_err());
+            .await
+            .unwrap();
+        assert!(get_result.is_some());
 
-        // Now inserts the directory into the cache and returns the DirEntry.
-        let get_result = cache
-            .get_dir_entry_or_insert(offset, tile_id, async {
-                let mut dir = Directory::default();
-                let dir_entry = DirEntry {
-                    offset: (offset + 10) as u64,
-                    ..Default::default()
-                };
-                dir.entries.push(dir_entry);
-                Ok(dir)
+        let cached_after_hit = cache.cache.get(&offset).await.unwrap();
+        assert!(Arc::ptr_eq(&initially_cached, &cached_after_hit));
+    }
+
+    #[cfg(feature = "moka")]
+    #[tokio::test]
+    async fn moka_cache_coalesces_concurrent_misses() {
+        let cache = Arc::new(MokaCache {
+            cache: moka::future::Cache::new(100),
+        });
+        let fetch_count = Arc::new(AtomicUsize::new(0));
+        let fetch_started = Arc::new(Notify::new());
+        let release_fetch = Arc::new(Notify::new());
+        let tile_id = TileId::new(0).unwrap();
+
+        let first = {
+            let cache = Arc::clone(&cache);
+            let fetch_count = Arc::clone(&fetch_count);
+            let fetch_started = Arc::clone(&fetch_started);
+            let release_fetch = Arc::clone(&release_fetch);
+            tokio::spawn(async move {
+                cache
+                    .get_dir_entry_or_insert(0, tile_id, async move {
+                        fetch_count.fetch_add(1, Ordering::SeqCst);
+                        fetch_started.notify_one();
+                        release_fetch.notified().await;
+                        let mut directory = Directory::default();
+                        directory.entries.push(DirEntry::default());
+                        Ok(directory)
+                    })
+                    .await
             })
-            .await;
-        assert!(get_result.is_ok());
-        assert!(get_result.unwrap().is_some());
+        };
 
-        // Repeating the request with the fetcher that returns an Err, but this time the fetcher
-        // will not be called because the Directory is cached.
-        let get_result = cache
-            .get_dir_entry_or_insert(offset, tile_id, async { Err(PmtError::InvalidEntry) })
+        fetch_started.notified().await;
+
+        let second_started = Arc::new(Notify::new());
+        let second = {
+            let cache = Arc::clone(&cache);
+            let fetch_count = Arc::clone(&fetch_count);
+            let second_started = Arc::clone(&second_started);
+            tokio::spawn(async move {
+                second_started.notify_one();
+                cache
+                    .get_dir_entry_or_insert(0, tile_id, async move {
+                        fetch_count.fetch_add(1, Ordering::SeqCst);
+                        Ok(Directory::default())
+                    })
+                    .await
+            })
+        };
+
+        second_started.notified().await;
+        release_fetch.notify_one();
+
+        assert!(first.await.unwrap().unwrap().is_some());
+        assert!(second.await.unwrap().unwrap().is_some());
+        assert_eq!(fetch_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[cfg(feature = "moka")]
+    #[tokio::test]
+    async fn moka_cache_caches_missing_entries() {
+        let cache = MokaCache {
+            cache: moka::future::Cache::new(100),
+        };
+        let tile_id = TileId::new(1).unwrap();
+
+        let first = cache
+            .get_dir_entry_or_insert(0, tile_id, async { Ok(Directory::default()) })
+            .await
+            .unwrap();
+        assert!(first.is_none());
+
+        let second = cache
+            .get_dir_entry_or_insert(0, tile_id, async { Err(PmtError::InvalidEntry) })
+            .await
+            .unwrap();
+        assert!(second.is_none());
+    }
+
+    #[cfg(feature = "moka")]
+    #[tokio::test]
+    async fn moka_cache_does_not_cache_fetch_errors() {
+        let cache = MokaCache {
+            cache: moka::future::Cache::new(100),
+        };
+        let tile_id = TileId::new(0).unwrap();
+
+        let first = cache
+            .get_dir_entry_or_insert(0, tile_id, async { Err(PmtError::InvalidEntry) })
             .await;
-        assert!(get_result.is_ok());
-        assert!(get_result.unwrap().is_some());
+        assert!(first.is_err());
+
+        let second = cache
+            .get_dir_entry_or_insert(0, tile_id, async {
+                let mut directory = Directory::default();
+                directory.entries.push(DirEntry::default());
+                Ok(directory)
+            })
+            .await
+            .unwrap();
+        assert!(second.is_some());
     }
 }
