@@ -14,10 +14,10 @@ pub use backends::*;
 
 #[cfg(feature = "__async")]
 mod cache;
-#[cfg(all(feature = "__async", feature = "moka"))]
-pub use cache::MokaCache;
 #[cfg(feature = "__async")]
 pub use cache::{DirCacheResult, DirectoryCache, HashMapCache, NoCache};
+#[cfg(all(feature = "__async", feature = "moka"))]
+pub use cache::{MokaCache, SharedMokaCache};
 
 mod directory;
 mod error;

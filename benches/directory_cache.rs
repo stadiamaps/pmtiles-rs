@@ -113,15 +113,7 @@ fn directory_cache(c: &mut Criterion) {
         "hash_map_cache",
         HashMapCache::default(),
     );
-    bench_get_tile(
-        c,
-        &runtime,
-        &archive,
-        "moka_cache",
-        MokaCache {
-            cache: moka::future::Cache::new(100),
-        },
-    );
+    bench_get_tile(c, &runtime, &archive, "moka_cache", MokaCache::new(100));
 }
 
 criterion_group!(benches, directory_cache);
