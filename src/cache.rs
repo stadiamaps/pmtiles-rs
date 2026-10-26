@@ -428,4 +428,27 @@ mod tests {
             .unwrap();
         assert!(cached.is_some());
     }
+
+    #[cfg(feature = "moka")]
+    #[tokio::test]
+    async fn moka_cache_with_max_bytes_weighs_directories() {
+        let directory = || Directory {
+            entries: vec![DirEntry::default(); 100],
+        };
+        let directory_bytes = directory().get_approx_byte_size() as u64;
+        // Room for one directory, but not for two.
+        let cache = MokaCache::with_max_bytes(directory_bytes * 3 / 2);
+        let tile_id = TileId::new(0).unwrap();
+
+        for offset in [0, 1] {
+            cache
+                .get_dir_entry_or_insert(offset, tile_id, async { Ok(directory()) })
+                .await
+                .unwrap();
+        }
+        cache.cache.run_pending_tasks().await;
+
+        assert_eq!(cache.cache.entry_count(), 1);
+        assert_eq!(cache.cache.weighted_size(), directory_bytes);
+    }
 }
