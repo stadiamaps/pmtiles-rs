@@ -99,16 +99,57 @@ impl AsyncBackend for HttpBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    static TEST_URL: &str =
-        "https://protomaps.github.io/PMTiles/protomaps(vector)ODbL_firenze.pmtiles";
+    use crate::backends::test_server::serve_file;
+    use crate::tests::RASTER_FILE;
+    use crate::{HashMapCache, TileCoord};
 
     #[tokio::test]
-    async fn basic_http_test() {
-        let client = Client::builder().use_rustls_tls().build().unwrap();
-        let backend = HttpBackend::try_from(client, TEST_URL).unwrap();
+    async fn reader_reads_tiles() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = serve_file(&mut server, RASTER_FILE, &[]).await;
+        let tile = TileCoord::new(3, 4, 2).unwrap();
 
-        AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+        let reader = AsyncPmTilesReader::new_with_url(Client::new(), server.url())
+            .await
+            .unwrap();
+        assert!(reader.get_tile(tile).await.unwrap().is_some());
+
+        let reader = AsyncPmTilesReader::new_with_cached_url(
+            HashMapCache::default(),
+            Client::new(),
+            server.url(),
+        )
+        .await
+        .unwrap();
+        assert!(reader.get_tile(tile).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn read_requires_range_support() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/")
+            .with_status(200)
+            .with_body(vec![0u8; 64])
+            .create_async()
+            .await;
+
+        let result = make_backend(&server).read(0, 64).await;
+        assert!(matches!(result, Err(PmtError::RangeRequestsUnsupported)));
+    }
+
+    #[tokio::test]
+    async fn read_rejects_too_long_body() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/")
+            .with_status(206)
+            .with_body(vec![0u8; 65])
+            .create_async()
+            .await;
+
+        let result = make_backend(&server).read(0, 64).await;
+        assert!(matches!(result, Err(PmtError::ResponseBodyTooLong(65, 64))));
     }
 
     fn make_backend(server: &mockito::Server) -> HttpBackend {
