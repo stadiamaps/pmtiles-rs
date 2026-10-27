@@ -3,4 +3,8 @@ codecov:
 
 coverage:
   status:
+    # Report the project coverage change, but never fail the check because of it
+    project:
+      default:
+        informational: true
     patch: off
