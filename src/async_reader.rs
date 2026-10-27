@@ -255,7 +255,11 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
         let mut tj = self.header.get_tilejson(sources);
         for (key, value) in meta {
-            if let Value::String(v) = value {
+            if key == "minzoom" || key == "maxzoom" {
+                // We already have the correct values from the header, so just drop these
+                // attributes from the metadata silently, don't overwrite known-good
+                // values, regardless of their type.
+            } else if let Value::String(v) = value {
                 if key == "description" {
                     tj.description = Some(v);
                 } else if key == "attribution" {
@@ -266,9 +270,6 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                     tj.name = Some(v);
                 } else if key == "version" {
                     tj.version = Some(v);
-                } else if key == "minzoom" || key == "maxzoom" {
-                    // We already have the correct values from the header, so just drop these
-                    // attributes from the metadata silently, don't overwrite known-good values.
                 } else {
                     tj.other.insert(key, Value::String(v));
                 }
@@ -693,6 +694,29 @@ mod tests {
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let tj = tiles.parse_tilejson(Vec::new()).await.unwrap();
         assertion(&tj);
+    }
+
+    #[rstest]
+    #[case::strings(r#"{"minzoom": "5", "maxzoom": "6"}"#)]
+    #[case::numbers(r#"{"minzoom": 5, "maxzoom": 6}"#)]
+    #[tokio::test]
+    #[cfg(all(feature = "tilejson", feature = "write"))]
+    async fn parse_tilejson_ignores_metadata_zoom_range(#[case] metadata: &str) {
+        let mut buffer = std::io::Cursor::new(Vec::new());
+        let mut writer = crate::PmTilesWriter::new(crate::TileType::Mvt)
+            .min_zoom(2)
+            .max_zoom(9)
+            .metadata(metadata)
+            .create(&mut buffer)
+            .unwrap();
+        writer.add_tile(id(2, 1, 1), b"tile").unwrap();
+        writer.finalize().unwrap();
+        let backend = VersionedBackend::new(buffer.get_ref(), None);
+        let reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+
+        let tj = reader.parse_tilejson(Vec::new()).await.unwrap();
+        assert_eq!((tj.minzoom, tj.maxzoom), (Some(2), Some(9)));
+        assert!(tj.other.is_empty(), "{:?}", tj.other);
     }
 
     #[rstest]
