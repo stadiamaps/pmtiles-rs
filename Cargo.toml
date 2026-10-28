@@ -9,6 +9,7 @@ repository = "https://github.com/stadiamaps/pmtiles-rs"
 keywords = ["pmtiles", "gis", "geo"]
 categories = ["science::geo"]
 rust-version = "1.88"
+include = ["Cargo.lock", "Cargo.toml", "src/**/*.rs", "README.md", "CHANGELOG.md", "LICENSE-APACHE", "LICENSE-MIT"]
 
 [features]
 default = ["mmap-async-tokio", "iter-async"]
