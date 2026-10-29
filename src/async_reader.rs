@@ -1,7 +1,3 @@
-// FIXME: This seems like a bug - there are lots of u64 to usize conversions in this file,
-//        so any file larger than 4GB, or an untrusted file with bad data may crash.
-#![expect(clippy::cast_possible_truncation)]
-
 use std::future::Future;
 use std::ops::Range;
 #[cfg(feature = "iter-async")]
@@ -138,9 +134,11 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             return Ok(None);
         };
 
-        let offset = entry_offset(self.header.data_offset, self.header.data_length, &entry)? as _;
-        let length = entry.length as _;
-        Ok(Some(self.read_exact_unmodified(offset, length).await?))
+        let offset = entry_offset(self.header.data_offset, self.header.data_length, &entry)?;
+        Ok(Some(
+            self.read_exact_unmodified(offset, entry.length as usize)
+                .await?,
+        ))
     }
 
     /// Fetches tile bytes from the archive.
@@ -181,8 +179,9 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// - is not valid UTF-8 or
     /// - underlying `PMTiles` archive has changed since initialization
     pub async fn get_metadata(&self) -> PmtResult<String> {
-        let offset = self.header.metadata_offset as _;
-        let length = self.header.metadata_length as _;
+        let offset = self.header.metadata_offset;
+        let length =
+            usize::try_from(self.header.metadata_length).map_err(|_| PmtError::InvalidHeader)?;
         let metadata = self.read_exact_unmodified(offset, length).await?;
 
         let decompressed_metadata =
@@ -225,10 +224,8 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             while let Some(entry) = queue.pop_front() {
                 if entry.is_leaf() {
                     let offset =
-                        entry_offset(self.header.leaf_offset, self.header.leaf_length, &entry)?
-                            as _;
-                    let length = entry.length as usize;
-                    let leaf_dir = self.read_directory(offset, length).await?;
+                        entry_offset(self.header.leaf_offset, self.header.leaf_length, &entry)?;
+                    let leaf_dir = self.read_directory(offset, entry.length as usize).await?;
                     // enqueue all entries in the leaf directory
                     for leaf_entry in leaf_dir.entries {
                         queue.push_back(leaf_entry);
@@ -310,13 +307,12 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ) -> PmtResult<Option<DirEntry>> {
         // the recursion is done as two functions because it is a bit cleaner,
         // and it allows the directory to be cached later without cloning it first.
-        let offset = entry_offset(self.header.leaf_offset, self.header.leaf_length, entry)? as _;
+        let offset = entry_offset(self.header.leaf_offset, self.header.leaf_length, entry)?;
 
         let entry = self
             .cache
             .get_dir_entry_or_insert(offset, tile_id, async move {
-                let length = entry.length as _;
-                self.read_directory(offset, length).await
+                self.read_directory(offset, entry.length as usize).await
             })
             .await?;
 
@@ -333,7 +329,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         Ok(entry)
     }
 
-    async fn read_directory(&self, offset: usize, length: usize) -> PmtResult<Directory> {
+    async fn read_directory(&self, offset: u64, length: usize) -> PmtResult<Directory> {
         let data = self.read_exact_unmodified(offset, length).await?;
         Self::read_compressed_directory(self.header.internal_compression, data).await
     }
@@ -345,7 +341,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// If an initial data version string was not available, the backend does not support exposing version strings.
     /// If a current data version string is not available, this request was unable to extract a data version string,
     /// and the check is skipped.
-    async fn read_exact_unmodified(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
+    async fn read_exact_unmodified(&self, offset: u64, length: usize) -> PmtResult<Bytes> {
         let response = self.backend.read_exact(offset, length).await?;
         if let (Some(expected), Some(actual)) = (
             &self.initial_data_version_string,
@@ -422,11 +418,15 @@ fn entry_offset(section_offset: u64, section_length: u64, entry: &DirEntry) -> P
 }
 
 /// A trait for asynchronous backends that can read data from a `PMTiles` source.
+///
+/// An `offset` is a position in the archive, which can be larger than the address space
+/// of a 32-bit target, so it is a `u64`. A `length` is the size of the bytes returned
+/// in memory, so it is a `usize`.
 pub trait AsyncBackend {
     /// Reads exactly `length` bytes starting at `offset`
     fn read_exact(
         &self,
-        offset: usize,
+        offset: u64,
         length: usize,
     ) -> impl Future<Output = PmtResult<BackendResponse>> + Send
     where
@@ -449,7 +449,7 @@ pub trait AsyncBackend {
     /// Reads up to `length` bytes starting at `offset`.
     fn read(
         &self,
-        offset: usize,
+        offset: u64,
         length: usize,
     ) -> impl Future<Output = PmtResult<BackendResponse>> + Send;
 }
@@ -610,10 +610,11 @@ mod tests {
     impl crate::AsyncBackend for VersionedBackend {
         fn read(
             &self,
-            offset: usize,
+            offset: u64,
             length: usize,
         ) -> impl Future<Output = crate::PmtResult<crate::BackendResponse>> + Send {
             let (bytes, version) = self.0.lock().unwrap().clone();
+            let offset = usize::try_from(offset).unwrap_or(usize::MAX);
             let start = offset.min(bytes.len());
             let end = offset.saturating_add(length).min(bytes.len());
             let response = crate::BackendResponse {
@@ -631,8 +632,8 @@ mod tests {
             .await
             .unwrap();
         let header = tiles.get_header();
-        let leaf_start = header.leaf_offset as usize;
-        let leaf_end = leaf_start + header.leaf_length as usize;
+        let leaf_start = usize::try_from(header.leaf_offset).unwrap();
+        let leaf_end = leaf_start + usize::try_from(header.leaf_length).unwrap();
         let mut replaced = data.to_vec();
         replaced[leaf_start..leaf_end].fill(0);
         tiles.backend.replace(&replaced, Some("v2"));
@@ -669,7 +670,7 @@ mod tests {
         let tiles = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, Some("v1")))
             .await
             .unwrap();
-        let leaf_offset = tiles.get_header().leaf_offset as usize;
+        let leaf_offset = usize::try_from(tiles.get_header().leaf_offset).unwrap();
         tiles.backend.replace(&data[..leaf_offset], Some("v1"));
 
         let result = tiles.get_tile(id(1, 1, 0)).await;
@@ -879,6 +880,10 @@ mod tests {
 
     /// Byte positions of the header's section fields.
     #[cfg(feature = "iter-async")]
+    const METADATA_OFFSET: usize = 24;
+    #[cfg(feature = "iter-async")]
+    const LEAF_OFFSET: usize = 40;
+    #[cfg(feature = "iter-async")]
     const LEAF_LENGTH: usize = 48;
     #[cfg(feature = "iter-async")]
     const DATA_OFFSET: usize = 56;
@@ -957,5 +962,88 @@ mod tests {
             matches!(entries, Err(crate::PmtError::InvalidEntry)),
             "{entries:?}"
         );
+    }
+
+    /// Serves an archive with everything after the root directory moved 4 GiB further,
+    /// so that all later reads are above `u32::MAX`.
+    #[cfg(feature = "iter-async")]
+    struct ShiftedBackend(bytes::Bytes);
+
+    #[cfg(feature = "iter-async")]
+    impl ShiftedBackend {
+        const SHIFT: u64 = 1 << 32;
+
+        fn new(data: &[u8]) -> Self {
+            let mut data = data.to_vec();
+            for field in [METADATA_OFFSET, LEAF_OFFSET, DATA_OFFSET] {
+                let bytes = &mut data[field..field + 8];
+                let offset = u64::from_le_bytes(bytes.try_into().unwrap());
+                bytes.copy_from_slice(&(offset + Self::SHIFT).to_le_bytes());
+            }
+            Self(data.into())
+        }
+    }
+
+    #[cfg(feature = "iter-async")]
+    impl crate::AsyncBackend for ShiftedBackend {
+        fn read(
+            &self,
+            offset: u64,
+            length: usize,
+        ) -> impl Future<Output = crate::PmtResult<crate::BackendResponse>> + Send {
+            // Only the initial read of the header and root directory is below the shift.
+            let start = if offset == 0 {
+                Some(0)
+            } else {
+                offset.checked_sub(Self::SHIFT)
+            };
+            let response = match start {
+                Some(start) => {
+                    let start = usize::try_from(start).unwrap();
+                    let end = (start + length).min(self.0.len());
+                    Ok(crate::BackendResponse::new(self.0.slice(start..end)))
+                }
+                None => Err(crate::PmtError::InvalidEntry),
+            };
+            std::future::ready(response)
+        }
+    }
+
+    /// Metadata, leaf directories and tiles above 4 GiB are read from their full offsets.
+    /// Offsets only truncate on 32-bit targets, so this can only fail there.
+    #[tokio::test]
+    #[cfg(feature = "iter-async")]
+    async fn reads_offsets_above_4_gib() {
+        use futures_util::TryStreamExt as _;
+
+        let data: &[u8] = include_bytes!("../fixtures/leaf.pmtiles");
+        let expected = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, None))
+            .await
+            .unwrap();
+        let expected = std::sync::Arc::new(expected);
+        let shifted = AsyncPmTilesReader::try_from_cached_source(
+            ShiftedBackend::new(data),
+            crate::HashMapCache::default(),
+        )
+        .await
+        .unwrap();
+        let shifted = std::sync::Arc::new(shifted);
+
+        assert_eq!(
+            shifted.get_metadata().await.unwrap(),
+            expected.get_metadata().await.unwrap()
+        );
+
+        let entries: Vec<_> = expected.clone().entries().try_collect().await.unwrap();
+        let shifted_entries: Vec<_> = shifted.clone().entries().try_collect().await.unwrap();
+        assert_eq!(entries.len(), 5);
+        assert_eq!(shifted_entries, entries);
+
+        for entry in entries {
+            let tile_id = crate::TileId::new(entry.tile_id).unwrap();
+            let tile = shifted.get_tile(tile_id).await.unwrap();
+            assert!(tile.is_some());
+            assert_eq!(tile, expected.get_tile(tile_id).await.unwrap());
+        }
     }
 }

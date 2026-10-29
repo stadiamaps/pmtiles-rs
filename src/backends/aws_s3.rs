@@ -69,8 +69,8 @@ impl AwsS3Backend {
 }
 
 impl AsyncBackend for AwsS3Backend {
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
-        let range_end = offset + length - 1;
+    async fn read(&self, offset: u64, length: usize) -> PmtResult<BackendResponse> {
+        let range_end = offset + length as u64 - 1;
         let range = format!("bytes={offset}-{range_end}");
 
         let mut obj = self
