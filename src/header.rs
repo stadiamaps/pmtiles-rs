@@ -270,21 +270,24 @@ impl Header {
     ///
     /// If the byte buffer is shorter than a header, or contains invalid `PMTiles` header data.
     pub fn try_from_bytes(mut bytes: Bytes) -> PmtResult<Self> {
-        // Every read below then has enough bytes
-        if bytes.len() < HEADER_SIZE {
-            return Err(PmtError::InvalidHeader);
-        }
-
-        let magic_bytes = bytes.split_to(V3_MAGIC.len()); // "PMTiles" = 7
-
-        // Assert magic
-        if magic_bytes != V3_MAGIC {
-            return Err(if magic_bytes.starts_with(V2_MAGIC.as_bytes()) {
+        // The magic number identifies the version, whatever the length of the data
+        if !bytes.starts_with(V3_MAGIC.as_bytes()) {
+            return Err(if V3_MAGIC.as_bytes().starts_with(&bytes) {
+                // A truncated v3 header
+                PmtError::InvalidHeader
+            } else if bytes.starts_with(V2_MAGIC.as_bytes()) {
                 PmtError::UnsupportedPmTilesVersion
             } else {
                 PmtError::InvalidMagicNumber
             });
         }
+
+        // Every read below then has enough bytes
+        if bytes.len() < HEADER_SIZE {
+            return Err(PmtError::InvalidHeader);
+        }
+
+        bytes.advance(V3_MAGIC.len()); // "PMTiles" = 7
 
         Ok(Self {
             version: bytes.get_u8(),                                  // 8
@@ -436,7 +439,7 @@ mod tests {
         }
     }
 
-    /// Data shorter than a header is an invalid header, not a panic.
+    /// A truncated v3 header is an invalid header, not a panic.
     #[rstest]
     #[case::empty(0)]
     #[case::shorter_than_magic(3)]
@@ -446,6 +449,15 @@ mod tests {
         let bytes = fs::read(RASTER_FILE).unwrap();
         let result = Header::try_from_bytes(Bytes::copy_from_slice(&bytes[..len]));
         assert!(matches!(result, Err(PmtError::InvalidHeader)));
+    }
+
+    /// Data shorter than a v3 header is still identified by its magic number.
+    #[rstest]
+    #[case::v2(b"PM\x02\x00", PmtError::UnsupportedPmTilesVersion)]
+    #[case::not_pmtiles(b"GIF89a", PmtError::InvalidMagicNumber)]
+    fn header_identifies_short_data(#[case] data: &'static [u8], #[case] error: PmtError) {
+        let result = Header::try_from_bytes(Bytes::from_static(data));
+        assert_eq!(result.unwrap_err().to_string(), error.to_string());
     }
 
     #[rstest]
