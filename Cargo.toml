@@ -83,12 +83,15 @@ twox-hash = { version = "2.1", optional = true, default-features = false, featur
 [dev-dependencies]
 criterion = { version = "0.8", default-features = false, features = ["async_tokio", "cargo_bench_support"] }
 flate2 = "1"
-reqwest = { version = "0.13.1", features = ["rustls"] }
 rstest = "0.28.0"
 tempfile = "3.13.0"
 tokio = { version = "1", features = ["test-util", "macros", "rt", "sync"] }
-url = "2"
+
+# Only the network backends' tests use these, and those backends do not build for wasm
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 mockito = "1"
+reqwest = { version = "0.13.1", features = ["rustls"] }
+url = "2"
 
 [[bench]]
 name = "directory_cache"

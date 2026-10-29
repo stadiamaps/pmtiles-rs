@@ -52,6 +52,17 @@ jobs:
       - run: rustup target add i686-unknown-linux-gnu
       - run: cargo test --target i686-unknown-linux-gnu --features __all_non_conflicting --all-targets
 
+  test-wasm:
+    name: Test wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+        uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2.87.28
+        with: { tool: 'just,cargo-binstall' }
+      - run: just check-wasm test-wasm
+
   fuzz:
     name: Fuzz ${{ matrix.target }} (${{ matrix.bits }}-bit)
     runs-on: ubuntu-latest
@@ -98,7 +109,7 @@ jobs:
   # This job checks if any of the previous jobs failed or were canceled.
   # This approach also allows some jobs to be skipped if they are not needed.
   ci-passed:
-    needs: [ test, test-msrv, test-32bit, fuzz ]
+    needs: [ test, test-msrv, test-32bit, test-wasm, fuzz ]
     if: always()
     runs-on: ubuntu-latest
     steps:

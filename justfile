@@ -17,6 +17,11 @@ export RUST_BACKTRACE := env('RUST_BACKTRACE', if ci_mode == '1' {'1'} else {'0'
 # libFuzzer options: cap the input size, and treat a 10s input as a hang
 fuzz_args := '-max_len=65536 -timeout=10'
 
+# Features that build for wasm; `moka`, `mmap-async-tokio` and the network backends do not
+wasm_features := 'brotli,iter-async,object-store,tilejson,write,zstd'
+# Features tested on WASI; `zstd` needs a WASI C library to build there
+wasi_features := replace(wasm_features, ',zstd', '')
+
 @_default:
     {{just}} --list
 
@@ -27,6 +32,11 @@ bench *args:
 # Build the project
 build:
     cargo build --workspace --features __all_non_conflicting --all-targets
+
+# Check that the wasm features build for `wasm32-unknown-unknown`
+check-wasm:
+    rustup target add wasm32-unknown-unknown
+    cargo check --target wasm32-unknown-unknown --lib --no-default-features --features {{wasm_features}}
 
 # Quick compile without building a binary
 check:
@@ -160,6 +170,11 @@ release *args='':  (cargo-install 'release-plz')
 # Check semver compatibility with prior published version. Install it with `cargo install cargo-semver-checks`
 semver *args:  (cargo-install 'cargo-semver-checks')
     cargo semver-checks --features __all_non_conflicting {{args}}
+
+# Run the unit tests of the wasm features on `wasm32-wasip1` with wasmtime (installs `wasmtime`)
+test-wasm:  (cargo-install 'wasmtime' 'wasmtime-cli')
+    rustup target add wasm32-wasip1
+    CARGO_TARGET_WASM32_WASIP1_RUNNER='wasmtime --dir=.' cargo test --target wasm32-wasip1 --lib --no-default-features --features {{wasi_features}}
 
 # Run all unit and integration tests
 test:
