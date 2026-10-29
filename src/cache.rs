@@ -29,6 +29,10 @@ impl From<Option<&DirEntry>> for DirCacheResult {
 }
 
 /// A cache for `PMTiles` directories.
+///
+/// Directories are identified by their `offset` in the archive, so each cache instance must
+/// be used by a single archive. A cache whose storage is shared by several archives must also
+/// key directories by archive, as [`SharedMokaCache`](crate::SharedMokaCache) does.
 pub trait DirectoryCache {
     /// Get a directory entry from the cache, or insert it using the provided fetcher function.
     fn get_dir_entry_or_insert(
@@ -105,9 +109,10 @@ impl DirectoryCache for HashMapCache {
 /// Concurrent misses for the same directory fetch it only once, and failed fetches are not cached.
 ///
 /// To give several archives one memory budget, create their caches with
-/// [`SharedMokaCache::new_cache`]. For other moka settings, such as expiration or eviction
-/// listeners, implement [`DirectoryCache`] for your own type. A directory is identified by its
-/// offset in the archive, so a cache used by several archives must also key it by archive.
+/// [`SharedMokaCache::new_cache`]. Caches never share directories, even for the same archive,
+/// so to read one archive from several places, share its reader instead (e.g. in an [`Arc`]).
+/// For other moka settings, such as expiration or eviction listeners, implement
+/// [`DirectoryCache`] for your own type.
 ///
 /// ```
 /// use pmtiles::MokaCache;
@@ -133,9 +138,29 @@ impl MokaCache {
     }
 
     /// Creates a cache that holds up to about `max_bytes` bytes of directories.
+    ///
+    /// A directory larger than `max_bytes` is never cached. Leaf directories often take
+    /// 100 KB or more each, so the budget should fit several of them.
     #[must_use]
     pub fn with_max_bytes(max_bytes: u64) -> Self {
         SharedMokaCache::with_max_bytes(max_bytes).new_cache()
+    }
+
+    /// Returns the approximate number of cached directories, including those of other
+    /// archives that share this cache's storage.
+    #[must_use]
+    pub fn entry_count(&self) -> u64 {
+        self.cache.entry_count()
+    }
+
+    /// Returns the approximate total weight of cached directories, including those of other
+    /// archives that share this cache's storage.
+    ///
+    /// This is the number of bytes for a cache created with a byte budget, and the number of
+    /// directories otherwise.
+    #[must_use]
+    pub fn weighted_size(&self) -> u64 {
+        self.cache.weighted_size()
     }
 }
 
@@ -149,7 +174,7 @@ impl DirectoryCache for MokaCache {
     ) -> PmtResult<Option<DirEntry>> {
         let directory = self
             .cache
-            .try_get_with((self.archive_id, offset), async {
+            .try_get_with_by_ref(&(self.archive_id, offset), async {
                 fetcher.await.map(Arc::new)
             })
             .await;
@@ -190,6 +215,9 @@ impl SharedMokaCache {
     }
 
     /// Creates storage that holds up to about `max_bytes` bytes of directories.
+    ///
+    /// A directory larger than `max_bytes` is never cached. Leaf directories often take
+    /// 100 KB or more each, so the budget should fit several of them.
     #[must_use]
     pub fn with_max_bytes(max_bytes: u64) -> Self {
         Self {
@@ -210,6 +238,21 @@ impl SharedMokaCache {
             cache: self.cache.clone(),
             archive_id: NEXT_ARCHIVE_ID.fetch_add(1, Ordering::Relaxed),
         }
+    }
+
+    /// Returns the approximate number of cached directories of all archives.
+    #[must_use]
+    pub fn entry_count(&self) -> u64 {
+        self.cache.entry_count()
+    }
+
+    /// Returns the approximate total weight of cached directories of all archives.
+    ///
+    /// This is the number of bytes for storage created with a byte budget, and the number of
+    /// directories otherwise.
+    #[must_use]
+    pub fn weighted_size(&self) -> u64 {
+        self.cache.weighted_size()
     }
 }
 
@@ -427,6 +470,13 @@ mod tests {
             .await
             .unwrap();
         assert!(cached.is_some());
+
+        // Statistics cover the shared storage.
+        shared.cache.run_pending_tasks().await;
+        assert_eq!(shared.entry_count(), 2);
+        assert_eq!(shared.weighted_size(), 2);
+        assert_eq!(first.entry_count(), 2);
+        assert_eq!(second.weighted_size(), 2);
     }
 
     #[cfg(feature = "moka")]
@@ -448,7 +498,7 @@ mod tests {
         }
         cache.cache.run_pending_tasks().await;
 
-        assert_eq!(cache.cache.entry_count(), 1);
-        assert_eq!(cache.cache.weighted_size(), directory_bytes);
+        assert_eq!(cache.entry_count(), 1);
+        assert_eq!(cache.weighted_size(), directory_bytes);
     }
 }
