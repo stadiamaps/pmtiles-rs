@@ -205,7 +205,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         let decompressed_metadata =
             Self::decompress(self.header.internal_compression, metadata).await?;
 
-        Ok(String::from_utf8(decompressed_metadata.to_vec())?)
+        Ok(String::from_utf8(Vec::from(decompressed_metadata))?)
     }
 
     /// Return an async stream over all tile entries in the archive. Directory entries are traversed, and not included in the result.
@@ -237,9 +237,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             // A valid archive lists each leaf directory once, so a repeat is a cycle
             let mut leaf_offsets = HashSet::new();
 
-            for entry in &self.root_directory.entries {
-                queue.push_back(entry.clone());
-            }
+            queue.extend(self.root_directory.entries.iter().copied());
 
             while let Some(entry) = queue.pop_front() {
                 if entry.is_leaf() {
@@ -319,7 +317,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             return self.find_entry_rec(tile_id, entry, 0).await;
         }
 
-        Ok(entry.cloned())
+        Ok(entry.copied())
     }
 
     async fn find_entry_rec(

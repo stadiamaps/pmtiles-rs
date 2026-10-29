@@ -195,7 +195,7 @@ impl WriteTo for Directory {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq)]
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
 /// An entry in the `PMTiles` directory, representing a tile or a range of tiles.
 pub struct DirEntry {
     pub(crate) tile_id: u64,

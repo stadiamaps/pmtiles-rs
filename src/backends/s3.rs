@@ -65,22 +65,21 @@ impl AsyncBackend for S3Backend {
             .get_object_range(self.path.as_str(), offset, Some(offset + length as u64 - 1))
             .await?;
 
-        let response_bytes = response.bytes();
-
-        if response_bytes.len() > length {
-            Err(ResponseBodyTooLong(response_bytes.len(), length))
-        } else {
-            let headers = response.headers();
-            let data_version = headers
-                .get("etag")
-                .or_else(|| headers.get("last-modified"))
-                .cloned();
-
-            Ok(match data_version {
-                Some(v) => BackendResponse::new_with_version(response_bytes.clone(), v),
-                None => BackendResponse::new(response_bytes.clone()),
-            })
+        let response_len = response.bytes().len();
+        if response_len > length {
+            return Err(ResponseBodyTooLong(response_len, length));
         }
+
+        let mut headers = response.headers();
+        let data_version = headers
+            .remove("etag")
+            .or_else(|| headers.remove("last-modified"));
+        let response_bytes = response.into_bytes();
+
+        Ok(match data_version {
+            Some(v) => BackendResponse::new_with_version(response_bytes, v),
+            None => BackendResponse::new(response_bytes),
+        })
     }
 }
 
