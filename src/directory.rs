@@ -1,10 +1,14 @@
-use std::fmt::{Debug, Formatter};
+use std::fmt::{self, Debug, Formatter};
+#[cfg(feature = "write")]
+use std::io::{self, Write};
 
 use bytes::Bytes;
 use integer_encoding::VarInt as _;
 #[cfg(feature = "write")]
 use integer_encoding::VarIntWriter as _;
 
+#[cfg(feature = "write")]
+use crate::writer::WriteTo;
 use crate::{MAX_TILE_ID, PmtError, PmtResult, TileId};
 
 #[derive(Default, Clone)]
@@ -14,7 +18,7 @@ pub struct Directory {
 }
 
 impl Debug for Directory {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("Directory [entries: {}]", self.entries.len()))
     }
 }
@@ -151,8 +155,8 @@ impl TryFrom<Bytes> for Directory {
 }
 
 #[cfg(feature = "write")]
-impl crate::writer::WriteTo for Directory {
-    fn write_to<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+impl WriteTo for Directory {
+    fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         // Write number of entries
         writer.write_varint(self.entries.len())?;
 
@@ -241,9 +245,11 @@ impl Iterator for DirEntryCoordsIter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{BufReader, Read, Write};
+    use std::fs::File;
+    use std::io::{BufReader, Read as _, Write as _};
 
     use bytes::{Bytes, BytesMut};
+    use flate2::write::GzDecoder;
     use integer_encoding::VarIntWriter as _;
     use rstest::rstest;
 
@@ -254,7 +260,7 @@ mod tests {
     use crate::{Directory, Header, MAX_TILE_ID, PmtError};
 
     fn read_root_directory(file: &str) -> Directory {
-        let test_file = std::fs::File::open(file).unwrap();
+        let test_file = File::open(file).unwrap();
         let mut reader = BufReader::new(test_file);
 
         let mut header_bytes = BytesMut::zeroed(HEADER_SIZE);
@@ -266,7 +272,7 @@ mod tests {
 
         let mut decompressed = BytesMut::zeroed(directory_bytes.len() * 2);
         {
-            let mut gunzip = flate2::write::GzDecoder::new(decompressed.as_mut());
+            let mut gunzip = GzDecoder::new(decompressed.as_mut());
             gunzip.write_all(&directory_bytes).unwrap();
         }
 

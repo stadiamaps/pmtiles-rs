@@ -1,3 +1,5 @@
+#![expect(clippy::absolute_paths, reason = "lots of absolute paths in error.rs")]
+
 use std::string::FromUtf8Error;
 
 use thiserror::Error;

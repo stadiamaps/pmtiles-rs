@@ -109,13 +109,14 @@ impl AsyncBackend for AwsS3Backend {
 #[cfg(test)]
 mod tests {
     use aws_sdk_s3::config::{BehaviorVersion, Credentials, Region};
+    use mockito::{Matcher, Server, ServerGuard};
 
     use super::*;
     use crate::backends::test_server::serve_file;
     use crate::tests::RASTER_FILE;
     use crate::{HashMapCache, TileCoord};
 
-    fn client(server: &mockito::ServerGuard) -> Client {
+    fn client(server: &ServerGuard) -> Client {
         let config = aws_sdk_s3::Config::builder()
             .behavior_version(BehaviorVersion::latest())
             .region(Region::new("us-east-1"))
@@ -126,13 +127,13 @@ mod tests {
         Client::from_conf(config)
     }
 
-    fn backend(server: &mockito::ServerGuard) -> AwsS3Backend {
+    fn backend(server: &ServerGuard) -> AwsS3Backend {
         AwsS3Backend::from(client(server), "tiles".into(), "a.pmtiles".into())
     }
 
     #[tokio::test]
     async fn reader_reads_tiles() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = serve_file(&mut server, RASTER_FILE, &[]).await;
         let tile = TileCoord::new(3, 4, 2).unwrap();
 
@@ -158,7 +159,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_without_data_version() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = serve_file(&mut server, RASTER_FILE, &[]).await;
 
         let response = backend(&server).read(0, 64).await.unwrap();
@@ -168,7 +169,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_prefers_etag_over_last_modified() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let headers = [
             ("ETag", "\"abc123\""),
             ("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT"),
@@ -181,7 +182,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_falls_back_to_last_modified() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let headers = [("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")];
         let _mock = serve_file(&mut server, RASTER_FILE, &headers).await;
 
@@ -194,9 +195,9 @@ mod tests {
 
     #[tokio::test]
     async fn read_rejects_too_long_body() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = server
-            .mock("GET", mockito::Matcher::Any)
+            .mock("GET", Matcher::Any)
             .with_status(206)
             .with_body(vec![0u8; 65])
             .create_async()
@@ -208,9 +209,9 @@ mod tests {
 
     #[tokio::test]
     async fn read_reports_request_errors() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = server
-            .mock("GET", mockito::Matcher::Any)
+            .mock("GET", Matcher::Any)
             .with_status(404)
             .create_async()
             .await;

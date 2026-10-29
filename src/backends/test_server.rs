@@ -1,11 +1,13 @@
 //! A mock HTTP server for the backend tests.
 
+use std::fs;
+
 use mockito::{Matcher, Mock, ServerGuard};
 
 /// Serves `file` for every `GET` request, answering `Range: bytes={start}-{end}` with
 /// `206 Partial Content` and the requested bytes. Every response also gets `headers`.
 pub async fn serve_file(server: &mut ServerGuard, file: &str, headers: &[(&str, &str)]) -> Mock {
-    let data = std::fs::read(file).unwrap();
+    let data = fs::read(file).unwrap();
     let mut mock = server
         .mock("GET", Matcher::Any)
         .match_header("range", Matcher::Any)

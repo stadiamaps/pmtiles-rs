@@ -5,11 +5,18 @@ use std::ops::Range;
 #[cfg(feature = "iter-async")]
 use std::sync::Arc;
 
+#[cfg(feature = "brotli")]
+use async_compression::tokio::bufread::BrotliDecoder;
+use async_compression::tokio::bufread::GzipDecoder;
+#[cfg(feature = "zstd")]
+use async_compression::tokio::bufread::ZstdDecoder;
 #[cfg(feature = "iter-async")]
 use async_stream::try_stream;
 use bytes::Bytes;
 #[cfg(feature = "iter-async")]
 use futures_util::stream::BoxStream;
+#[cfg(feature = "tilejson")]
+use tilejson::{TileJSON, VectorLayer};
 #[cfg(feature = "__async")]
 use tokio::io::AsyncReadExt as _;
 
@@ -262,7 +269,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// This function will return an error if
     /// - reading or parsing the metadata fails or
     /// - metadata contains invalid JSON
-    pub async fn parse_tilejson(&self, sources: Vec<String>) -> PmtResult<tilejson::TileJSON> {
+    pub async fn parse_tilejson(&self, sources: Vec<String>) -> PmtResult<TileJSON> {
         use serde_json::Value;
 
         let meta = self.get_metadata().await?;
@@ -292,7 +299,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                     tj.other.insert(key, Value::String(v));
                 }
             } else if key == "vector_layers" {
-                if let Ok(v) = serde_json::from_value::<Vec<tilejson::VectorLayer>>(value) {
+                if let Ok(v) = serde_json::from_value::<Vec<VectorLayer>>(value) {
                     tj.vector_layers = Some(v);
                 } else {
                     return Err(PmtError::InvalidMetadata);
@@ -385,26 +392,24 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         let mut decompressed_bytes = Vec::with_capacity(bytes.len() * 2);
         match compression {
             Compression::Gzip => {
-                async_compression::tokio::bufread::GzipDecoder::new(&bytes[..])
+                GzipDecoder::new(&bytes[..])
                     .read_to_end(&mut decompressed_bytes)
                     .await?;
             }
             #[cfg(feature = "brotli")]
             Compression::Brotli => {
-                async_compression::tokio::bufread::BrotliDecoder::new(&bytes[..])
+                BrotliDecoder::new(&bytes[..])
                     .read_to_end(&mut decompressed_bytes)
                     .await?;
             }
             #[cfg(feature = "zstd")]
             Compression::Zstd => {
-                async_compression::tokio::bufread::ZstdDecoder::new(&bytes[..])
+                ZstdDecoder::new(&bytes[..])
                     .read_to_end(&mut decompressed_bytes)
                     .await?;
             }
-            Compression::None => {
-                return Ok(bytes);
-            }
-            v => Err(UnsupportedCompression(v))?,
+            Compression::None => return Ok(bytes),
+            v => return Err(UnsupportedCompression(v)),
         }
 
         Ok(Bytes::from(decompressed_bytes))
@@ -487,10 +492,23 @@ pub trait AsyncBackend {
 #[cfg(test)]
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
+    #[cfg(feature = "iter-async")]
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::{fs, future};
+
+    use bytes::Bytes;
     use rstest::rstest;
+    #[cfg(feature = "tilejson")]
+    use tilejson::TileJSON;
 
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
-    use crate::{AsyncPmTilesReader, MmapBackend, TileCoord};
+    use crate::{
+        AsyncBackend, AsyncPmTilesReader, BackendResponse, MmapBackend, PmtError, PmtResult,
+        TileCoord,
+    };
+    #[cfg(feature = "iter-async")]
+    use crate::{DirEntry, HashMapCache, TileId};
 
     fn id(z: u8, x: u32, y: u32) -> TileCoord {
         TileCoord::new(z, x, y).unwrap()
@@ -526,11 +544,11 @@ mod tests {
         #[case] field: usize,
         #[case] value: u64,
     ) {
-        let mut data = std::fs::read(RASTER_FILE).unwrap();
+        let mut data = fs::read(RASTER_FILE).unwrap();
         data[field..field + 8].copy_from_slice(&value.to_le_bytes());
 
         let result = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None)).await;
-        assert!(matches!(result, Err(crate::PmtError::InvalidHeader)));
+        assert!(matches!(result, Err(PmtError::InvalidHeader)));
     }
 
     /// A section whose end overflows `u64` is an invalid header, not an overflow in a later read.
@@ -547,7 +565,7 @@ mod tests {
         data[field..field + 8].copy_from_slice(&u64::MAX.to_le_bytes());
 
         let result = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None)).await;
-        assert!(matches!(result, Err(crate::PmtError::InvalidHeader)));
+        assert!(matches!(result, Err(PmtError::InvalidHeader)));
     }
 
     /// Empty metadata is not a JSON object, so it is rejected without being read.
@@ -561,7 +579,7 @@ mod tests {
             .unwrap();
         let result = reader.get_metadata().await;
         assert!(
-            matches!(result, Err(crate::PmtError::InvalidMetadata)),
+            matches!(result, Err(PmtError::InvalidMetadata)),
             "{result:?}"
         );
     }
@@ -591,18 +609,22 @@ mod tests {
     #[tokio::test]
     #[cfg(feature = "object-store")]
     async fn get_tiles_object_store(#[case] coord: TileCoord, #[case] fixture_bytes: &[u8]) {
-        use object_store::{ObjectStoreExt, WriteMultipart};
+        use object_store::memory::InMemory;
+        use object_store::path::Path;
+        use object_store::{ObjectStoreExt as _, WriteMultipart};
 
-        let store = Box::new(object_store::memory::InMemory::new());
+        use crate::ObjectStoreBackend;
 
-        let upload_path = object_store::path::Path::from("file.pmtiles");
+        let store = Box::new(InMemory::new());
+
+        let upload_path = Path::from("file.pmtiles");
         let upload = store.put_multipart(&upload_path).await.unwrap();
         let mut write = WriteMultipart::new(upload);
         write.write(include_bytes!(
             "../fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles"
         ));
         write.finish().await.unwrap();
-        let backend = crate::ObjectStoreBackend::new(store, upload_path);
+        let backend = ObjectStoreBackend::new(store, upload_path);
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let tile = tiles.get_tile_decompressed(coord).await.unwrap().unwrap();
 
@@ -621,8 +643,9 @@ mod tests {
         // pmtiles header, a subsequent read will fail.
         use std::sync::Arc;
 
+        use object_store::memory::InMemory;
         use object_store::path::Path;
-        use object_store::{ObjectStore, PutOptions, PutPayload};
+        use object_store::{ObjectStore as _, PutOptions, PutPayload};
 
         // The test uses the ObjectStoreBackend with an InMemory underlying store since that
         // makes it easy to modify the ETag of a stored object by putting a new "version".
@@ -631,10 +654,10 @@ mod tests {
         // The exact file here does not matter - it is only important that we fetch a valid
         // tile below.
         let data: &[u8] = include_bytes!("../fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles");
-        let store = Arc::new(object_store::memory::InMemory::new());
+        let store = Arc::new(InMemory::new());
         let path = Path::from("file.pmtiles");
 
-        let payload: PutPayload = bytes::Bytes::copy_from_slice(data).into();
+        let payload: PutPayload = Bytes::copy_from_slice(data).into();
         store
             .put_opts(&path, payload, PutOptions::default())
             .await
@@ -648,49 +671,46 @@ mod tests {
         assert!(result.unwrap().is_some());
 
         // Overwrite the object — InMemory underlying storage will increment the ETag.
-        let payload: PutPayload = bytes::Bytes::copy_from_slice(data).into();
+        let payload: PutPayload = Bytes::copy_from_slice(data).into();
         store
             .put_opts(&path, payload, PutOptions::default())
             .await
             .unwrap();
 
         let result = tiles.get_tile(id(0, 0, 0)).await;
-        assert!(matches!(result, Err(crate::PmtError::SourceModified)));
+        assert!(matches!(result, Err(PmtError::SourceModified)));
     }
 
-    struct VersionedBackend(std::sync::Mutex<(bytes::Bytes, Option<String>)>);
+    struct VersionedBackend(Mutex<(Bytes, Option<String>)>);
 
     impl VersionedBackend {
         fn new(data: &[u8], version: Option<&str>) -> Self {
-            Self(std::sync::Mutex::new((
-                bytes::Bytes::copy_from_slice(data),
+            Self(Mutex::new((
+                Bytes::copy_from_slice(data),
                 version.map(str::to_owned),
             )))
         }
 
         fn replace(&self, data: &[u8], version: Option<&str>) {
-            *self.0.lock().unwrap() = (
-                bytes::Bytes::copy_from_slice(data),
-                version.map(str::to_owned),
-            );
+            *self.0.lock().unwrap() = (Bytes::copy_from_slice(data), version.map(str::to_owned));
         }
     }
 
-    impl crate::AsyncBackend for VersionedBackend {
+    impl AsyncBackend for VersionedBackend {
         fn read(
             &self,
             offset: u64,
             length: usize,
-        ) -> impl Future<Output = crate::PmtResult<crate::BackendResponse>> + Send {
+        ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
             let (bytes, version) = self.0.lock().unwrap().clone();
             let offset = usize::try_from(offset).unwrap_or(usize::MAX);
             let start = offset.min(bytes.len());
             let end = offset.saturating_add(length).min(bytes.len());
-            let response = crate::BackendResponse {
+            let response = BackendResponse {
                 bytes: bytes.slice(start..end),
                 data_version_string: version,
             };
-            std::future::ready(Ok(response))
+            future::ready(Ok(response))
         }
     }
 
@@ -709,13 +729,13 @@ mod tests {
 
         let result = tiles.get_tile(id(1, 1, 0)).await;
         assert!(
-            matches!(result, Err(crate::PmtError::SourceModified)),
+            matches!(result, Err(PmtError::SourceModified)),
             "expected SourceModified, got {result:?}"
         );
 
         let result = tiles.get_metadata().await;
         assert!(
-            matches!(result, Err(crate::PmtError::SourceModified)),
+            matches!(result, Err(PmtError::SourceModified)),
             "expected SourceModified, got {result:?}"
         );
     }
@@ -744,10 +764,7 @@ mod tests {
 
         let result = tiles.get_tile(id(1, 1, 0)).await;
         assert!(
-            matches!(
-                result,
-                Err(crate::PmtError::UnexpectedNumberOfBytesReturned(_, 0))
-            ),
+            matches!(result, Err(PmtError::UnexpectedNumberOfBytesReturned(_, 0))),
             "expected UnexpectedNumberOfBytesReturned, got {result:?}"
         );
     }
@@ -802,8 +819,12 @@ mod tests {
     /// Returns a reader of an in-memory archive with one tile and the given metadata.
     #[cfg(all(feature = "tilejson", feature = "write"))]
     async fn reader_with_metadata(metadata: &str) -> AsyncPmTilesReader<VersionedBackend> {
-        let mut buffer = std::io::Cursor::new(Vec::new());
-        let mut writer = crate::PmTilesWriter::new(crate::TileType::Mvt)
+        use std::io::Cursor;
+
+        use crate::{PmTilesWriter, TileType};
+
+        let mut buffer = Cursor::new(Vec::new());
+        let mut writer = PmTilesWriter::new(TileType::Mvt)
             .min_zoom(2)
             .max_zoom(9)
             .metadata(metadata)
@@ -852,18 +873,15 @@ mod tests {
     async fn parse_tilejson_rejects_invalid_metadata(#[case] metadata: &str) {
         let reader = reader_with_metadata(metadata).await;
         let result = reader.parse_tilejson(Vec::new()).await;
-        assert!(matches!(result, Err(crate::PmtError::InvalidMetadata)));
+        assert!(matches!(result, Err(PmtError::InvalidMetadata)));
     }
 
     #[rstest]
-    #[case(VECTOR_FILE, |tj: &tilejson::TileJSON| assert!(tj.attribution.is_some()))]
-    #[case(RASTER_FILE, |tj: &tilejson::TileJSON| assert!(tj.other.is_empty()))]
+    #[case(VECTOR_FILE, |tj: &TileJSON| assert!(tj.attribution.is_some()))]
+    #[case(RASTER_FILE, |tj: &TileJSON| assert!(tj.other.is_empty()))]
     #[tokio::test]
     #[cfg(feature = "tilejson")]
-    async fn test_parse_tilejson(
-        #[case] file: &str,
-        #[case] assertion: impl Fn(&tilejson::TileJSON),
-    ) {
+    async fn test_parse_tilejson(#[case] file: &str, #[case] assertion: impl Fn(&TileJSON)) {
         let backend = MmapBackend::try_from(file).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let tj = tiles.parse_tilejson(Vec::new()).await.unwrap();
@@ -876,8 +894,12 @@ mod tests {
     #[tokio::test]
     #[cfg(all(feature = "tilejson", feature = "write"))]
     async fn parse_tilejson_ignores_metadata_zoom_range(#[case] metadata: &str) {
-        let mut buffer = std::io::Cursor::new(Vec::new());
-        let mut writer = crate::PmTilesWriter::new(crate::TileType::Mvt)
+        use std::io::Cursor;
+
+        use crate::{PmTilesWriter, TileType};
+
+        let mut buffer = Cursor::new(Vec::new());
+        let mut writer = PmTilesWriter::new(TileType::Mvt)
             .min_zoom(2)
             .max_zoom(9)
             .metadata(metadata)
@@ -913,7 +935,9 @@ mod tests {
 
     #[cfg(feature = "brotli")]
     #[tokio::test]
-    async fn test_brotli_decompression() {
+    async fn brotli_decompression() {
+        use crate::Compression;
+
         // This fixture has brotli internal and tile compression, and one tile 0_0_0.png.
         let backend = MmapBackend::try_from("fixtures/single_tile_brotli.pmtiles")
             .await
@@ -925,11 +949,8 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(
-            tiles.header.internal_compression,
-            crate::Compression::Brotli
-        );
-        assert_eq!(tiles.header.tile_compression, crate::Compression::Brotli);
+        assert_eq!(tiles.header.internal_compression, Compression::Brotli);
+        assert_eq!(tiles.header.tile_compression, Compression::Brotli);
         assert_eq!(tile.as_ref(), include_bytes!("../fixtures/0_0_0.png"));
     }
 
@@ -941,7 +962,7 @@ mod tests {
         let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
-        let entries = std::sync::Arc::new(tiles).entries();
+        let entries = Arc::new(tiles).entries();
 
         let all_entries: Vec<_> = entries.try_collect().await.unwrap();
         assert_eq!(all_entries.len(), 108);
@@ -953,21 +974,14 @@ mod tests {
     async fn open_with_header_field(
         field: usize,
         value: fn(u64) -> u64,
-    ) -> (
-        std::sync::Arc<AsyncPmTilesReader<VersionedBackend>>,
-        crate::DirEntry,
-    ) {
+    ) -> (Arc<AsyncPmTilesReader<VersionedBackend>>, DirEntry) {
         use futures_util::TryStreamExt as _;
 
         let data: &[u8] = include_bytes!("../fixtures/leaf.pmtiles");
         let reader = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, None))
             .await
             .unwrap();
-        let entries: Vec<_> = std::sync::Arc::new(reader)
-            .entries()
-            .try_collect()
-            .await
-            .unwrap();
+        let entries: Vec<_> = Arc::new(reader).entries().try_collect().await.unwrap();
         let last = entries
             .into_iter()
             .max_by_key(|entry| entry.offset + u64::from(entry.length))
@@ -980,7 +994,7 @@ mod tests {
         let reader = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None))
             .await
             .unwrap();
-        (std::sync::Arc::new(reader), last)
+        (Arc::new(reader), last)
     }
 
     /// A tile or leaf directory outside its section is an invalid entry, not a panic,
@@ -996,13 +1010,8 @@ mod tests {
     ) {
         let (reader, last) = open_with_header_field(field, value).await;
 
-        let tile = reader
-            .get_tile(crate::TileId::new(last.tile_id).unwrap())
-            .await;
-        assert!(
-            matches!(tile, Err(crate::PmtError::InvalidEntry)),
-            "{tile:?}"
-        );
+        let tile = reader.get_tile(TileId::new(last.tile_id).unwrap()).await;
+        assert!(matches!(tile, Err(PmtError::InvalidEntry)), "{tile:?}");
     }
 
     /// Listing entries rejects a leaf directory outside the leaf section.
@@ -1015,7 +1024,7 @@ mod tests {
 
         let entries = reader.entries().try_collect::<Vec<_>>().await;
         assert!(
-            matches!(entries, Err(crate::PmtError::InvalidEntry)),
+            matches!(entries, Err(PmtError::InvalidEntry)),
             "{entries:?}"
         );
     }
@@ -1023,7 +1032,7 @@ mod tests {
     /// Serves an archive with everything after the root directory moved 4 GiB further,
     /// so that all later reads are above `u32::MAX`.
     #[cfg(feature = "iter-async")]
-    struct ShiftedBackend(bytes::Bytes);
+    struct ShiftedBackend(Bytes);
 
     #[cfg(feature = "iter-async")]
     impl ShiftedBackend {
@@ -1041,12 +1050,12 @@ mod tests {
     }
 
     #[cfg(feature = "iter-async")]
-    impl crate::AsyncBackend for ShiftedBackend {
+    impl AsyncBackend for ShiftedBackend {
         fn read(
             &self,
             offset: u64,
             length: usize,
-        ) -> impl Future<Output = crate::PmtResult<crate::BackendResponse>> + Send {
+        ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
             // Only the initial read of the header and root directory is below the shift.
             let start = if offset == 0 {
                 Some(0)
@@ -1057,11 +1066,11 @@ mod tests {
                 Some(start) => {
                     let start = usize::try_from(start).unwrap();
                     let end = (start + length).min(self.0.len());
-                    Ok(crate::BackendResponse::new(self.0.slice(start..end)))
+                    Ok(BackendResponse::new(self.0.slice(start..end)))
                 }
-                None => Err(crate::PmtError::InvalidEntry),
+                None => Err(PmtError::InvalidEntry),
             };
-            std::future::ready(response)
+            future::ready(response)
         }
     }
 
@@ -1076,14 +1085,14 @@ mod tests {
         let expected = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, None))
             .await
             .unwrap();
-        let expected = std::sync::Arc::new(expected);
+        let expected = Arc::new(expected);
         let shifted = AsyncPmTilesReader::try_from_cached_source(
             ShiftedBackend::new(data),
-            crate::HashMapCache::default(),
+            HashMapCache::default(),
         )
         .await
         .unwrap();
-        let shifted = std::sync::Arc::new(shifted);
+        let shifted = Arc::new(shifted);
 
         assert_eq!(
             shifted.get_metadata().await.unwrap(),
@@ -1096,7 +1105,7 @@ mod tests {
         assert_eq!(shifted_entries, entries);
 
         for entry in entries {
-            let tile_id = crate::TileId::new(entry.tile_id).unwrap();
+            let tile_id = TileId::new(entry.tile_id).unwrap();
             let tile = shifted.get_tile(tile_id).await.unwrap();
             assert!(tile.is_some());
             assert_eq!(tile, expected.get_tile(tile_id).await.unwrap());
@@ -1153,10 +1162,7 @@ mod tests {
             .unwrap();
 
         let tile = reader.get_tile(id(0, 0, 0)).await;
-        assert!(
-            matches!(tile, Err(crate::PmtError::InvalidEntry)),
-            "{tile:?}"
-        );
+        assert!(matches!(tile, Err(PmtError::InvalidEntry)), "{tile:?}");
     }
 
     /// Listing entries rejects a leaf directory it already read, instead of looping forever.
@@ -1170,12 +1176,9 @@ mod tests {
             .await
             .unwrap();
 
-        let entries = std::sync::Arc::new(reader)
-            .entries()
-            .try_collect::<Vec<_>>()
-            .await;
+        let entries = Arc::new(reader).entries().try_collect::<Vec<_>>().await;
         assert!(
-            matches!(entries, Err(crate::PmtError::InvalidEntry)),
+            matches!(entries, Err(PmtError::InvalidEntry)),
             "{entries:?}"
         );
     }

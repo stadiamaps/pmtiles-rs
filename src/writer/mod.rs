@@ -4,8 +4,9 @@ mod dedup;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::hash::{BuildHasherDefault, Hash};
-use std::io::{BufWriter, Seek, SeekFrom, Write};
+use std::io::{self, BufWriter, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
+use std::mem;
 
 pub use compressor::Compressor;
 pub(crate) use compressor::{GzipCompressor, NoCompression};
@@ -77,11 +78,11 @@ struct WriterState<W: Write + Seek, K> {
 struct DynWriter<'a>(&'a mut dyn Write);
 
 impl Write for DynWriter<'_> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.0.write(buf)
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         self.0.flush()
     }
 }
@@ -104,25 +105,25 @@ impl<W> CountingWriter<W> {
 }
 
 impl<W: Write> Write for CountingWriter<W> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let n = self.inner.write(buf)?;
         self.written += n as u64;
         Ok(n)
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         self.inner.flush()
     }
 }
 
 impl<W: Seek> Seek for CountingWriter<W> {
-    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         self.inner.seek(pos)
     }
 }
 
 pub(crate) trait WriteTo {
-    fn write_to<W: Write>(&self, writer: &mut W) -> std::io::Result<()>;
+    fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()>;
 
     fn write_compressed_to<W: Write>(
         &self,
@@ -146,14 +147,14 @@ pub(crate) trait WriteTo {
     }
 
     fn compressed_size(&self, compressor: &dyn Compressor) -> PmtResult<u64> {
-        let mut devnull = CountingWriter::new(std::io::sink());
+        let mut devnull = CountingWriter::new(io::sink());
         self.write_compressed_to(&mut devnull, compressor)?;
         Ok(devnull.written())
     }
 }
 
 impl WriteTo for [u8] {
-    fn write_to<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         writer.write_all(self)
     }
 }
@@ -523,7 +524,7 @@ impl<W: Write + Seek, K: Copy + Eq + Hash> WriterState<W, K> {
         // Case 1: let's see if the root directory fits without leaves
         if self.entries.len() < 16_384 {
             // we don't need self.entries anymore, so we'll put it in the root_dir directly
-            let root_dir = Directory::from_entries(std::mem::take(&mut self.entries));
+            let root_dir = Directory::from_entries(mem::take(&mut self.entries));
             let root_bytes = root_dir.compressed_size(compressor)?;
             if root_bytes <= target_root_len {
                 return Ok((root_dir, vec![]));
@@ -633,6 +634,7 @@ fn into_u32(v: u64) -> PmtResult<u32> {
 )]
 mod tests {
     use std::fs::File;
+    use std::io;
     use std::num::NonZeroU64;
     use std::sync::Arc;
 
@@ -647,7 +649,7 @@ mod tests {
         PmTilesWriter, TileCoord, TileId, TileType,
     };
 
-    fn get_temp_file_path(suffix: &str) -> std::io::Result<String> {
+    fn get_temp_file_path(suffix: &str) -> io::Result<String> {
         let temp_file = NamedTempFile::with_suffix(suffix)?;
         Ok(temp_file.path().to_string_lossy().into_owned())
     }
@@ -924,8 +926,10 @@ mod tests {
     fn counting_writer_passes_4_gib() {
         use std::io::Write as _;
 
-        let mut out = super::CountingWriter {
-            inner: std::io::sink(),
+        use super::CountingWriter;
+
+        let mut out = CountingWriter {
+            inner: io::sink(),
             written: u64::from(u32::MAX) - 1,
         };
         out.write_all(b"four").unwrap();
@@ -1169,7 +1173,10 @@ mod tests {
 
     #[tokio::test]
     async fn custom_compressor_roundtrip() {
+        use std::io::Write;
+
         use super::{Compressor, NoCompression};
+        use crate::PmtResult;
 
         /// A custom compressor that just delegates to `NoCompression`
         /// (for testing the trait mechanism).
@@ -1183,9 +1190,9 @@ mod tests {
 
             fn compress(
                 &self,
-                f: &mut dyn FnMut(&mut dyn std::io::Write) -> std::io::Result<()>,
-                writer: &mut dyn std::io::Write,
-            ) -> crate::PmtResult<()> {
+                f: &mut dyn FnMut(&mut dyn Write) -> io::Result<()>,
+                writer: &mut dyn Write,
+            ) -> PmtResult<()> {
                 NoCompression.compress(f, writer)
             }
         }
@@ -1212,6 +1219,8 @@ mod tests {
     #[cfg(feature = "brotli")]
     #[tokio::test]
     async fn brotli_compressor_roundtrip() {
+        use brotli::enc::BrotliEncoderParams;
+
         use super::compressor::BrotliCompressor;
 
         let test_data = b"hello pmtiles brotli compressor with enough data to see a difference";
@@ -1219,7 +1228,7 @@ mod tests {
         let path = get_temp_file_path("pmtiles").unwrap();
         let file = File::create(&path).unwrap();
         let mut writer = PmTilesWriter::new(TileType::Mvt)
-            .tile_codec(BrotliCompressor(brotli::enc::BrotliEncoderParams {
+            .tile_codec(BrotliCompressor(BrotliEncoderParams {
                 quality: 5,
                 ..Default::default()
             }))

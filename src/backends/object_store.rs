@@ -124,7 +124,7 @@ mod tests {
     use bytes::Bytes;
     use object_store::memory::InMemory;
     use object_store::path::Path;
-    use object_store::{ObjectStore, PutOptions, PutPayload};
+    use object_store::{PutOptions, PutPayload};
 
     use super::*;
     use crate::PmtError;
