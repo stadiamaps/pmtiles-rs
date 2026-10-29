@@ -642,8 +642,9 @@ fn into_u32(v: u64) -> PmtResult<u32> {
     reason = "exact round-trips; clippy versions differ on flagging float `assert_eq!`"
 )]
 mod tests {
+    use std::collections::HashMap;
     use std::fs::File;
-    use std::io;
+    use std::io::{self, BufWriter, Cursor};
     use std::num::NonZeroU64;
     use std::sync::Arc;
 
@@ -651,11 +652,12 @@ mod tests {
     use rstest::rstest;
     use tempfile::NamedTempFile;
 
+    use super::{CountingWriter, NoCompression, WriterState};
     use crate::tests::RASTER_FILE;
     use crate::writer::GzipCompressor;
     use crate::{
-        AsyncPmTilesReader, CallerKey, Compression, MmapBackend, PmTilesStreamWriter,
-        PmTilesWriter, TileCoord, TileId, TileType,
+        AsyncPmTilesReader, CallerKey, Compression, DirEntry, Header, MmapBackend,
+        PmTilesStreamWriter, PmTilesWriter, PmtError, TileCoord, TileId, TileType,
     };
 
     fn get_temp_file_path(suffix: &str) -> io::Result<String> {
@@ -1299,5 +1301,51 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(*tile_0, 0u64.to_le_bytes());
+    }
+
+    /// A tile compression this build cannot write is an error when adding a tile.
+    #[test]
+    fn rejects_unsupported_tile_compression() {
+        let mut writer = PmTilesWriter::new(TileType::Png)
+            .tile_compression(Compression::Unknown)
+            .create(Cursor::new(Vec::new()))
+            .unwrap();
+
+        let result = writer.add_tile(TileCoord::new(0, 0, 0).unwrap(), b"tile");
+        assert!(matches!(
+            result,
+            Err(PmtError::UnsupportedCompression(Compression::Unknown))
+        ));
+    }
+
+    /// When the entries do not fit in the root directory, and neither do pointers to leaf
+    /// directories of the starting size, the leaf directories grow until the root fits.
+    #[test]
+    fn optimize_directories_grows_leaves_until_root_fits() {
+        let mut state = WriterState::<Cursor<Vec<u8>>, u64> {
+            out: CountingWriter::new(BufWriter::new(Cursor::new(Vec::new()))),
+            header: Header::new(Compression::None, TileType::Png),
+            entries: (0..10_000)
+                .map(|tile_id| DirEntry {
+                    tile_id,
+                    offset: tile_id,
+                    length: 1,
+                    run_length: 1,
+                })
+                .collect(),
+            n_addressed_tiles: 0,
+            n_tile_entries: 0,
+            tile_content_map: HashMap::default(),
+            n_tile_contents: 0,
+            prev_content: None,
+            prev_written_tile_offset: 0,
+        };
+
+        // A root of 3 leaf directories of 4096 entries takes about 20 bytes, while a root
+        // pointing to a single leaf directory takes 7.
+        let (root, leaves) = state.optimize_directories(8, &NoCompression).unwrap();
+        assert_eq!(root.entries.len(), 1);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].entries.len(), 10_000);
     }
 }

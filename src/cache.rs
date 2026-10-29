@@ -405,6 +405,27 @@ mod tests {
         assert_eq!(fetch_count.load(Ordering::SeqCst), 1);
     }
 
+    /// A cached directory without the tile returns `None` without fetching it again.
+    #[tokio::test]
+    async fn hash_map_cache_caches_directory_without_tile() {
+        let cache = HashMapCache::default();
+        let mut directory = Directory::default();
+        directory.entries.push(DirEntry {
+            tile_id: 0,
+            offset: 0,
+            length: 1,
+            run_length: 1,
+        });
+        cache.insert_dir(0, directory);
+
+        let tile_id = TileId::new(5).unwrap();
+        let entry = cache
+            .get_dir_entry_or_insert(0, tile_id, async { Err(PmtError::InvalidEntry) })
+            .await
+            .unwrap();
+        assert!(entry.is_none());
+    }
+
     #[cfg(feature = "moka")]
     #[tokio::test]
     async fn moka_cache_caches_directory_without_tile() {
