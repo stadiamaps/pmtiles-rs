@@ -681,6 +681,62 @@ mod tests {
         assert_ne!(metadata, "");
     }
 
+    /// Returns a reader of an in-memory archive with one tile and the given metadata.
+    #[cfg(all(feature = "tilejson", feature = "write"))]
+    async fn reader_with_metadata(metadata: &str) -> AsyncPmTilesReader<VersionedBackend> {
+        let mut buffer = std::io::Cursor::new(Vec::new());
+        let mut writer = crate::PmTilesWriter::new(crate::TileType::Mvt)
+            .min_zoom(2)
+            .max_zoom(9)
+            .metadata(metadata)
+            .create(&mut buffer)
+            .unwrap();
+        writer.add_tile(id(2, 1, 1), b"tile").unwrap();
+        writer.finalize().unwrap();
+        let backend = VersionedBackend::new(buffer.get_ref(), None);
+        AsyncPmTilesReader::try_from_source(backend).await.unwrap()
+    }
+
+    #[tokio::test]
+    #[cfg(all(feature = "tilejson", feature = "write"))]
+    async fn parse_tilejson_merges_metadata() {
+        let reader = reader_with_metadata(
+            r#"{
+                "name": "name", "description": "description", "attribution": "attribution",
+                "legend": "legend", "version": "1.2.3", "minzoom": "5", "maxzoom": "6",
+                "custom": "custom", "count": 42,
+                "vector_layers": [{"id": "roads", "fields": {"kind": "String"}}]
+            }"#,
+        )
+        .await;
+        let tj = reader.parse_tilejson(vec!["url".into()]).await.unwrap();
+
+        assert_eq!(tj.tiles, vec!["url".to_string()]);
+        assert_eq!(tj.name.as_deref(), Some("name"));
+        assert_eq!(tj.description.as_deref(), Some("description"));
+        assert_eq!(tj.attribution.as_deref(), Some("attribution"));
+        assert_eq!(tj.legend.as_deref(), Some("legend"));
+        assert_eq!(tj.version.as_deref(), Some("1.2.3"));
+        // The zoom range comes from the header, not from the metadata.
+        assert_eq!((tj.minzoom, tj.maxzoom), (Some(2), Some(9)));
+        assert_eq!(tj.other["custom"], "custom");
+        assert_eq!(tj.other["count"], 42);
+        assert_eq!(tj.other.len(), 2);
+        assert_eq!(tj.vector_layers.unwrap()[0].id, "roads");
+    }
+
+    #[rstest]
+    #[case::not_json("not json")]
+    #[case::not_an_object("[1, 2]")]
+    #[case::invalid_vector_layers(r#"{"vector_layers": [{"fields": {}}]}"#)]
+    #[tokio::test]
+    #[cfg(all(feature = "tilejson", feature = "write"))]
+    async fn parse_tilejson_rejects_invalid_metadata(#[case] metadata: &str) {
+        let reader = reader_with_metadata(metadata).await;
+        let result = reader.parse_tilejson(Vec::new()).await;
+        assert!(matches!(result, Err(crate::PmtError::InvalidMetadata)));
+    }
+
     #[rstest]
     #[case(VECTOR_FILE, |tj: &tilejson::TileJSON| assert!(tj.attribution.is_some()))]
     #[case(RASTER_FILE, |tj: &tilejson::TileJSON| assert!(tj.other.is_empty()))]
