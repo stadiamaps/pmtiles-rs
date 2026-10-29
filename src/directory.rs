@@ -1,11 +1,11 @@
 use std::fmt::{Debug, Formatter};
 
-use bytes::{Buf, Bytes};
-use varint_rs::VarintReader as _;
+use bytes::Bytes;
+use integer_encoding::VarInt as _;
 #[cfg(feature = "write")]
-use varint_rs::VarintWriter as _;
+use integer_encoding::VarIntWriter as _;
 
-use crate::{MAX_TILE_ID, PmtError, TileId};
+use crate::{MAX_TILE_ID, PmtError, PmtResult, TileId};
 
 #[derive(Default, Clone)]
 /// A directory of tile entries in a `PMTiles` file.
@@ -69,25 +69,48 @@ impl Directory {
     }
 }
 
+/// Read a varint, rejecting truncated, overlong, or out-of-range values.
+fn read_varint<T: TryFrom<u64>>(buf: &mut &[u8]) -> PmtResult<T> {
+    let value = match buf.split_first() {
+        // Most directory varints fit in a single byte
+        Some((&byte, rest)) if byte < 0x80 => {
+            *buf = rest;
+            u64::from(byte)
+        }
+        _ => {
+            let (value, len) = u64::decode_var(buf).ok_or(PmtError::InvalidEntry)?;
+            *buf = &buf[len..];
+            value
+        }
+    };
+    T::try_from(value).map_err(|_| PmtError::InvalidEntry)
+}
+
 impl TryFrom<Bytes> for Directory {
     type Error = PmtError;
 
     fn try_from(buffer: Bytes) -> Result<Self, Self::Error> {
-        let mut buffer = buffer.reader();
-        let n_entries = buffer.read_usize_varint()?;
+        let mut buf: &[u8] = &buffer;
+        let n_entries: usize = read_varint(&mut buf)?;
+        // Each entry needs at least one byte for each of its four fields
+        if n_entries > buf.len() / 4 {
+            return Err(PmtError::InvalidEntry);
+        }
 
         let mut entries = vec![DirEntry::default(); n_entries];
 
         // Read tile IDs
-        let mut next_tile_id = 0;
+        let mut next_tile_id = 0_u64;
         for entry in &mut entries {
-            next_tile_id += buffer.read_u64_varint()?;
+            next_tile_id = next_tile_id
+                .checked_add(read_varint::<u64>(&mut buf)?)
+                .ok_or(PmtError::InvalidEntry)?;
             entry.tile_id = next_tile_id;
         }
 
         // Read Run Lengths
         for entry in &mut entries {
-            entry.run_length = buffer.read_u32_varint()?;
+            entry.run_length = read_varint(&mut buf)?;
             if !entry.is_leaf() {
                 // Every tile id covered by the run must be a valid `TileId`
                 let last_tile_id = entry
@@ -102,16 +125,18 @@ impl TryFrom<Bytes> for Directory {
 
         // Read Lengths
         for entry in &mut entries {
-            entry.length = buffer.read_u32_varint()?;
+            entry.length = read_varint(&mut buf)?;
         }
 
         // Read Offsets
         let mut last_entry: Option<&DirEntry> = None;
         for entry in &mut entries {
-            let offset = buffer.read_u64_varint()?;
+            let offset: u64 = read_varint(&mut buf)?;
             entry.offset = if offset == 0 {
                 let e = last_entry.ok_or(PmtError::InvalidEntry)?;
-                e.offset + u64::from(e.length)
+                e.offset
+                    .checked_add(u64::from(e.length))
+                    .ok_or(PmtError::InvalidEntry)?
             } else {
                 offset - 1
             };
@@ -126,23 +151,23 @@ impl TryFrom<Bytes> for Directory {
 impl crate::writer::WriteTo for Directory {
     fn write_to<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         // Write number of entries
-        writer.write_usize_varint(self.entries.len())?;
+        writer.write_varint(self.entries.len())?;
 
         // Write tile IDs
         let mut last_tile_id = 0;
         for entry in &self.entries {
-            writer.write_u64_varint(entry.tile_id - last_tile_id)?;
+            writer.write_varint(entry.tile_id - last_tile_id)?;
             last_tile_id = entry.tile_id;
         }
 
         // Write Run Lengths
         for entry in &self.entries {
-            writer.write_u32_varint(entry.run_length)?;
+            writer.write_varint(entry.run_length)?;
         }
 
         // Write Lengths
         for entry in &self.entries {
-            writer.write_u32_varint(entry.length)?;
+            writer.write_varint(entry.length)?;
         }
 
         // Write Offsets
@@ -154,7 +179,7 @@ impl crate::writer::WriteTo for Directory {
             } else {
                 entry.offset + 1
             };
-            writer.write_u64_varint(offset_to_write)?;
+            writer.write_varint(offset_to_write)?;
             last_offset = entry.offset;
             last_length = entry.length;
         }
@@ -215,9 +240,9 @@ impl Iterator for DirEntryCoordsIter<'_> {
 mod tests {
     use std::io::{BufReader, Read, Write};
 
-    use bytes::BytesMut;
+    use bytes::{Bytes, BytesMut};
+    use integer_encoding::VarIntWriter as _;
     use rstest::rstest;
-    use varint_rs::VarintWriter as _;
 
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
@@ -284,13 +309,13 @@ mod tests {
     fn entry_tile_range(#[case] tile_id: u64, #[case] run_length: u32, #[case] valid: bool) {
         // A directory with a single entry: count, tile id, run length, length, offset + 1
         let mut buf = vec![];
-        buf.write_usize_varint(1).unwrap();
-        buf.write_u64_varint(tile_id).unwrap();
-        buf.write_u32_varint(run_length).unwrap();
-        buf.write_u32_varint(1).unwrap();
-        buf.write_u64_varint(1).unwrap();
+        buf.write_varint(1_usize).unwrap();
+        buf.write_varint(tile_id).unwrap();
+        buf.write_varint(run_length).unwrap();
+        buf.write_varint(1_u32).unwrap();
+        buf.write_varint(1_u64).unwrap();
 
-        let result = Directory::try_from(bytes::Bytes::from(buf));
+        let result = Directory::try_from(Bytes::from(buf));
         if valid {
             let entries = result.unwrap().entries;
             assert_eq!(entries[0].tile_id, tile_id);
@@ -300,6 +325,18 @@ mod tests {
         } else {
             assert!(matches!(result, Err(PmtError::InvalidEntry)));
         }
+    }
+
+    #[rstest]
+    #[case::too_many_entries(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x20])]
+    #[case::varint_too_long(&[0xFF; 12])]
+    #[case::varint_overflow(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x02])]
+    #[case::length_over_u32(&[1, 0, 1, 0x80, 0x80, 0x80, 0x80, 0x20, 1])]
+    #[case::tile_id_overflow(&[2, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 1, 1, 1, 1, 1, 1, 1])]
+    #[case::offset_overflow(&[2, 0, 1, 1, 1, 2, 1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0])]
+    fn malformed_directory(#[case] bytes: &[u8]) {
+        let result = Directory::try_from(Bytes::copy_from_slice(bytes));
+        assert!(matches!(result, Err(PmtError::InvalidEntry)), "{result:?}");
     }
 
     #[cfg(feature = "write")]
@@ -323,7 +360,7 @@ mod tests {
             let root_dir = read_root_directory(RASTER_FILE);
             let mut buf = vec![];
             root_dir.write_to(&mut buf).unwrap();
-            let dir = Directory::try_from(bytes::Bytes::from(buf)).unwrap();
+            let dir = Directory::try_from(Bytes::from(buf)).unwrap();
             assert!(root_dir.entries.iter().enumerate().all(
                 |(idx, entry)| dir.entries[idx].tile_id == entry.tile_id
                     && dir.entries[idx].run_length == entry.run_length
@@ -359,9 +396,7 @@ mod tests {
                 Compression::None => buf,
                 _ => unimplemented!("This compression not handled by tests (yet)"),
             };
-            Directory::try_from(bytes::Bytes::from(raw))
-                .unwrap()
-                .entries
+            Directory::try_from(Bytes::from(raw)).unwrap().entries
         }
 
         // Ported from go-pmtiles/pmtiles/directory_test.go:TestDirectoryRoundtrip (line 10)
