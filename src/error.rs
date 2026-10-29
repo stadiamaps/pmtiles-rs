@@ -1,4 +1,7 @@
-#![expect(clippy::absolute_paths, reason = "lots of absolute paths in error.rs")]
+#![allow(
+    clippy::absolute_paths,
+    reason = "error variants name their source crate's types"
+)]
 
 use std::io;
 use std::string::FromUtf8Error;

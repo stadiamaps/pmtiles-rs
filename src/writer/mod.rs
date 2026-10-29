@@ -636,7 +636,7 @@ fn into_u32(v: u64) -> PmtResult<u32> {
 }
 
 #[cfg(test)]
-#[cfg(feature = "mmap-async-tokio")]
+#[cfg(all(feature = "mmap-async-tokio", feature = "iter-async"))]
 #[allow(
     clippy::float_cmp,
     reason = "exact round-trips; clippy versions differ on flagging float `assert_eq!`"
