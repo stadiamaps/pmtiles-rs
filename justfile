@@ -14,6 +14,9 @@ export RUSTFLAGS := env('RUSTFLAGS', if ci_mode == '1' {'-D warnings'} else {''}
 export RUSTDOCFLAGS := env('RUSTDOCFLAGS', if ci_mode == '1' {'-D warnings'} else {''})
 export RUST_BACKTRACE := env('RUST_BACKTRACE', if ci_mode == '1' {'1'} else {'0'})
 
+# libFuzzer options: cap the input size, and treat a 10s input as a hang
+fuzz_args := '-max_len=65536 -timeout=10'
+
 @_default:
     {{just}} --list
 
@@ -49,6 +52,10 @@ ci-coverage: env-info && \
     # ATTENTION: the full file path above is used in the CI workflow
     mkdir -p target/llvm-cov
 
+# Fuzz `target` for one minute, as a 64-bit or a 32-bit build
+ci-fuzz target bits='64':
+    {{just}} {{ if bits == '32' { 'fuzz-32bit' } else { 'fuzz' } }} {{target}} -max_total_time=60
+
 # Run all tests as expected by CI
 ci-test: env-info test-fmt clippy check test test-doc deny && assert-git-is-clean
 
@@ -64,11 +71,14 @@ ci-test-msrv:
 clean:
     cargo clean
     rm -f Cargo.lock
+    cargo clean --manifest-path fuzz/Cargo.toml
+    rm -rf fuzz/corpus fuzz/artifacts fuzz/coverage fuzz/Cargo.lock
 
 # Run cargo clippy to lint the code
 clippy *args:
     cargo clippy --workspace --features __all_non_conflicting --all-targets {{args}}
     cargo clippy --workspace --all-targets --no-default-features --features s3-async-native {{args}}
+    cargo clippy --manifest-path fuzz/Cargo.toml --all-targets {{args}}
 
 # Generate code coverage report. Will install `cargo llvm-cov` if missing.
 coverage *args='--no-clean --open':  (cargo-install 'cargo-llvm-cov')
@@ -100,14 +110,25 @@ fmt:
     if (rustup toolchain list | grep nightly && rustup component list --toolchain nightly | grep rustfmt) &> /dev/null; then
         echo 'Reformatting Rust code using nightly Rust fmt to sort imports'
         cargo +nightly fmt --all -- --config imports_granularity=Module,group_imports=StdExternalCrate
+        cargo +nightly fmt --all --manifest-path fuzz/Cargo.toml -- --config imports_granularity=Module,group_imports=StdExternalCrate
     else
         echo 'Reformatting Rust with the stable cargo fmt.  Install nightly with `rustup install nightly` for better results'
         cargo fmt --all
+        cargo fmt --all --manifest-path fuzz/Cargo.toml
     fi
 
 # Reformat all Cargo.toml files using cargo-sort
 fmt-toml *args:  (cargo-install 'cargo-sort')
     cargo sort --workspace --grouped {{args}}
+
+# Fuzz `reader` or `directory` until it crashes, e.g. `just fuzz reader -max_total_time=60`
+fuzz target='reader' *args:  (fuzz-seed target)
+    {{just}} cargo-fuzz run {{target}} --debug-assertions --target "$(rustc +nightly -vV | sed -n 's/^host: //p')" -- {{fuzz_args}} {{args}}
+
+# Fuzz a 32-bit build without AddressSanitizer, where `usize` is 32 bits (needs `g++-multilib`)
+fuzz-32bit target='reader' *args:  (fuzz-seed target)
+    rustup target add i686-unknown-linux-gnu --toolchain nightly
+    {{just}} cargo-fuzz run {{target}} --debug-assertions --target i686-unknown-linux-gnu --sanitizer none -- {{fuzz_args}} {{args}}
 
 # Get a package field from the metadata
 get-crate-field field package=main_crate:  (assert-cmd 'jq')
@@ -163,6 +184,7 @@ test-doc:  (docs '')
 # Test code formatting
 test-fmt:
     cargo fmt --all -- --check
+    cargo fmt --all --manifest-path fuzz/Cargo.toml -- --check
 
 # Find unused dependencies. Uses `cargo-udeps`
 udeps:  (cargo-install 'cargo-udeps')
@@ -191,6 +213,17 @@ assert-git-is-clean:
         git --no-pager diff ;\
         exit 1 ;\
     fi
+
+# Run `cargo fuzz` with nightly Rust, installing it if needed
+[private]
+cargo-fuzz *args:  (cargo-install 'cargo-fuzz')
+    cargo +nightly fuzz {{args}}
+
+# Start the corpus of fuzz `target` with the small archive fixtures
+[private]
+fuzz-seed target:
+    mkdir -p fuzz/corpus/{{target}}
+    cp fixtures/leaf.pmtiles fixtures/single_tile_brotli.pmtiles 'fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles' fuzz/corpus/{{target}}/
 
 # Check if a certain Cargo command is installed, and install it if needed
 [private]
