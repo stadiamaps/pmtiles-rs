@@ -373,9 +373,9 @@ mod tests {
         assert!(Arc::ptr_eq(&initially_cached, &cached_after_hit));
     }
 
+    #[cfg(feature = "moka")]
     /// Offsets are keyed by their full `u64` value, so two offsets that differ only
     /// above the 32-bit boundary map to distinct cache slots.
-    #[cfg(feature = "moka")]
     #[tokio::test]
     async fn moka_cache_keys_on_full_u64_offset() {
         let cache = MokaCache::new(100);
