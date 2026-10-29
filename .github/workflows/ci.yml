@@ -52,7 +52,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-multilib
           rustup target add i686-unknown-linux-gnu
-      # Mirror the 64-bit `test` job's feature set so every test also runs here, 
+      # Mirror the 64-bit `test` job's feature set so every test also runs here,
       # guarding against `usize` truncation on 32-bit targets.
       # gcc-multilib provides the 32-bit C toolchain for ring/aws-lc-rs/zstd-sys.
       - run: cargo test --target i686-unknown-linux-gnu --features __all_non_conflicting --all-targets
