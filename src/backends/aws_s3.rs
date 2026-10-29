@@ -69,7 +69,7 @@ impl AwsS3Backend {
 }
 
 impl AsyncBackend for AwsS3Backend {
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
+    async fn read(&self, offset: u64, length: u64) -> PmtResult<BackendResponse> {
         let range_end = offset + length - 1;
         let range = format!("bytes={offset}-{range_end}");
 
@@ -95,8 +95,11 @@ impl AsyncBackend for AwsS3Backend {
             .map_err(|e| PmtError::Reading(e.into()))?
             .into_bytes();
 
-        if response_bytes.len() > length {
-            Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
+        if response_bytes.len() as u64 > length {
+            Err(PmtError::ResponseBodyTooLong(
+                response_bytes.len() as u64,
+                length,
+            ))
         } else {
             Ok(match data_version {
                 Some(v) => BackendResponse::new_with_version(response_bytes, v),

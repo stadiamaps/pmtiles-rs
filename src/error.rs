@@ -50,7 +50,7 @@ pub enum PmtError {
     UnableToOpenMmapFile,
     /// Unexpected number of bytes returned during reading.
     #[error("Unexpected number of bytes returned [expected: {0}, received: {1}].")]
-    UnexpectedNumberOfBytesReturned(usize, usize),
+    UnexpectedNumberOfBytesReturned(u64, u64),
     #[cfg(feature = "http-async")]
     /// The server does not support range requests.
     #[error("Range requests unsupported")]
@@ -62,7 +62,7 @@ pub enum PmtError {
     ))]
     /// The HTTP response body exceeded the requested length.
     #[error("HTTP response body is too long, Response {0}B > requested {1}B")]
-    ResponseBodyTooLong(usize, usize),
+    ResponseBodyTooLong(u64, u64),
     #[cfg(feature = "http-async")]
     /// An HTTP client error occurred.
     #[error(transparent)]

@@ -85,7 +85,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// - or if the root directory is malformed
     pub async fn try_from_cached_source(backend: B, cache: C) -> PmtResult<Self> {
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
-        let initial_response = backend.read(0, MAX_INITIAL_BYTES).await?;
+        let initial_response = backend.read(0, MAX_INITIAL_BYTES as u64).await?;
         let mut initial_bytes = initial_response.bytes;
         let initial_data_version_string = initial_response.data_version_string;
         if initial_bytes.len() < HEADER_SIZE {
@@ -136,8 +136,8 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             return Ok(None);
         };
 
-        let offset = (self.header.data_offset + entry.offset) as _;
-        let length = entry.length as _;
+        let offset = self.header.data_offset + entry.offset;
+        let length = u64::from(entry.length);
         Ok(Some(self.read_exact_unmodified(offset, length).await?))
     }
 
@@ -179,8 +179,8 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// - is not valid UTF-8 or
     /// - underlying `PMTiles` archive has changed since initialization
     pub async fn get_metadata(&self) -> PmtResult<String> {
-        let offset = self.header.metadata_offset as _;
-        let length = self.header.metadata_length as _;
+        let offset = self.header.metadata_offset;
+        let length = self.header.metadata_length;
         let metadata = self.read_exact_unmodified(offset, length).await?;
 
         let decompressed_metadata =
@@ -222,8 +222,8 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
             while let Some(entry) = queue.pop_front() {
                 if entry.is_leaf() {
-                    let offset = (self.header.leaf_offset + entry.offset) as _;
-                    let length = entry.length as usize;
+                    let offset = self.header.leaf_offset + entry.offset;
+                    let length = u64::from(entry.length);
                     let leaf_dir = self.read_directory(offset, length).await?;
                     // enqueue all entries in the leaf directory
                     for leaf_entry in leaf_dir.entries {
@@ -306,12 +306,12 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ) -> PmtResult<Option<DirEntry>> {
         // the recursion is done as two functions because it is a bit cleaner,
         // and it allows the directory to be cached later without cloning it first.
-        let offset = (self.header.leaf_offset + entry.offset) as _;
+        let offset = self.header.leaf_offset + entry.offset;
 
         let entry = self
             .cache
-            .get_dir_entry_or_insert(offset, tile_id, async move {
-                let length = entry.length as _;
+            .get_dir_entry_or_insert(offset as usize, tile_id, async move {
+                let length = u64::from(entry.length);
                 self.read_directory(offset, length).await
             })
             .await?;
@@ -329,7 +329,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         Ok(entry)
     }
 
-    async fn read_directory(&self, offset: usize, length: usize) -> PmtResult<Directory> {
+    async fn read_directory(&self, offset: u64, length: u64) -> PmtResult<Directory> {
         let data = self.read_exact_unmodified(offset, length).await?;
         Self::read_compressed_directory(self.header.internal_compression, data).await
     }
@@ -341,7 +341,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// If an initial data version string was not available, the backend does not support exposing version strings.
     /// If a current data version string is not available, this request was unable to extract a data version string,
     /// and the check is skipped.
-    async fn read_exact_unmodified(&self, offset: usize, length: usize) -> PmtResult<Bytes> {
+    async fn read_exact_unmodified(&self, offset: u64, length: u64) -> PmtResult<Bytes> {
         let response = self.backend.read_exact(offset, length).await?;
         if let (Some(expected), Some(actual)) = (
             &self.initial_data_version_string,
@@ -400,8 +400,8 @@ pub trait AsyncBackend {
     /// Reads exactly `length` bytes starting at `offset`
     fn read_exact(
         &self,
-        offset: usize,
-        length: usize,
+        offset: u64,
+        length: u64,
     ) -> impl Future<Output = PmtResult<BackendResponse>> + Send
     where
         Self: Sync,
@@ -409,10 +409,10 @@ pub trait AsyncBackend {
         async move {
             let response = self.read(offset, length).await?;
 
-            if response.bytes.len() != length {
+            if response.bytes.len() as u64 != length {
                 return Err(PmtError::UnexpectedNumberOfBytesReturned(
                     length,
-                    response.bytes.len(),
+                    response.bytes.len() as u64,
                 ));
             }
 
@@ -423,8 +423,8 @@ pub trait AsyncBackend {
     /// Reads up to `length` bytes starting at `offset`.
     fn read(
         &self,
-        offset: usize,
-        length: usize,
+        offset: u64,
+        length: u64,
     ) -> impl Future<Output = PmtResult<BackendResponse>> + Send;
 }
 
@@ -562,10 +562,12 @@ mod tests {
     impl crate::AsyncBackend for VersionedBackend {
         fn read(
             &self,
-            offset: usize,
-            length: usize,
+            offset: u64,
+            length: u64,
         ) -> impl Future<Output = crate::PmtResult<crate::BackendResponse>> + Send {
             let (bytes, version) = self.0.lock().unwrap().clone();
+            let offset = usize::try_from(offset).unwrap_or(usize::MAX);
+            let length = usize::try_from(length).unwrap_or(usize::MAX);
             let start = offset.min(bytes.len());
             let end = offset.saturating_add(length).min(bytes.len());
             let response = crate::BackendResponse {

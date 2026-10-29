@@ -59,20 +59,16 @@ impl S3Backend {
 }
 
 impl AsyncBackend for S3Backend {
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
+    async fn read(&self, offset: u64, length: u64) -> PmtResult<BackendResponse> {
         let response = self
             .bucket
-            .get_object_range(
-                self.path.as_str(),
-                offset as _,
-                Some((offset + length - 1) as _),
-            )
+            .get_object_range(self.path.as_str(), offset, Some(offset + length - 1))
             .await?;
 
         let response_bytes = response.bytes();
 
-        if response_bytes.len() > length {
-            Err(ResponseBodyTooLong(response_bytes.len(), length))
+        if response_bytes.len() as u64 > length {
+            Err(ResponseBodyTooLong(response_bytes.len() as u64, length))
         } else {
             let headers = response.headers();
             let data_version = headers

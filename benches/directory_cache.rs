@@ -28,9 +28,11 @@ struct MemoryBackend(Bytes);
 impl AsyncBackend for MemoryBackend {
     fn read(
         &self,
-        offset: usize,
-        length: usize,
+        offset: u64,
+        length: u64,
     ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
+        let offset = usize::try_from(offset).unwrap_or(usize::MAX);
+        let length = usize::try_from(length).unwrap_or(usize::MAX);
         let start = offset.min(self.0.len());
         let end = offset.saturating_add(length).min(self.0.len());
         let bytes = self.0.slice(start..end);

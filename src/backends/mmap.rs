@@ -109,35 +109,43 @@ fn eof() -> PmtError {
 impl AsyncBackend for MmapBackend {
     fn read_exact(
         &self,
-        offset: usize,
-        length: usize,
+        offset: u64,
+        length: u64,
     ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
-        let end = offset
-            .checked_add(length)
-            .filter(|end| *end <= self.bytes.len());
-        let response = match end {
-            Some(end) => Ok(BackendResponse::new(self.bytes.slice(offset..end))),
-            None => Err(eof()),
-        };
+        let response = (|| {
+            let offset = usize::try_from(offset).map_err(|_| eof())?;
+            let length = usize::try_from(length).map_err(|_| eof())?;
+            let end = offset
+                .checked_add(length)
+                .filter(|end| *end <= self.bytes.len())
+                .ok_or_else(eof)?;
+            Ok(BackendResponse::new(self.bytes.slice(offset..end)))
+        })();
         std::future::ready(response)
     }
 
     fn read(
         &self,
-        offset: usize,
-        length: usize,
+        offset: u64,
+        length: u64,
     ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
-        // An offset at exactly the end of the file is a valid empty read; past it is an error.
-        if offset > self.bytes.len() {
-            return std::future::ready(Err(eof()));
-        }
+        let response = (|| {
+            let offset = usize::try_from(offset).map_err(|_| eof())?;
 
-        // Clamp to what is actually left *after* `offset`. Short reads are the normal path
-        // here: the reader always asks for `MAX_INITIAL_BYTES` up front, which is more than
-        // the total size of a small archive.
-        let end = offset.saturating_add(length).min(self.bytes.len());
+            // An offset at exactly the end of the file is a valid empty read; past it is an error.
+            if offset > self.bytes.len() {
+                return Err(eof());
+            }
 
-        std::future::ready(Ok(BackendResponse::new(self.bytes.slice(offset..end))))
+            // Clamp to what is actually left *after* `offset`. Short reads are the normal path
+            // here: the reader always asks for `MAX_INITIAL_BYTES` up front, which is more than
+            // the total size of a small archive.
+            let length = usize::try_from(length).unwrap_or(usize::MAX);
+            let end = offset.saturating_add(length).min(self.bytes.len());
+
+            Ok(BackendResponse::new(self.bytes.slice(offset..end)))
+        })();
+        std::future::ready(response)
     }
 }
 
@@ -177,7 +185,7 @@ mod tests {
         let (backend, len) = backend().await;
         let expected = std::fs::read(RASTER_FILE).unwrap();
 
-        let res = backend.read(0, len).await.unwrap();
+        let res = backend.read(0, len as u64).await.unwrap();
         assert_eq!(res.bytes.len(), len);
         assert_eq!(&res.bytes[..], &expected[..]);
         assert!(res.data_version_string.is_none());
@@ -187,7 +195,7 @@ mod tests {
     async fn read_clamps_to_eof_at_offset_zero() {
         let (backend, len) = backend().await;
 
-        let res = backend.read(0, len * 2).await.unwrap();
+        let res = backend.read(0, (len * 2) as u64).await.unwrap();
         assert_eq!(res.bytes.len(), len);
     }
 
@@ -197,7 +205,7 @@ mod tests {
         let (backend, len) = backend().await;
         let offset = len - 10;
 
-        let res = backend.read(offset, 100).await.unwrap();
+        let res = backend.read(offset as u64, 100).await.unwrap();
         assert_eq!(res.bytes.len(), 10);
 
         let expected = std::fs::read(RASTER_FILE).unwrap();
@@ -208,7 +216,7 @@ mod tests {
     async fn read_at_eof_is_empty() {
         let (backend, len) = backend().await;
 
-        let res = backend.read(len, 10).await.unwrap();
+        let res = backend.read(len as u64, 10).await.unwrap();
         assert!(res.bytes.is_empty());
     }
 
@@ -217,7 +225,7 @@ mod tests {
         let (backend, len) = backend().await;
 
         assert!(matches!(
-            backend.read(len + 1, 10).await,
+            backend.read((len + 1) as u64, 10).await,
             Err(PmtError::Reading(_))
         ));
     }
@@ -236,7 +244,7 @@ mod tests {
         let (backend, len) = backend().await;
 
         assert!(matches!(
-            backend.read_exact(len - 5, 10).await,
+            backend.read_exact((len - 5) as u64, 10).await,
             Err(PmtError::Reading(_))
         ));
     }
@@ -246,7 +254,7 @@ mod tests {
         let (backend, _) = backend().await;
 
         assert!(matches!(
-            backend.read_exact(usize::MAX, 1).await,
+            backend.read_exact(u64::MAX, 1).await,
             Err(PmtError::Reading(_))
         ));
     }

@@ -64,7 +64,7 @@ impl HttpBackend {
 }
 
 impl AsyncBackend for HttpBackend {
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
+    async fn read(&self, offset: u64, length: u64) -> PmtResult<BackendResponse> {
         let end = offset + length - 1;
         let range = format!("bytes={offset}-{end}");
         let range = HeaderValue::try_from(range)?;
@@ -85,8 +85,11 @@ impl AsyncBackend for HttpBackend {
 
         let response_bytes = response.bytes().await?;
 
-        if response_bytes.len() > length {
-            Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
+        if response_bytes.len() as u64 > length {
+            Err(PmtError::ResponseBodyTooLong(
+                response_bytes.len() as u64,
+                length,
+            ))
         } else {
             Ok(match data_version {
                 Some(v) => BackendResponse::new_with_version(response_bytes, v),
