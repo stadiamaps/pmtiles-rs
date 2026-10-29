@@ -209,7 +209,7 @@ impl From<TileCoord> for TileId {
 
 #[cfg(test)]
 pub(crate) mod test {
-    use crate::{MAX_TILE_ID, PYRAMID_SIZE_BY_ZOOM, PmtError, TileCoord, TileId};
+    use crate::{MAX_TILE_ID, MAX_ZOOM, PYRAMID_SIZE_BY_ZOOM, PmtError, TileCoord, TileId};
 
     pub fn coord(z: u8, x: u32, y: u32) -> TileCoord {
         TileCoord::new(z, x, y).unwrap()
@@ -222,6 +222,17 @@ pub(crate) mod test {
     pub fn id_to_coord(id: u64) -> (u8, u32, u32) {
         let coord = TileCoord::from(TileId::new(id).unwrap());
         (coord.z(), coord.x(), coord.y())
+    }
+
+    #[rstest::rstest]
+    #[case::zoom_too_large(MAX_ZOOM + 1, 0, 0)]
+    #[case::x_too_large(1, 2, 0)]
+    #[case::y_too_large(1, 0, 2)]
+    fn tile_coord_rejects_invalid(#[case] z: u8, #[case] x: u32, #[case] y: u32) {
+        assert!(matches!(
+            TileCoord::new(z, x, y),
+            Err(PmtError::InvalidCoordinate(..))
+        ));
     }
 
     #[test]

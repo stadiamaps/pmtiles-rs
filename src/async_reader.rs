@@ -504,8 +504,8 @@ mod tests {
 
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::{
-        AsyncBackend, AsyncPmTilesReader, BackendResponse, MmapBackend, PmtError, PmtResult,
-        TileCoord,
+        AsyncBackend, AsyncPmTilesReader, BackendResponse, Compression, MmapBackend, PmtError,
+        PmtResult, TileCoord,
     };
     #[cfg(feature = "iter-async")]
     use crate::{DirEntry, HashMapCache, TileId};
@@ -523,7 +523,7 @@ mod tests {
         AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     }
 
-    /// Byte positions of the header's root directory and section fields.
+    /// Byte positions of the header's fields.
     const ROOT_OFFSET: usize = 8;
     const ROOT_LENGTH: usize = 16;
     const METADATA_OFFSET: usize = 24;
@@ -532,6 +532,7 @@ mod tests {
     const LEAF_LENGTH: usize = 48;
     const DATA_OFFSET: usize = 56;
     const DATA_LENGTH: usize = 64;
+    const INTERNAL_COMPRESSION: usize = 97;
 
     /// A root directory outside the initial bytes is an invalid header, not a panic or a misread.
     #[rstest]
@@ -549,6 +550,29 @@ mod tests {
 
         let result = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None)).await;
         assert!(matches!(result, Err(PmtError::InvalidHeader)));
+    }
+
+    /// Data shorter than a header is an invalid header.
+    #[tokio::test]
+    async fn rejects_truncated_header() {
+        let data = fs::read(RASTER_FILE).unwrap();
+        let backend = VersionedBackend::new(&data[..100], None);
+
+        let result = AsyncPmTilesReader::try_from_source(backend).await;
+        assert!(matches!(result, Err(PmtError::InvalidHeader)));
+    }
+
+    /// Directories with an unknown internal compression cannot be read.
+    #[tokio::test]
+    async fn rejects_unsupported_internal_compression() {
+        let mut data = include_bytes!("../fixtures/leaf.pmtiles").to_vec();
+        data[INTERNAL_COMPRESSION] = 0; // Compression::Unknown
+
+        let result = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None)).await;
+        assert!(matches!(
+            result,
+            Err(PmtError::UnsupportedCompression(Compression::Unknown))
+        ));
     }
 
     /// A section whose end overflows `u64` is an invalid header, not an overflow in a later read.
@@ -785,6 +809,9 @@ mod tests {
         } else {
             assert!(tile.unwrap().is_none());
         }
+
+        let tile = tiles.get_tile_decompressed(coord).await.unwrap();
+        assert_eq!(tile.is_some(), should_exist);
     }
 
     #[tokio::test]
@@ -936,8 +963,6 @@ mod tests {
     #[cfg(feature = "brotli")]
     #[tokio::test]
     async fn brotli_decompression() {
-        use crate::Compression;
-
         // This fixture has brotli internal and tile compression, and one tile 0_0_0.png.
         let backend = MmapBackend::try_from("fixtures/single_tile_brotli.pmtiles")
             .await
@@ -1117,7 +1142,7 @@ mod tests {
     #[cfg(feature = "write")]
     fn archive_with_self_listing_leaf() -> Vec<u8> {
         use crate::writer::WriteTo as _;
-        use crate::{Compression, DirEntry, Directory, Header, TileType};
+        use crate::{DirEntry, Directory, Header, TileType};
 
         let leaf_entry = |length| DirEntry {
             tile_id: 0,
