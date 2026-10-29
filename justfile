@@ -190,10 +190,12 @@ test-fmt:
 udeps:  (cargo-install 'cargo-udeps')
     cargo +nightly udeps --workspace --features __all_non_conflicting --all-targets
 
-# Update all dependencies, including breaking changes. Requires nightly toolchain (install with `rustup install nightly`)
-update:
-    cargo +nightly -Z unstable-options update --breaking
+# Update all dependencies, including breaking changes (installs `cargo-edit`)
+update:  (cargo-install 'cargo-upgrade' 'cargo-edit')
+    cargo upgrade --incompatible --compatible ignore
     cargo update
+    cargo upgrade --incompatible --compatible ignore --manifest-path fuzz/Cargo.toml
+    cargo update --manifest-path fuzz/Cargo.toml
 
 # Ensure that a certain command is available
 [private]
