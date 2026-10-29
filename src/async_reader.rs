@@ -1,7 +1,3 @@
-// FIXME: This seems like a bug - there are lots of u64 to usize conversions in this file,
-//        so any file larger than 4GB, or an untrusted file with bad data may crash.
-#![expect(clippy::cast_possible_truncation)]
-
 use std::future::Future;
 #[cfg(feature = "iter-async")]
 use std::sync::Arc;
@@ -94,6 +90,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
         let header = Header::try_from_bytes(initial_bytes.split_to(HEADER_SIZE))?;
 
+        #[expect(clippy::cast_possible_truncation)]
         let directory_bytes = initial_bytes
             .split_off((header.root_offset as usize) - HEADER_SIZE)
             .split_to(header.root_length as _);
@@ -585,7 +582,9 @@ mod tests {
             .await
             .unwrap();
         let header = tiles.get_header();
+        #[expect(clippy::cast_possible_truncation)]
         let leaf_start = header.leaf_offset as usize;
+        #[expect(clippy::cast_possible_truncation)]
         let leaf_end = leaf_start + header.leaf_length as usize;
         let mut replaced = data.to_vec();
         replaced[leaf_start..leaf_end].fill(0);
@@ -623,6 +622,7 @@ mod tests {
         let tiles = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, Some("v1")))
             .await
             .unwrap();
+        #[expect(clippy::cast_possible_truncation)]
         let leaf_offset = tiles.get_header().leaf_offset as usize;
         tiles.backend.replace(&data[..leaf_offset], Some("v1"));
 
