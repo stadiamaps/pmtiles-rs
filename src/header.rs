@@ -1,7 +1,6 @@
 #[cfg(feature = "write")]
 use std::io::{self, Write};
 use std::num::NonZeroU64;
-use std::panic::catch_unwind;
 
 use bytes::{Buf, Bytes};
 #[cfg(feature = "tilejson")]
@@ -13,7 +12,6 @@ use crate::{PmtError, PmtResult};
 
 #[cfg(any(feature = "__async", feature = "write"))]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
-#[cfg(any(test, feature = "__async", feature = "write"))]
 pub(crate) const HEADER_SIZE: usize = 127;
 
 #[derive(Debug)]
@@ -270,9 +268,14 @@ impl Header {
     ///
     /// # Errors
     ///
-    /// If the byte buffer contains invalid `PMTiles` header data.
+    /// If the byte buffer is shorter than a header, or contains invalid `PMTiles` header data.
     pub fn try_from_bytes(mut bytes: Bytes) -> PmtResult<Self> {
-        let magic_bytes = bytes.split_to(V3_MAGIC.len());
+        // Every read below then has enough bytes
+        if bytes.len() < HEADER_SIZE {
+            return Err(PmtError::InvalidHeader);
+        }
+
+        let magic_bytes = bytes.split_to(V3_MAGIC.len()); // "PMTiles" = 7
 
         // Assert magic
         if magic_bytes != V3_MAGIC {
@@ -283,37 +286,33 @@ impl Header {
             });
         }
 
-        // Wrap the panics that are possible in `get_u*_le` calls. (Panic occurs if the buffer is exhausted.)
-        catch_unwind(move || {
-            Ok(Self {
-                version: bytes.get_u8(),
-                root_offset: bytes.get_u64_le(),
-                root_length: bytes.get_u64_le(),
-                metadata_offset: bytes.get_u64_le(),
-                metadata_length: bytes.get_u64_le(),
-                leaf_offset: bytes.get_u64_le(),
-                leaf_length: bytes.get_u64_le(),
-                data_offset: bytes.get_u64_le(),
-                data_length: bytes.get_u64_le(),
-                n_addressed_tiles: NonZeroU64::new(bytes.get_u64_le()),
-                n_tile_entries: NonZeroU64::new(bytes.get_u64_le()),
-                n_tile_contents: NonZeroU64::new(bytes.get_u64_le()),
-                clustered: bytes.get_u8() == 1,
-                internal_compression: bytes.get_u8().try_into()?,
-                tile_compression: bytes.get_u8().try_into()?,
-                tile_type: bytes.get_u8().try_into()?,
-                min_zoom: bytes.get_u8(),
-                max_zoom: bytes.get_u8(),
-                min_longitude: Self::read_coordinate_part(&mut bytes),
-                min_latitude: Self::read_coordinate_part(&mut bytes),
-                max_longitude: Self::read_coordinate_part(&mut bytes),
-                max_latitude: Self::read_coordinate_part(&mut bytes),
-                center_zoom: bytes.get_u8(),
-                center_longitude: Self::read_coordinate_part(&mut bytes),
-                center_latitude: Self::read_coordinate_part(&mut bytes),
-            })
+        Ok(Self {
+            version: bytes.get_u8(),                                  // 8
+            root_offset: bytes.get_u64_le(),                          // 16
+            root_length: bytes.get_u64_le(),                          // 24
+            metadata_offset: bytes.get_u64_le(),                      // 32
+            metadata_length: bytes.get_u64_le(),                      // 40
+            leaf_offset: bytes.get_u64_le(),                          // 48
+            leaf_length: bytes.get_u64_le(),                          // 56
+            data_offset: bytes.get_u64_le(),                          // 64
+            data_length: bytes.get_u64_le(),                          // 72
+            n_addressed_tiles: NonZeroU64::new(bytes.get_u64_le()),   // 80
+            n_tile_entries: NonZeroU64::new(bytes.get_u64_le()),      // 88
+            n_tile_contents: NonZeroU64::new(bytes.get_u64_le()),     // 96
+            clustered: bytes.get_u8() == 1,                           // 97
+            internal_compression: bytes.get_u8().try_into()?,         // 98
+            tile_compression: bytes.get_u8().try_into()?,             // 99
+            tile_type: bytes.get_u8().try_into()?,                    // 100
+            min_zoom: bytes.get_u8(),                                 // 101
+            max_zoom: bytes.get_u8(),                                 // 102
+            min_longitude: Self::read_coordinate_part(&mut bytes),    // 106
+            min_latitude: Self::read_coordinate_part(&mut bytes),     // 110
+            max_longitude: Self::read_coordinate_part(&mut bytes),    // 114
+            max_latitude: Self::read_coordinate_part(&mut bytes),     // 118
+            center_zoom: bytes.get_u8(),                              // 119
+            center_longitude: Self::read_coordinate_part(&mut bytes), // 123
+            center_latitude: Self::read_coordinate_part(&mut bytes),  // 127
         })
-        .map_err(|_| PmtError::InvalidHeader)?
     }
 }
 
@@ -435,6 +434,18 @@ mod tests {
             None => assert!(result.is_ok()),
             Some(error) => assert_eq!(result.unwrap_err().to_string(), error.to_string()),
         }
+    }
+
+    /// Data shorter than a header is an invalid header, not a panic.
+    #[rstest]
+    #[case::empty(0)]
+    #[case::shorter_than_magic(3)]
+    #[case::magic_only(7)]
+    #[case::one_byte_short(HEADER_SIZE - 1)]
+    fn header_rejects_short_data(#[case] len: usize) {
+        let bytes = fs::read(RASTER_FILE).unwrap();
+        let result = Header::try_from_bytes(Bytes::copy_from_slice(&bytes[..len]));
+        assert!(matches!(result, Err(PmtError::InvalidHeader)));
     }
 
     #[rstest]
