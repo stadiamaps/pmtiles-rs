@@ -138,7 +138,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             return Ok(None);
         };
 
-        let offset = (self.header.data_offset + entry.offset) as _;
+        let offset = entry_offset(self.header.data_offset, self.header.data_length, &entry)? as _;
         let length = entry.length as _;
         Ok(Some(self.read_exact_unmodified(offset, length).await?))
     }
@@ -224,7 +224,9 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
             while let Some(entry) = queue.pop_front() {
                 if entry.is_leaf() {
-                    let offset = (self.header.leaf_offset + entry.offset) as _;
+                    let offset =
+                        entry_offset(self.header.leaf_offset, self.header.leaf_length, &entry)?
+                            as _;
                     let length = entry.length as usize;
                     let leaf_dir = self.read_directory(offset, length).await?;
                     // enqueue all entries in the leaf directory
@@ -308,7 +310,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ) -> PmtResult<Option<DirEntry>> {
         // the recursion is done as two functions because it is a bit cleaner,
         // and it allows the directory to be cached later without cloning it first.
-        let offset = (self.header.leaf_offset + entry.offset) as _;
+        let offset = entry_offset(self.header.leaf_offset, self.header.leaf_length, entry)? as _;
 
         let entry = self
             .cache
@@ -406,6 +408,17 @@ fn root_directory_range(header: &Header, available: usize) -> Option<Range<usize
         .checked_sub(HEADER_SIZE)?;
     let end = start.checked_add(usize::try_from(header.root_length).ok()?)?;
     (end <= available).then_some(start..end)
+}
+
+/// Returns the offset of an entry in the archive, failing if a malformed directory points it
+/// outside of its section, so that it is never read.
+fn entry_offset(section_offset: u64, section_length: u64, entry: &DirEntry) -> PmtResult<u64> {
+    entry
+        .offset
+        .checked_add(u64::from(entry.length))
+        .filter(|end| *end <= section_length)
+        .and_then(|_| section_offset.checked_add(entry.offset))
+        .ok_or(PmtError::InvalidEntry)
 }
 
 /// A trait for asynchronous backends that can read data from a `PMTiles` source.
@@ -862,5 +875,87 @@ mod tests {
 
         let all_entries: Vec<_> = entries.try_collect().await.unwrap();
         assert_eq!(all_entries.len(), 108);
+    }
+
+    /// Byte positions of the header's section fields.
+    #[cfg(feature = "iter-async")]
+    const LEAF_LENGTH: usize = 48;
+    #[cfg(feature = "iter-async")]
+    const DATA_OFFSET: usize = 56;
+    #[cfg(feature = "iter-async")]
+    const DATA_LENGTH: usize = 64;
+
+    /// Opens `leaf.pmtiles` with one header field changed, and returns the entry of its
+    /// last tile in the data section.
+    #[cfg(feature = "iter-async")]
+    async fn open_with_header_field(
+        field: usize,
+        value: fn(u64) -> u64,
+    ) -> (
+        std::sync::Arc<AsyncPmTilesReader<VersionedBackend>>,
+        crate::DirEntry,
+    ) {
+        use futures_util::TryStreamExt as _;
+
+        let data: &[u8] = include_bytes!("../fixtures/leaf.pmtiles");
+        let reader = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, None))
+            .await
+            .unwrap();
+        let entries: Vec<_> = std::sync::Arc::new(reader)
+            .entries()
+            .try_collect()
+            .await
+            .unwrap();
+        let last = entries
+            .into_iter()
+            .max_by_key(|entry| entry.offset + u64::from(entry.length))
+            .unwrap();
+        assert!(last.offset > 0);
+
+        let mut data = data.to_vec();
+        let value = value(last.offset + u64::from(last.length));
+        data[field..field + 8].copy_from_slice(&value.to_le_bytes());
+        let reader = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None))
+            .await
+            .unwrap();
+        (std::sync::Arc::new(reader), last)
+    }
+
+    /// A tile or leaf directory outside its section is an invalid entry, not a panic,
+    /// a wrapped offset, or a read of another section's bytes.
+    #[rstest]
+    #[case::tile_offset_overflows(DATA_OFFSET, |_| u64::MAX)]
+    #[case::tile_past_data_section(DATA_LENGTH, |tile_end| tile_end - 1)]
+    #[case::leaf_past_leaf_section(LEAF_LENGTH, |_| 0)]
+    #[tokio::test]
+    #[cfg(feature = "iter-async")]
+    async fn rejects_entry_outside_its_section(
+        #[case] field: usize,
+        #[case] value: fn(u64) -> u64,
+    ) {
+        let (reader, last) = open_with_header_field(field, value).await;
+
+        let tile = reader
+            .get_tile(crate::TileId::new(last.tile_id).unwrap())
+            .await;
+        assert!(
+            matches!(tile, Err(crate::PmtError::InvalidEntry)),
+            "{tile:?}"
+        );
+    }
+
+    /// Listing entries rejects a leaf directory outside the leaf section.
+    #[tokio::test]
+    #[cfg(feature = "iter-async")]
+    async fn entries_rejects_leaf_outside_leaf_section() {
+        use futures_util::TryStreamExt as _;
+
+        let (reader, _) = open_with_header_field(LEAF_LENGTH, |_| 0).await;
+
+        let entries = reader.entries().try_collect::<Vec<_>>().await;
+        assert!(
+            matches!(entries, Err(crate::PmtError::InvalidEntry)),
+            "{entries:?}"
+        );
     }
 }
