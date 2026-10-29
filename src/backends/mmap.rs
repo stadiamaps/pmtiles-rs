@@ -145,6 +145,22 @@ impl AsyncBackend for MmapBackend {
 mod tests {
     use super::*;
     use crate::tests::RASTER_FILE;
+    use crate::{HashMapCache, TileCoord};
+
+    #[tokio::test]
+    async fn reader_reads_tiles() {
+        let tile = TileCoord::new(3, 4, 2).unwrap();
+
+        let reader = AsyncPmTilesReader::new_with_path(RASTER_FILE)
+            .await
+            .unwrap();
+        assert!(reader.get_tile(tile).await.unwrap().is_some());
+
+        let reader = AsyncPmTilesReader::new_with_cached_path(HashMapCache::default(), RASTER_FILE)
+            .await
+            .unwrap();
+        assert!(reader.get_tile(tile).await.unwrap().is_some());
+    }
 
     async fn backend() -> (MmapBackend, usize) {
         let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();

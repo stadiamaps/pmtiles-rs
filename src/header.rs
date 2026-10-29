@@ -371,10 +371,11 @@ mod tests {
     use std::num::NonZeroU64;
 
     use bytes::{Bytes, BytesMut};
+    use rstest::rstest;
 
     use crate::header::HEADER_SIZE;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
-    use crate::{Header, TileType};
+    use crate::{Compression, Header, PmtError, PmtResult, TileType};
 
     #[test]
     fn read_header() {
@@ -399,6 +400,75 @@ mod tests {
         assert_eq!(header.min_longitude, -180.0);
         assert_eq!(header.max_longitude, 180.0);
         assert!(header.clustered);
+    }
+
+    #[test]
+    fn header_getters() {
+        let mut test = File::open(VECTOR_FILE).unwrap();
+        let mut header_bytes = [0; HEADER_SIZE];
+        test.read_exact(header_bytes.as_mut_slice()).unwrap();
+        let header = Header::try_from_bytes(Bytes::copy_from_slice(&header_bytes)).unwrap();
+
+        assert_eq!(header.spec_version(), 3);
+        assert_eq!(header.n_addressed_tiles(), NonZeroU64::new(108));
+        assert_eq!(header.n_tile_entries(), NonZeroU64::new(108));
+        assert_eq!(header.n_tile_contents(), NonZeroU64::new(106));
+        assert!(header.clustered());
+        assert_eq!(header.internal_compression(), Compression::Gzip);
+    }
+
+    #[rstest]
+    #[case(b"PMTiles", None)]
+    #[case(b"PM\x02\x00\x00\x00\x00", Some(PmtError::UnsupportedPmTilesVersion))]
+    #[case(b"NOTPMTI", Some(PmtError::InvalidMagicNumber))]
+    fn header_magic_number(#[case] magic: &[u8], #[case] error: Option<PmtError>) {
+        let mut bytes = std::fs::read(RASTER_FILE).unwrap();
+        bytes[..magic.len()].copy_from_slice(magic);
+        let result = Header::try_from_bytes(Bytes::from(bytes));
+        match error {
+            None => assert!(result.is_ok()),
+            Some(error) => assert_eq!(result.unwrap_err().to_string(), error.to_string()),
+        }
+    }
+
+    #[rstest]
+    #[case(0, Some(Compression::Unknown), None)]
+    #[case(1, Some(Compression::None), None)]
+    #[case(2, Some(Compression::Gzip), Some("gzip"))]
+    #[case(3, Some(Compression::Brotli), Some("br"))]
+    #[case(4, Some(Compression::Zstd), Some("zstd"))]
+    #[case(5, None, None)]
+    fn compression_from_u8(
+        #[case] value: u8,
+        #[case] compression: Option<Compression>,
+        #[case] encoding: Option<&str>,
+    ) {
+        let result: PmtResult<Compression> = value.try_into();
+        assert_eq!(result.ok(), compression);
+        if let Some(compression) = compression {
+            assert_eq!(compression.content_encoding(), encoding);
+        }
+    }
+
+    #[rstest]
+    #[case(0, Some(TileType::Unknown), "application/octet-stream")]
+    #[case(1, Some(TileType::Mvt), "application/vnd.mapbox-vector-tile")]
+    #[case(2, Some(TileType::Png), "image/png")]
+    #[case(3, Some(TileType::Jpeg), "image/jpeg")]
+    #[case(4, Some(TileType::Webp), "image/webp")]
+    #[case(5, Some(TileType::Avif), "image/avif")]
+    #[case(6, Some(TileType::Mlt), "application/vnd.maplibre-vector-tile")]
+    #[case(7, None, "")]
+    fn tile_type_from_u8(
+        #[case] value: u8,
+        #[case] tile_type: Option<TileType>,
+        #[case] content_type: &str,
+    ) {
+        let result: PmtResult<TileType> = value.try_into();
+        assert_eq!(result.ok(), tile_type);
+        if let Some(tile_type) = tile_type {
+            assert_eq!(tile_type.content_type(), content_type);
+        }
     }
 
     #[test]

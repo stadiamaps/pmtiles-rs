@@ -622,6 +622,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn builder_sets_header_fields() {
+        let path = get_temp_file_path("pmtiles").unwrap();
+        let mut writer = PmTilesWriter::new(TileType::Mvt)
+            .min_zoom(1)
+            .max_zoom(7)
+            .bounds(-10.0, -20.0, 30.0, 40.0)
+            .center_zoom(3)
+            .center(1.0, 2.0)
+            .create(File::create(&path).unwrap())
+            .unwrap();
+        writer
+            .add_tile(TileCoord::new(1, 0, 0).unwrap(), b"tile")
+            .unwrap();
+        writer.finalize().unwrap();
+
+        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+        let header = reader.get_header();
+        assert_eq!(
+            (header.min_zoom, header.max_zoom, header.center_zoom),
+            (1, 7, 3)
+        );
+        assert_eq!(
+            (
+                header.min_longitude,
+                header.min_latitude,
+                header.max_longitude,
+                header.max_latitude
+            ),
+            (-10.0, -20.0, 30.0, 40.0)
+        );
+        assert_eq!(
+            (header.center_longitude, header.center_latitude),
+            (1.0, 2.0)
+        );
+    }
+
+    #[tokio::test]
     async fn metadata_and_zooms_set_after_the_tiles() {
         let path = get_temp_file_path("pmtiles").unwrap();
         let mut writer = PmTilesWriter::new(TileType::Mvt)
