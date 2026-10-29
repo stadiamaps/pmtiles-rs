@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.25.0...v0.26.0) - 2026-10-29
+
+### Added
+
+- *(cache)* [**breaking**] prevent sharing directory caches between archives ([#150](https://github.com/stadiamaps/pmtiles-rs/pull/150))
+
+### Fixed
+
+- check the header length instead of catching panics ([#173](https://github.com/stadiamaps/pmtiles-rs/pull/173))
+- build every feature combination without warnings ([#172](https://github.com/stadiamaps/pmtiles-rs/pull/172))
+- reject leaf directories that list themselves ([#167](https://github.com/stadiamaps/pmtiles-rs/pull/167))
+- reject archives whose reads would overflow or be empty ([#166](https://github.com/stadiamaps/pmtiles-rs/pull/166))
+- track writer positions as u64 ([#165](https://github.com/stadiamaps/pmtiles-rs/pull/165))
+- reject malformed directories instead of panicking ([#163](https://github.com/stadiamaps/pmtiles-rs/pull/163))
+- reject directory entries with tile runs past `MAX_TILE_ID` ([#164](https://github.com/stadiamaps/pmtiles-rs/pull/164))
+- [**breaking**] use `u64` offsets in `AsyncBackend` and `DirectoryCache` ([#161](https://github.com/stadiamaps/pmtiles-rs/pull/161))
+- reject directory entries outside their section ([#160](https://github.com/stadiamaps/pmtiles-rs/pull/160))
+- reject root directories outside the initial bytes ([#159](https://github.com/stadiamaps/pmtiles-rs/pull/159))
+- *(tilejson)* ignore numeric `minzoom` and `maxzoom` in metadata ([#151](https://github.com/stadiamaps/pmtiles-rs/pull/151))
+
+### Other
+
+- check and test the WebAssembly build, docs ([#174](https://github.com/stadiamaps/pmtiles-rs/pull/174))
+- cover untested reader, cache and writer paths ([#171](https://github.com/stadiamaps/pmtiles-rs/pull/171))
+- use cargo-edit for `just update` ([#170](https://github.com/stadiamaps/pmtiles-rs/pull/170))
+- add clippy restriction lints ([#169](https://github.com/stadiamaps/pmtiles-rs/pull/169))
+- simplify absolute paths ([#168](https://github.com/stadiamaps/pmtiles-rs/pull/168))
+- fuzz the reader with malformed archives ([#162](https://github.com/stadiamaps/pmtiles-rs/pull/162))
+- run the tests on a 32-bit target ([#158](https://github.com/stadiamaps/pmtiles-rs/pull/158))
+- exclude fixtures when publishing ([#156](https://github.com/stadiamaps/pmtiles-rs/pull/156))
+- cover the S3 backends, header, TileJSON parsing and writer settings ([#153](https://github.com/stadiamaps/pmtiles-rs/pull/153))
+- make the Codecov project status informational ([#152](https://github.com/stadiamaps/pmtiles-rs/pull/152))
+- *(cache)* [**breaking**] store `MokaCache` directories in `Arc`s ([#147](https://github.com/stadiamaps/pmtiles-rs/pull/147))
+- *(deps)* update rstest requirement from 0.27.0 to 0.28.0 in the all-cargo-version-updates group ([#146](https://github.com/stadiamaps/pmtiles-rs/pull/146))
+- *(deps)* bump taiki-e/install-action from 2.87.22 to 2.87.28 in the all-actions-version-updates group ([#145](https://github.com/stadiamaps/pmtiles-rs/pull/145))
+- add a `get_tile` benchmark for directory caches ([#148](https://github.com/stadiamaps/pmtiles-rs/pull/148))
+
 ## [0.25.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.24.1...v0.25.0) - 2026-10-15
 
 ### Added
