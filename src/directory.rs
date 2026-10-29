@@ -83,7 +83,7 @@ fn read_varint<T: TryFrom<u64>>(buf: &mut &[u8]) -> PmtResult<T> {
         }
         _ => {
             let (value, len) = u64::decode_var(buf).ok_or(PmtError::InvalidEntry)?;
-            *buf = &buf[len..];
+            *buf = buf.get(len..).ok_or(PmtError::InvalidEntry)?;
             value
         }
     };
@@ -150,7 +150,7 @@ impl TryFrom<Bytes> for Directory {
             last_entry = Some(entry);
         }
 
-        Ok(Directory { entries })
+        Ok(Self { entries })
     }
 }
 
@@ -231,6 +231,10 @@ pub struct DirEntryCoordsIter<'a> {
 impl Iterator for DirEntryCoordsIter<'_> {
     type Item = TileId;
 
+    #[expect(
+        clippy::expect_used,
+        reason = "parsing guarantees that the whole run fits within `MAX_TILE_ID`"
+    )]
     fn next(&mut self) -> Option<Self::Item> {
         if self.current < self.entry.run_length {
             let current = u64::from(self.current);
@@ -391,7 +395,9 @@ mod tests {
             let compressor: &dyn Compressor = match compression {
                 Compression::Gzip => &GzipCompressor::default(),
                 Compression::None => &NoCompression,
-                _ => unimplemented!("This compression not handled by tests (yet)"),
+                Compression::Unknown | Compression::Brotli | Compression::Zstd => {
+                    panic!("This compression not handled by tests (yet)")
+                }
             };
             dir.write_compressed_to(&mut buf, compressor).unwrap();
 
@@ -404,7 +410,9 @@ mod tests {
                     decoded
                 }
                 Compression::None => buf,
-                _ => unimplemented!("This compression not handled by tests (yet)"),
+                Compression::Unknown | Compression::Brotli | Compression::Zstd => {
+                    panic!("This compression not handled by tests (yet)")
+                }
             };
             Directory::try_from(Bytes::from(raw)).unwrap().entries
         }

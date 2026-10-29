@@ -56,7 +56,7 @@ impl HttpBackend {
     ///
     /// This function will return an error if the URL cannot be parsed into a valid URL.
     pub fn try_from<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
-        Ok(HttpBackend {
+        Ok(Self {
             client,
             url: url.into_url()?,
         })

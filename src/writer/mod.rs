@@ -168,13 +168,18 @@ impl PmTilesWriter {
     pub fn new(tile_type: TileType) -> Self {
         let tile_compressor: Box<dyn Compressor> = match tile_type {
             TileType::Mvt => Box::new(GzipCompressor::default()),
-            _ => Box::new(NoCompression),
+            TileType::Unknown
+            | TileType::Png
+            | TileType::Jpeg
+            | TileType::Webp
+            | TileType::Avif
+            | TileType::Mlt => Box::new(NoCompression),
         };
         let internal_compressor: Box<dyn Compressor> = Box::new(GzipCompressor::default());
         let header = Header::new(tile_compressor.compression(), tile_type);
         Self {
             header,
-            metadata: "{}".to_string(),
+            metadata: "{}".to_owned(),
             tile_compressor,
             internal_compressor,
             dedup: PhantomData,
@@ -565,6 +570,10 @@ impl<W: Write + Seek, K: Copy + Eq + Hash> WriterState<W, K> {
             let leaf_size = leaf.compressed_size(compressor)?;
             leaves.push(leaf);
 
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "`chunks` never yields an empty chunk"
+            )]
             root_dir.push(DirEntry {
                 tile_id: chunk[0].tile_id,
                 offset,
@@ -638,7 +647,7 @@ mod tests {
     use std::num::NonZeroU64;
     use std::sync::Arc;
 
-    use futures_util::TryStreamExt;
+    use futures_util::TryStreamExt as _;
     use rstest::rstest;
     use tempfile::NamedTempFile;
 
@@ -891,8 +900,7 @@ mod tests {
         assert_eq!(header_out.n_addressed_tiles, NonZeroU64::new(num_tiles));
         assert_eq!(header_out.n_tile_entries, NonZeroU64::new(num_tiles));
         assert_eq!(header_out.n_tile_contents, NonZeroU64::new(num_tiles));
-        let entries = tiles_out
-            .clone()
+        let entries = Arc::clone(&tiles_out)
             .entries()
             .try_collect::<Vec<_>>()
             .await
@@ -1037,8 +1045,7 @@ mod tests {
         assert_eq!(metadata_out, test_metadata);
 
         // Verify directory entries can be read (exercises directory decompression)
-        let entries = tiles_out
-            .clone()
+        let entries = Arc::clone(&tiles_out)
             .entries()
             .try_collect::<Vec<_>>()
             .await
@@ -1089,8 +1096,7 @@ mod tests {
         assert_eq!(header.n_tile_entries, NonZeroU64::new(3));
         assert_eq!(header.n_tile_contents, NonZeroU64::new(2));
 
-        let entries = tiles_out
-            .clone()
+        let entries = Arc::clone(&tiles_out)
             .entries()
             .try_collect::<Vec<_>>()
             .await
@@ -1280,8 +1286,7 @@ mod tests {
         let metadata_out = tiles_out.get_metadata().await.unwrap();
         assert_eq!(metadata_out, test_metadata);
 
-        let entries = tiles_out
-            .clone()
+        let entries = Arc::clone(&tiles_out)
             .entries()
             .try_collect::<Vec<_>>()
             .await
