@@ -83,26 +83,25 @@ impl AsyncBackend for AwsS3Backend {
             .await
             .map_err(Box::new)?;
 
-        let data_version = obj
-            .e_tag
-            .take()
-            .or_else(|| obj.last_modified.as_ref().map(ToString::to_string));
-
         let response_bytes = obj
             .body
             .collect()
             .await
             .map_err(|e| PmtError::Reading(e.into()))?
             .into_bytes();
-
         if response_bytes.len() > length {
-            Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
-        } else {
-            Ok(match data_version {
-                Some(v) => BackendResponse::new_with_version(response_bytes, v),
-                None => BackendResponse::new(response_bytes),
-            })
+            return Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length));
         }
+
+        let data_version = obj
+            .e_tag
+            .take()
+            .or_else(|| obj.last_modified.as_ref().map(ToString::to_string));
+
+        Ok(match data_version {
+            Some(v) => BackendResponse::new_with_version(response_bytes, v),
+            None => BackendResponse::new(response_bytes),
+        })
     }
 }
 

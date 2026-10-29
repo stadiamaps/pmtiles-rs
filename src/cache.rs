@@ -27,7 +27,7 @@ pub enum DirCacheResult {
 impl From<Option<&DirEntry>> for DirCacheResult {
     fn from(entry: Option<&DirEntry>) -> Self {
         match entry {
-            Some(entry) => Self::Found(entry.clone()),
+            Some(entry) => Self::Found(*entry),
             None => Self::NotFound,
         }
     }
@@ -60,7 +60,7 @@ impl DirectoryCache for NoCache {
         fetcher: impl Future<Output = PmtResult<Directory>> + Send,
     ) -> PmtResult<Option<DirEntry>> {
         let dir = fetcher.await?;
-        Ok(dir.find_tile_id(tile_id).cloned())
+        Ok(dir.find_tile_id(tile_id).copied())
     }
 }
 
@@ -100,7 +100,7 @@ impl DirectoryCache for HashMapCache {
             DirCacheResult::NotFound => Ok(None),
             DirCacheResult::NotCached => {
                 let directory = fetcher.await?;
-                let dir_entry = directory.find_tile_id(tile_id).cloned();
+                let dir_entry = directory.find_tile_id(tile_id).copied();
                 self.insert_dir(offset, directory);
                 Ok(dir_entry)
             }
@@ -185,7 +185,7 @@ impl DirectoryCache for MokaCache {
             .await;
         let directory = directory
             .map_err(|e| PmtError::DirectoryCacheError(format!("Moka cache fetch error: {e}")))?;
-        Ok(directory.find_tile_id(tile_id).cloned())
+        Ok(directory.find_tile_id(tile_id).copied())
     }
 }
 

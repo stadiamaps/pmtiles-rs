@@ -97,11 +97,10 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         let initial_response = backend.read(0, MAX_INITIAL_BYTES).await?;
         let mut initial_bytes = initial_response.bytes;
         let initial_data_version_string = initial_response.data_version_string;
-        if initial_bytes.len() < HEADER_SIZE {
-            return Err(PmtError::InvalidHeader);
-        }
 
-        let header = Header::try_from_bytes(initial_bytes.split_to(HEADER_SIZE))?;
+        // Fewer bytes than a header are still parsed, to report the version they are for
+        let header_len = initial_bytes.len().min(HEADER_SIZE);
+        let header = Header::try_from_bytes(initial_bytes.split_to(header_len))?;
         if !sections_fit_in_u64(&header) {
             return Err(PmtError::InvalidHeader);
         }
@@ -206,7 +205,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         let decompressed_metadata =
             Self::decompress(self.header.internal_compression, metadata).await?;
 
-        Ok(String::from_utf8(decompressed_metadata.to_vec())?)
+        Ok(String::from_utf8(Vec::from(decompressed_metadata))?)
     }
 
     /// Return an async stream over all tile entries in the archive. Directory entries are traversed, and not included in the result.
@@ -238,9 +237,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             // A valid archive lists each leaf directory once, so a repeat is a cycle
             let mut leaf_offsets = HashSet::new();
 
-            for entry in &self.root_directory.entries {
-                queue.push_back(entry.clone());
-            }
+            queue.extend(self.root_directory.entries.iter().copied());
 
             while let Some(entry) = queue.pop_front() {
                 if entry.is_leaf() {
@@ -320,7 +317,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             return self.find_entry_rec(tile_id, entry, 0).await;
         }
 
-        Ok(entry.cloned())
+        Ok(entry.copied())
     }
 
     async fn find_entry_rec(
@@ -560,6 +557,15 @@ mod tests {
 
         let result = AsyncPmTilesReader::try_from_source(backend).await;
         assert!(matches!(result, Err(PmtError::InvalidHeader)));
+    }
+
+    /// A short v2 archive is reported as an unsupported version, not as an invalid header.
+    #[tokio::test]
+    async fn rejects_short_v2_archive() {
+        let backend = VersionedBackend::new(b"PM\x02\x00", None);
+
+        let result = AsyncPmTilesReader::try_from_source(backend).await;
+        assert!(matches!(result, Err(PmtError::UnsupportedPmTilesVersion)));
     }
 
     /// Directories with an unknown internal compression cannot be read.
