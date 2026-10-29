@@ -5,7 +5,7 @@ use varint_rs::VarintReader as _;
 #[cfg(feature = "write")]
 use varint_rs::VarintWriter as _;
 
-use crate::{PmtError, TileId};
+use crate::{MAX_TILE_ID, PmtError, TileId};
 
 #[derive(Default, Clone)]
 /// A directory of tile entries in a `PMTiles` file.
@@ -88,6 +88,16 @@ impl TryFrom<Bytes> for Directory {
         // Read Run Lengths
         for entry in &mut entries {
             entry.run_length = buffer.read_u32_varint()?;
+            if !entry.is_leaf() {
+                // Every tile id covered by the run must be a valid `TileId`
+                let last_tile_id = entry
+                    .tile_id
+                    .checked_add(u64::from(entry.run_length - 1))
+                    .ok_or(PmtError::InvalidEntry)?;
+                if last_tile_id > MAX_TILE_ID {
+                    return Err(PmtError::InvalidEntry);
+                }
+            }
         }
 
         // Read Lengths
@@ -193,6 +203,7 @@ impl Iterator for DirEntryCoordsIter<'_> {
         if self.current < self.entry.run_length {
             let current = u64::from(self.current);
             self.current += 1;
+            // Parsing guarantees that the whole run fits within `MAX_TILE_ID`
             Some(TileId::new(self.entry.tile_id + current).expect("invalid entry data"))
         } else {
             None
@@ -205,12 +216,14 @@ mod tests {
     use std::io::{BufReader, Read, Write};
 
     use bytes::BytesMut;
+    use rstest::rstest;
+    use varint_rs::VarintWriter as _;
 
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
     #[cfg(feature = "iter-async")]
     use crate::tile::test::coord;
-    use crate::{Directory, Header};
+    use crate::{Directory, Header, MAX_TILE_ID, PmtError};
 
     fn read_root_directory(file: &str) -> Directory {
         let test_file = std::fs::File::open(file).unwrap();
@@ -259,6 +272,34 @@ mod tests {
             directory.entries[58].iter_coords().collect::<Vec<_>>(),
             vec![coord(3, 4, 7).into(), coord(3, 5, 7).into()]
         );
+    }
+
+    #[rstest]
+    #[case::tile_at_max(MAX_TILE_ID, 1, true)]
+    #[case::run_ending_at_max(MAX_TILE_ID - 1, 2, true)]
+    #[case::leaf_past_max(u64::MAX, 0, true)]
+    #[case::tile_past_max(MAX_TILE_ID + 1, 1, false)]
+    #[case::run_past_max(MAX_TILE_ID, 2, false)]
+    #[case::run_overflows_u64(u64::MAX, 2, false)]
+    fn entry_tile_range(#[case] tile_id: u64, #[case] run_length: u32, #[case] valid: bool) {
+        // A directory with a single entry: count, tile id, run length, length, offset + 1
+        let mut buf = vec![];
+        buf.write_usize_varint(1).unwrap();
+        buf.write_u64_varint(tile_id).unwrap();
+        buf.write_u32_varint(run_length).unwrap();
+        buf.write_u32_varint(1).unwrap();
+        buf.write_u64_varint(1).unwrap();
+
+        let result = Directory::try_from(bytes::Bytes::from(buf));
+        if valid {
+            let entries = result.unwrap().entries;
+            assert_eq!(entries[0].tile_id, tile_id);
+            assert_eq!(entries[0].run_length, run_length);
+            #[cfg(feature = "iter-async")]
+            assert_eq!(entries[0].iter_coords().count(), run_length as usize);
+        } else {
+            assert!(matches!(result, Err(PmtError::InvalidEntry)));
+        }
     }
 
     #[cfg(feature = "write")]
