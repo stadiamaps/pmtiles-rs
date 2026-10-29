@@ -18,3 +18,10 @@ pub use crate::backends::object_store::ObjectStoreBackend;
 mod s3;
 #[cfg(feature = "__async-s3")]
 pub use crate::backends::s3::S3Backend;
+#[cfg(test)]
+#[cfg(any(
+    feature = "aws-s3-async",
+    feature = "http-async",
+    feature = "__async-s3"
+))]
+mod test_server;

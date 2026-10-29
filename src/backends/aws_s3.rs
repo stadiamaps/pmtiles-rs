@@ -105,3 +105,116 @@ impl AsyncBackend for AwsS3Backend {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use aws_sdk_s3::config::{BehaviorVersion, Credentials, Region};
+
+    use super::*;
+    use crate::backends::test_server::serve_file;
+    use crate::tests::RASTER_FILE;
+    use crate::{HashMapCache, TileCoord};
+
+    fn client(server: &mockito::ServerGuard) -> Client {
+        let config = aws_sdk_s3::Config::builder()
+            .behavior_version(BehaviorVersion::latest())
+            .region(Region::new("us-east-1"))
+            .endpoint_url(server.url())
+            .force_path_style(true)
+            .credentials_provider(Credentials::new("key", "secret", None, None, "test"))
+            .build();
+        Client::from_conf(config)
+    }
+
+    fn backend(server: &mockito::ServerGuard) -> AwsS3Backend {
+        AwsS3Backend::from(client(server), "tiles".into(), "a.pmtiles".into())
+    }
+
+    #[tokio::test]
+    async fn reader_reads_tiles() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = serve_file(&mut server, RASTER_FILE, &[]).await;
+        let tile = TileCoord::new(3, 4, 2).unwrap();
+
+        let reader = AsyncPmTilesReader::new_with_client_bucket_and_path(
+            client(&server),
+            "tiles".into(),
+            "a.pmtiles".into(),
+        )
+        .await
+        .unwrap();
+        assert!(reader.get_tile(tile).await.unwrap().is_some());
+
+        let reader = AsyncPmTilesReader::new_with_cached_client_bucket_and_path(
+            HashMapCache::default(),
+            client(&server),
+            "tiles".into(),
+            "a.pmtiles".into(),
+        )
+        .await
+        .unwrap();
+        assert!(reader.get_tile(tile).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn read_without_data_version() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = serve_file(&mut server, RASTER_FILE, &[]).await;
+
+        let response = backend(&server).read(0, 64).await.unwrap();
+        assert_eq!(response.bytes.len(), 64);
+        assert!(response.data_version_string.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_prefers_etag_over_last_modified() {
+        let mut server = mockito::Server::new_async().await;
+        let headers = [
+            ("ETag", "\"abc123\""),
+            ("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT"),
+        ];
+        let _mock = serve_file(&mut server, RASTER_FILE, &headers).await;
+
+        let response = backend(&server).read(0, 64).await.unwrap();
+        assert_eq!(response.data_version_string.as_deref(), Some("\"abc123\""));
+    }
+
+    #[tokio::test]
+    async fn read_falls_back_to_last_modified() {
+        let mut server = mockito::Server::new_async().await;
+        let headers = [("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")];
+        let _mock = serve_file(&mut server, RASTER_FILE, &headers).await;
+
+        let response = backend(&server).read(0, 64).await.unwrap();
+        assert_eq!(
+            response.data_version_string.as_deref(),
+            Some("2025-01-01T00:00:00Z")
+        );
+    }
+
+    #[tokio::test]
+    async fn read_rejects_too_long_body() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(206)
+            .with_body(vec![0u8; 65])
+            .create_async()
+            .await;
+
+        let result = backend(&server).read(0, 64).await;
+        assert!(matches!(result, Err(PmtError::ResponseBodyTooLong(65, 64))));
+    }
+
+    #[tokio::test]
+    async fn read_reports_request_errors() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(404)
+            .create_async()
+            .await;
+
+        assert!(backend(&server).read(0, 64).await.is_err());
+    }
+}
