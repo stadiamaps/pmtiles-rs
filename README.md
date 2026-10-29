@@ -48,7 +48,7 @@ cargo add pmtiles --features http-async,moka,tilejson
 ## WebAssembly
 
 The `iter-async`, `write`, `tilejson`, `object-store`, `brotli` and `zstd` features build for
-`wasm32-unknown-unknown`, and their tests run on `wasm32-wasip1`. CI checks both. The `mmap`,
+`wasm32-unknown-unknown`, and the tests run on `wasm32-wasip1`. CI checks both. The `mmap`,
 `http` and S3 backends and the `moka` cache do not build for wasm yet, so in a browser, read
 archives through `object_store` or your own `AsyncBackend`.
 

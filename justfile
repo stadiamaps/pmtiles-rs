@@ -19,6 +19,8 @@ fuzz_args := '-max_len=65536 -timeout=10'
 
 # Features that build for wasm; `moka`, `mmap-async-tokio` and the network backends do not
 wasm_features := 'brotli,iter-async,object-store,tilejson,write,zstd'
+# Features tested on WASI; `zstd` needs a WASI C library to build there
+wasi_features := replace(wasm_features, ',zstd', '')
 
 @_default:
     {{just}} --list
@@ -172,7 +174,7 @@ semver *args:  (cargo-install 'cargo-semver-checks')
 # Run the unit tests of the wasm features on `wasm32-wasip1` with wasmtime (installs `wasmtime`)
 test-wasm:  (cargo-install 'wasmtime' 'wasmtime-cli')
     rustup target add wasm32-wasip1
-    CARGO_TARGET_WASM32_WASIP1_RUNNER='wasmtime --dir=.' cargo test --target wasm32-wasip1 --lib --no-default-features --features {{wasm_features}}
+    CARGO_TARGET_WASM32_WASIP1_RUNNER='wasmtime --dir=.' cargo test --target wasm32-wasip1 --lib --no-default-features --features {{wasi_features}}
 
 # Run all unit and integration tests
 test:
