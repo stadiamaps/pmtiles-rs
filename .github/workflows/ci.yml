@@ -40,6 +40,18 @@ jobs:
           toolchain: ${{ steps.msrv.outputs.value }}
       - run: just ci_mode=0 ci-test-msrv  # Ignore warnings in MSRV
 
+  test-32bit:
+    name: Test 32-bit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+        uses: Swatinem/rust-cache@v2
+      # gcc-multilib provides the 32-bit C toolchain for ring, aws-lc-rs and zstd-sys
+      - run: sudo apt-get update && sudo apt-get install -y gcc-multilib
+      - run: rustup target add i686-unknown-linux-gnu
+      - run: cargo test --target i686-unknown-linux-gnu --features __all_non_conflicting --all-targets
+
   coverage:
     name: Code Coverage
     if: github.event_name != 'release'
@@ -60,7 +72,7 @@ jobs:
   # This job checks if any of the previous jobs failed or were canceled.
   # This approach also allows some jobs to be skipped if they are not needed.
   ci-passed:
-    needs: [ test, test-msrv ]
+    needs: [ test, test-msrv, test-32bit ]
     if: always()
     runs-on: ubuntu-latest
     steps:
