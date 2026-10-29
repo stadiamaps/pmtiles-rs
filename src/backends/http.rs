@@ -64,8 +64,8 @@ impl HttpBackend {
 }
 
 impl AsyncBackend for HttpBackend {
-    async fn read(&self, offset: usize, length: usize) -> PmtResult<BackendResponse> {
-        let end = offset + length - 1;
+    async fn read(&self, offset: u64, length: usize) -> PmtResult<BackendResponse> {
+        let end = offset + length as u64 - 1;
         let range = format!("bytes={offset}-{end}");
         let range = HeaderValue::try_from(range)?;
 

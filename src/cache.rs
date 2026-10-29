@@ -37,7 +37,7 @@ pub trait DirectoryCache {
     /// Get a directory entry from the cache, or insert it using the provided fetcher function.
     fn get_dir_entry_or_insert(
         &self,
-        offset: usize,
+        offset: u64,
         tile_id: TileId,
         fetcher: impl Future<Output = PmtResult<Directory>> + Send,
     ) -> impl Future<Output = PmtResult<Option<DirEntry>>> + Send;
@@ -50,7 +50,7 @@ impl DirectoryCache for NoCache {
     #[inline]
     async fn get_dir_entry_or_insert(
         &self,
-        _: usize,
+        _: u64,
         tile_id: TileId,
         fetcher: impl Future<Output = PmtResult<Directory>> + Send,
     ) -> PmtResult<Option<DirEntry>> {
@@ -62,11 +62,11 @@ impl DirectoryCache for NoCache {
 /// A simple HashMap-based implementation of a `PMTiles` directory cache.
 #[derive(Default)]
 pub struct HashMapCache {
-    cache: RwLock<HashMap<usize, Directory>>,
+    cache: RwLock<HashMap<u64, Directory>>,
 }
 
 impl HashMapCache {
-    fn get_dir_entry(&self, offset: usize, tile_id: TileId) -> DirCacheResult {
+    fn get_dir_entry(&self, offset: u64, tile_id: TileId) -> DirCacheResult {
         // Panic if the lock is poisoned is not something the user can handle
         #[expect(clippy::unwrap_used)]
         if let Some(dir) = self.cache.read().unwrap().get(&offset) {
@@ -75,7 +75,7 @@ impl HashMapCache {
         DirCacheResult::NotCached
     }
 
-    fn insert_dir(&self, offset: usize, directory: Directory) {
+    fn insert_dir(&self, offset: u64, directory: Directory) {
         // Panic if the lock is poisoned is not something the user can handle
         #[expect(clippy::unwrap_used)]
         self.cache.write().unwrap().insert(offset, directory);
@@ -85,7 +85,7 @@ impl HashMapCache {
 impl DirectoryCache for HashMapCache {
     async fn get_dir_entry_or_insert(
         &self,
-        offset: usize,
+        offset: u64,
         tile_id: TileId,
         fetcher: impl Future<Output = PmtResult<Directory>> + Send,
     ) -> PmtResult<Option<DirEntry>> {
@@ -125,7 +125,7 @@ impl DirectoryCache for HashMapCache {
 /// ```
 #[cfg(feature = "moka")]
 pub struct MokaCache {
-    cache: moka::future::Cache<(u64, usize), Arc<Directory>>,
+    cache: moka::future::Cache<(u64, u64), Arc<Directory>>,
     archive_id: u64,
 }
 
@@ -168,7 +168,7 @@ impl MokaCache {
 impl DirectoryCache for MokaCache {
     async fn get_dir_entry_or_insert(
         &self,
-        offset: usize,
+        offset: u64,
         tile_id: TileId,
         fetcher: impl Future<Output = PmtResult<Directory>> + Send,
     ) -> PmtResult<Option<DirEntry>> {
@@ -201,7 +201,7 @@ impl DirectoryCache for MokaCache {
 #[cfg(feature = "moka")]
 #[derive(Clone)]
 pub struct SharedMokaCache {
-    cache: moka::future::Cache<(u64, usize), Arc<Directory>>,
+    cache: moka::future::Cache<(u64, u64), Arc<Directory>>,
 }
 
 #[cfg(feature = "moka")]
@@ -306,7 +306,7 @@ mod tests {
             .get_dir_entry_or_insert(offset + 10, tile_id, async {
                 let mut dir = Directory::default();
                 let dir_entry = DirEntry {
-                    offset: (offset + 10) as u64,
+                    offset: offset + 10,
                     ..Default::default()
                 };
                 dir.entries.push(dir_entry);
