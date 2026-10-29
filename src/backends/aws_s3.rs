@@ -216,6 +216,6 @@ mod tests {
             .create_async()
             .await;
 
-        assert!(backend(&server).read(0, 64).await.is_err());
+        backend(&server).read(0, 64).await.unwrap_err();
     }
 }

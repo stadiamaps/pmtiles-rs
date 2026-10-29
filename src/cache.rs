@@ -27,8 +27,8 @@ pub enum DirCacheResult {
 impl From<Option<&DirEntry>> for DirCacheResult {
     fn from(entry: Option<&DirEntry>) -> Self {
         match entry {
-            Some(entry) => DirCacheResult::Found(entry.clone()),
-            None => DirCacheResult::NotFound,
+            Some(entry) => Self::Found(entry.clone()),
+            None => Self::NotFound,
         }
     }
 }
@@ -276,7 +276,7 @@ mod tests {
     use crate::{MokaCache, SharedMokaCache};
 
     #[tokio::test]
-    async fn test_hash_map_cache() {
+    async fn hash_map_cache() {
         let cache = HashMapCache::default();
         let offset = 0;
         let tile_id = TileId::new(0).unwrap();
@@ -305,7 +305,7 @@ mod tests {
         let get_result = cache
             .get_dir_entry_or_insert(offset + 10, tile_id, async { Err(PmtError::InvalidEntry) })
             .await;
-        assert!(get_result.is_err());
+        get_result.unwrap_err();
 
         // The fetcher will be executed and will contain a tile
         let get_result = cache
@@ -433,7 +433,7 @@ mod tests {
         let first = cache
             .get_dir_entry_or_insert(0, tile_id, async { Err(PmtError::InvalidEntry) })
             .await;
-        assert!(first.is_err());
+        first.unwrap_err();
 
         let second = cache
             .get_dir_entry_or_insert(0, tile_id, async {

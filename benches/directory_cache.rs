@@ -5,6 +5,11 @@
 //! The archive is kept in memory, so the benchmark measures directory lookups, not I/O.
 //!
 //! Run with `just bench`, or `cargo bench --features moka,write --bench directory_cache`.
+#![expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "a benchmark should stop on any setup failure"
+)]
 
 use std::hint::black_box;
 use std::io::Cursor;

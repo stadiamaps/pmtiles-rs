@@ -65,6 +65,7 @@ pub const MAX_ZOOM: u8 = PYRAMID_SIZE_BY_ZOOM.len() as u8 - 1;
 /// # use pmtiles::MAX_TILE_ID;
 /// assert_eq!(MAX_TILE_ID, 6148914691236517204);
 /// ```
+#[expect(clippy::indexing_slicing, reason = "evaluated at compile time")]
 pub const MAX_TILE_ID: u64 =
     PYRAMID_SIZE_BY_ZOOM[PYRAMID_SIZE_BY_ZOOM.len() - 1] + 4_u64.pow(MAX_ZOOM as u32) - 1;
 
@@ -178,9 +179,9 @@ impl From<TileId> for TileCoord {
         if z > 0 {
             // Extract the Hilbert curve index and convert it to tile coordinates
             let (x, y) = h2xy::<u32>(id - size, z);
-            TileCoord { z, x, y }
+            Self { z, x, y }
         } else {
-            TileCoord { z: 0, x: 0, y: 0 }
+            Self { z: 0, x: 0, y: 0 }
         }
     }
 }
@@ -190,14 +191,18 @@ impl From<TileCoord> for TileId {
         let TileCoord { z, x, y } = coord;
         if z == 0 {
             // The 0/0/0 case would fail xy2h_discrete()
-            TileId(0)
+            Self(0)
         } else {
+            #[expect(
+                clippy::expect_used,
+                reason = "`TileCoord::new` only accepts a valid zoom"
+            )]
             let base = PYRAMID_SIZE_BY_ZOOM
                 .get(usize::from(z))
                 .expect("TileCoord should be valid"); // see TileCoord::new
             let tile_id = xy2h(x, y, z);
 
-            TileId(base + tile_id)
+            Self(base + tile_id)
         }
     }
 }
@@ -220,9 +225,8 @@ pub(crate) mod test {
     }
 
     #[test]
-    #[expect(clippy::panic)]
     #[expect(clippy::unreadable_literal)]
-    fn test_tile_id() {
+    fn tile_id() {
         assert_eq!(TileId::new(0).unwrap().value(), 0);
         let too_big = MAX_TILE_ID + 1;
         let Err(PmtError::InvalidTileId(invalid_tile_id)) = TileId::new(too_big) else {
@@ -284,7 +288,7 @@ pub(crate) mod test {
     }
 
     #[test]
-    fn test_calc_tile_coords() {
+    fn calc_tile_coords() {
         // Test round-trip conversion
         let test_cases = [
             (0, 0, 0),

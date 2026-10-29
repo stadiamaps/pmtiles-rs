@@ -1,5 +1,6 @@
 #![expect(clippy::absolute_paths, reason = "lots of absolute paths in error.rs")]
 
+use std::io;
 use std::string::FromUtf8Error;
 
 use thiserror::Error;
@@ -45,7 +46,7 @@ pub enum PmtError {
     InvalidTileType,
     /// An I/O error occurred while reading.
     #[error("IO Error {0}")]
-    Reading(#[from] std::io::Error),
+    Reading(#[from] io::Error),
     #[cfg(feature = "mmap-async-tokio")]
     /// Failed to open the file for memory mapping.
     #[error("Unable to open mmap file")]

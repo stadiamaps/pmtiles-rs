@@ -86,14 +86,14 @@ impl MmapBackend {
             .into_std()
             .await;
 
-        // SAFETY: Memory mapping a file is inherently unsafe - another process truncating or
-        // rewriting the file invalidates the mapped pages, and reading them is undefined
-        // behavior. That cannot be enforced from here, so the requirement is documented on
-        // this function and on every public constructor that reaches it.
         #[expect(
             unsafe_code,
             reason = "mmap of a file cannot be made safe; the contract is documented on the constructors"
         )]
+        // SAFETY: Memory mapping a file is inherently unsafe - another process truncating or
+        // rewriting the file invalidates the mapped pages, and reading them is undefined
+        // behavior. That cannot be enforced from here, so the requirement is documented on
+        // this function and on every public constructor that reaches it.
         let mmap = unsafe { Mmap::map(&file) }.map_err(|_| PmtError::UnableToOpenMmapFile)?;
 
         Ok(Self {
