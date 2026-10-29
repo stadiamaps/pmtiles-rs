@@ -7,19 +7,23 @@
 [![CI build status](https://github.com/stadiamaps/pmtiles-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/stadiamaps/pmtiles-rs/actions)
 [![Codecov](https://img.shields.io/codecov/c/github/stadiamaps/pmtiles-rs)](https://app.codecov.io/gh/stadiamaps/pmtiles-rs)
 
-This crate implements the [PMTiles v3 spec](https://github.com/protomaps/PMTiles/blob/master/spec/v3/spec.md),
-originally created by Brandon Liu for Protomaps.
+This crate reads and writes [PMTiles v3](https://github.com/protomaps/PMTiles/blob/main/spec/v3/spec.md)
+archives, the single-file tile format created by Brandon Liu for Protomaps.
 
 ## Features
 
-- Opening and validating `PMTile` archives
-- Querying tiles
-- Backends supported:
-  - Async `mmap` (Tokio) for local files
-  - Async `http` and `https` (Reqwest + Tokio) for URLs
-  - Async `s3` (Rust-S3 + Tokio) for S3-compatible buckets
-  - Async `s3`/`azure`/`gcp`/`fs`/`http`/`mem`/custom ([`object_store`](https://docs.rs/object_store))
-- Creating `PMTile` archives
+- **Reading** tiles, metadata, [TileJSON](https://github.com/mapbox/tilejson-spec) and the list of all tile entries
+- **Writing** archives, with identical tiles stored once
+- **Backends**, all async on Tokio:
+  - local files with `mmap`
+  - `http` and `https` URLs (Reqwest)
+  - S3, with either the AWS SDK or Rust-S3
+  - S3, Azure, GCP, local files, memory and custom stores through [`object_store`](https://docs.rs/object_store)
+  - your own, by implementing `AsyncBackend`
+- **Directory caches**: a simple `HashMapCache`, a bounded `MokaCache`, or your own `DirectoryCache`
+- **Safe with untrusted archives**: invalid data returns an error instead of crashing, which CI checks by fuzzing
+- **32-bit targets**, such as `i686`, read and write archives larger than 4 GiB
+- **WebAssembly**: the core library builds for the browser, see [below](#webassembly)
 
 ## Cargo features
 
@@ -33,89 +37,117 @@ pull in large dependency trees (the AWS SDK alone is a heavy build), so they are
 | `aws-s3-async`     | S3 backend using the AWS SDK                                    |
 | `s3-async-rustls`  | S3 backend using Rust-S3 with rustls (or `s3-async-native`)     |
 | `object-store`     | [`object_store`](https://docs.rs/object_store) backend          |
-| `moka`             | Directory cache based on `moka`                                 |
+| `moka`             | Bounded directory caches based on `moka`                        |
 | `tilejson`         | `TileJSON` support for metadata                                 |
 | `brotli`, `zstd`   | Additional tile and directory compression codecs                |
 
-```toml
-pmtiles = { version = "0.25", features = ["http-async", "tilejson"] }
+```bash
+cargo add pmtiles --features http-async,moka,tilejson
 ```
 
-## Plans & TODOs
+## WebAssembly
 
-- [ ] Documentation and example code
-- [ ] Support conversion to and from `MBTiles` + `x/y/z`
-- [ ] Support additional backends (sync `mmap` and `http` at least)
-- [ ] Support additional async styles (e.g., `async-std`)
-
-PRs welcome!
+The `iter-async`, `write`, `tilejson`, `object-store`, `brotli` and `zstd` features build for
+`wasm32-unknown-unknown`, and their tests run on `wasm32-wasip1`. CI checks both. The `mmap`,
+`http` and S3 backends and the `moka` cache do not build for wasm yet, so in a browser, read
+archives through `object_store` or your own `AsyncBackend`.
 
 ## Usage examples
 
-### Reading from a local `PMTiles` file
+### Reading from a local file
 
 ```rust,no_run
 use bytes::Bytes;
-use pmtiles::{AsyncPmTilesReader, TileCoord};
+use pmtiles::{AsyncPmTilesReader, PmtResult, TileCoord};
 
-async fn get_tile(z: u8, x: u32, y: u32) -> Option<Bytes> {
-  let file = "example.pmtiles";
-  // Use `new_with_cached_path` for better performance
-  let reader = AsyncPmTilesReader::new_with_path(file).await.unwrap();
-  let coord = TileCoord::new(z, x, y).unwrap();
-  reader.get_tile(coord).await.unwrap()
+async fn get_tile(z: u8, x: u32, y: u32) -> PmtResult<Option<Bytes>> {
+    let reader = AsyncPmTilesReader::new_with_path("example.pmtiles").await?;
+    // `None` if the archive has no such tile
+    reader.get_tile(TileCoord::new(z, x, y)?).await
+}
+
+async fn get_metadata() -> PmtResult<String> {
+    let reader = AsyncPmTilesReader::new_with_path("example.pmtiles").await?;
+    reader.get_metadata().await // JSON string
 }
 ```
 
-### Reading from a URL with a simple directory cache
+### Reading from a URL with a bounded cache
 
-This example uses a simple hashmap-based cache to optimize reads from a `PMTiles` source. The same caching is available for all other methods.  Note that `HashMapCache` is a rudimentary cache without eviction. You may want to build a more sophisticated cache for production use by implementing the `DirectoryCache` trait.
+Every lookup reads one or more directories before the tile itself. A directory cache keeps them,
+so repeated lookups skip those reads. `MokaCache` evicts directories to stay within its limit;
+`HashMapCache` is simpler but never evicts.
 
 ```rust,no_run
 use bytes::Bytes;
-use pmtiles::{AsyncPmTilesReader, HashMapCache, TileCoord};
-use pmtiles::reqwest::Client;  // Re-exported Reqwest crate
+use pmtiles::reqwest::Client; // Re-exported Reqwest crate
+use pmtiles::{AsyncPmTilesReader, MokaCache, PmtResult, TileCoord};
 
-async fn get_tile(z: u8, x: u32, y: u32) -> Option<Bytes> {
-  let cache = HashMapCache::default();
-  let client = Client::builder().use_rustls_tls().build().unwrap();
-  let url = "https://protomaps.github.io/PMTiles/protomaps(vector)ODbL_firenze.pmtiles";
-  let reader = AsyncPmTilesReader::new_with_cached_url(cache, client, url).await.unwrap();
-  let coord = TileCoord::new(z, x, y).unwrap();
-  reader.get_tile(coord).await.unwrap()
+async fn get_tile(z: u8, x: u32, y: u32) -> PmtResult<Option<Bytes>> {
+    // Use `MokaCache::new(100)` to limit the number of directories instead
+    let cache = MokaCache::with_max_bytes(64 * 1024 * 1024);
+    let client = Client::builder().use_rustls_tls().build()?;
+    let url = "https://protomaps.github.io/PMTiles/protomaps(vector)ODbL_firenze.pmtiles";
+    let reader = AsyncPmTilesReader::new_with_cached_url(cache, client, url).await?;
+    reader.get_tile(TileCoord::new(z, x, y)?).await
 }
 ```
 
-### Reading from an S3 bucket with a directory cache
+### Sharing one cache budget between archives
 
-AWS client configuration is fairly none-trivial to document here. See AWS SDK [documentation](https://crates.io/crates/aws-sdk-s3) for more details.
+A cache holds the directories of one archive. To give several archives one memory budget, create
+each archive's cache from the same `SharedMokaCache`:
+
+```rust,no_run
+use pmtiles::{AsyncPmTilesReader, PmtResult, SharedMokaCache};
+
+async fn open_archives() -> PmtResult<()> {
+    let shared = SharedMokaCache::with_max_bytes(256 * 1024 * 1024);
+    let a = AsyncPmTilesReader::new_with_cached_path(shared.new_cache(), "a.pmtiles").await?;
+    let b = AsyncPmTilesReader::new_with_cached_path(shared.new_cache(), "b.pmtiles").await?;
+    // ... read tiles from `a` and `b` ...
+    println!("{} directories cached", shared.entry_count());
+    Ok(())
+}
+```
+
+For other caching needs, such as expiring entries, implement the `DirectoryCache` trait.
+
+### Reading from an S3 bucket
+
+See the [AWS SDK documentation](https://crates.io/crates/aws-sdk-s3) for configuring the client.
 
 ```rust,no_run
 use bytes::Bytes;
-use pmtiles::{AsyncPmTilesReader, HashMapCache, TileCoord};
 use pmtiles::aws_sdk_s3::Client; // Re-exported AWS SDK S3 client
+use pmtiles::{AsyncPmTilesReader, HashMapCache, PmtResult, TileCoord};
 
-async fn get_tile(client: Client, z: u8, x: u32, y: u32) -> Option<Bytes> {
-  let cache = HashMapCache::default();
-  let bucket = "https://s3.example.com".to_string();
-  let key = "example.pmtiles".to_string();
-  let reader = AsyncPmTilesReader::new_with_cached_client_bucket_and_path(cache, client, bucket, key).await.unwrap();
-  let coord = TileCoord::new(z, x, y).unwrap();
-  reader.get_tile(coord).await.unwrap()
+async fn get_tile(client: Client, z: u8, x: u32, y: u32) -> PmtResult<Option<Bytes>> {
+    let cache = HashMapCache::default();
+    let bucket = "my-bucket".to_string();
+    let key = "example.pmtiles".to_string();
+    let reader =
+        AsyncPmTilesReader::new_with_cached_client_bucket_and_path(cache, client, bucket, key)
+            .await?;
+    reader.get_tile(TileCoord::new(z, x, y)?).await
 }
 ```
 
-### Writing to a `PMTiles` file
+### Writing a file
 
 ```rust,no_run
-use pmtiles::{PmTilesWriter, TileType, TileCoord};
 use std::fs::File;
 
-let file = File::create("example.pmtiles").unwrap();
-let mut writer = PmTilesWriter::new(TileType::Mvt).create(file).unwrap();
-let coord = TileCoord::new(0, 0, 0).unwrap();
-writer.add_tile(coord, &[/*...*/]).unwrap();
-writer.finalize().unwrap();
+use pmtiles::{PmTilesWriter, PmtResult, TileCoord, TileType};
+
+fn write_archive() -> PmtResult<()> {
+    let file = File::create("example.pmtiles")?;
+    let mut writer = PmTilesWriter::new(TileType::Mvt)
+        .metadata(r#"{"vector_layers": []}"#)
+        .create(file)?;
+    writer.add_tile(TileCoord::new(0, 0, 0)?, &[/* tile data */])?;
+    writer.finalize()
+}
 ```
 
 ## Development
@@ -124,6 +156,9 @@ writer.finalize().unwrap();
   Install it with `cargo install just`.
 * To get a list of available commands, run `just`.
 * To run tests, use `just test`.
+* To fuzz the reader with malformed archives, use `just fuzz` (needs nightly Rust).
+* To benchmark tile lookups, use `just bench`.
+* To build and test for WebAssembly, use `just check-wasm` and `just test-wasm`.
 
 ## License
 
