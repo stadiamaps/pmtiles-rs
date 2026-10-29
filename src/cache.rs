@@ -7,6 +7,11 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
+#[cfg(feature = "moka")]
+use moka::future::Cache;
+
+#[cfg(feature = "moka")]
+use crate::PmtError;
 use crate::{DirEntry, Directory, PmtResult, TileId};
 
 /// Result of a directory cache lookup.
@@ -125,7 +130,7 @@ impl DirectoryCache for HashMapCache {
 /// ```
 #[cfg(feature = "moka")]
 pub struct MokaCache {
-    cache: moka::future::Cache<(u64, u64), Arc<Directory>>,
+    cache: Cache<(u64, u64), Arc<Directory>>,
     archive_id: u64,
 }
 
@@ -178,9 +183,8 @@ impl DirectoryCache for MokaCache {
                 fetcher.await.map(Arc::new)
             })
             .await;
-        let directory = directory.map_err(|e| {
-            crate::PmtError::DirectoryCacheError(format!("Moka cache fetch error: {e}"))
-        })?;
+        let directory = directory
+            .map_err(|e| PmtError::DirectoryCacheError(format!("Moka cache fetch error: {e}")))?;
         Ok(directory.find_tile_id(tile_id).cloned())
     }
 }
@@ -201,7 +205,7 @@ impl DirectoryCache for MokaCache {
 #[cfg(feature = "moka")]
 #[derive(Clone)]
 pub struct SharedMokaCache {
-    cache: moka::future::Cache<(u64, u64), Arc<Directory>>,
+    cache: Cache<(u64, u64), Arc<Directory>>,
 }
 
 #[cfg(feature = "moka")]
@@ -210,7 +214,7 @@ impl SharedMokaCache {
     #[must_use]
     pub fn new(max_capacity: u64) -> Self {
         Self {
-            cache: moka::future::Cache::new(max_capacity),
+            cache: Cache::new(max_capacity),
         }
     }
 
@@ -221,7 +225,7 @@ impl SharedMokaCache {
     #[must_use]
     pub fn with_max_bytes(max_bytes: u64) -> Self {
         Self {
-            cache: moka::future::Cache::builder()
+            cache: Cache::builder()
                 .weigher(|_key, directory: &Arc<Directory>| {
                     u32::try_from(directory.get_approx_byte_size()).unwrap_or(u32::MAX)
                 })
@@ -263,9 +267,11 @@ mod tests {
 
     #[cfg(feature = "moka")]
     use tokio::sync::Notify;
+    #[cfg(feature = "moka")]
+    use tokio::task;
 
     use super::*;
-    use crate::{DirEntry, Directory, DirectoryCache, HashMapCache, PmtError};
+    use crate::{DirEntry, Directory, HashMapCache, PmtError};
     #[cfg(feature = "moka")]
     use crate::{MokaCache, SharedMokaCache};
 
@@ -391,7 +397,7 @@ mod tests {
 
         // On the current-thread runtime, yielding runs the second task until it waits
         // for the first fetch to finish.
-        tokio::task::yield_now().await;
+        task::yield_now().await;
         release_fetch.notify_one();
 
         assert!(first.await.unwrap().unwrap().is_some());

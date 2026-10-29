@@ -86,6 +86,7 @@ impl AsyncBackend for S3Backend {
 
 #[cfg(test)]
 mod tests {
+    use mockito::{Matcher, Server, ServerGuard};
     use s3::Region;
     use s3::creds::Credentials;
 
@@ -94,7 +95,7 @@ mod tests {
     use crate::tests::RASTER_FILE;
     use crate::{HashMapCache, TileCoord};
 
-    fn bucket(server: &mockito::ServerGuard) -> Bucket {
+    fn bucket(server: &ServerGuard) -> Bucket {
         let region = Region::Custom {
             region: "us-east-1".to_owned(),
             endpoint: server.url(),
@@ -105,7 +106,7 @@ mod tests {
 
     #[tokio::test]
     async fn reader_reads_tiles() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = serve_file(&mut server, RASTER_FILE, &[]).await;
         let tile = TileCoord::new(3, 4, 2).unwrap();
 
@@ -126,7 +127,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_without_data_version() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = serve_file(&mut server, RASTER_FILE, &[]).await;
 
         let backend = S3Backend::from(bucket(&server), "a.pmtiles".into());
@@ -137,7 +138,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_prefers_etag_over_last_modified() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let headers = [
             ("ETag", "\"abc123\""),
             ("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT"),
@@ -151,7 +152,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_falls_back_to_last_modified() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let headers = [("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")];
         let _mock = serve_file(&mut server, RASTER_FILE, &headers).await;
 
@@ -165,9 +166,9 @@ mod tests {
 
     #[tokio::test]
     async fn read_rejects_too_long_body() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = server
-            .mock("GET", mockito::Matcher::Any)
+            .mock("GET", Matcher::Any)
             .with_status(206)
             .with_body(vec![0u8; 65])
             .create_async()

@@ -1,8 +1,9 @@
-use std::io;
 use std::path::Path;
+use std::{future, io};
 
 use bytes::Bytes;
 use memmap2::Mmap;
+use tokio::fs::File;
 
 use crate::{
     AsyncBackend, AsyncPmTilesReader, BackendResponse, DirectoryCache, NoCache, PmtError, PmtResult,
@@ -79,7 +80,7 @@ impl MmapBackend {
     ///
     /// This function will return an error if the file cannot be opened for memory mapping.
     pub async fn try_from<P: AsRef<Path>>(p: P) -> PmtResult<Self> {
-        let file = tokio::fs::File::open(p)
+        let file = File::open(p)
             .await
             .map_err(|_| PmtError::UnableToOpenMmapFile)?
             .into_std()
@@ -120,7 +121,7 @@ impl AsyncBackend for MmapBackend {
             Some(range) => Ok(BackendResponse::new(self.bytes.slice(range))),
             None => Err(eof()),
         };
-        std::future::ready(response)
+        future::ready(response)
     }
 
     fn read(
@@ -133,7 +134,7 @@ impl AsyncBackend for MmapBackend {
             .ok()
             .filter(|offset| *offset <= self.bytes.len())
         else {
-            return std::future::ready(Err(eof()));
+            return future::ready(Err(eof()));
         };
 
         // Clamp to what is actually left *after* `offset`. Short reads are the normal path
@@ -141,12 +142,14 @@ impl AsyncBackend for MmapBackend {
         // the total size of a small archive.
         let end = offset.saturating_add(length).min(self.bytes.len());
 
-        std::future::ready(Ok(BackendResponse::new(self.bytes.slice(offset..end))))
+        future::ready(Ok(BackendResponse::new(self.bytes.slice(offset..end))))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
     use crate::tests::RASTER_FILE;
     use crate::{HashMapCache, TileCoord};
@@ -179,7 +182,7 @@ mod tests {
     #[tokio::test]
     async fn read_whole_file() {
         let (backend, len) = backend().await;
-        let expected = std::fs::read(RASTER_FILE).unwrap();
+        let expected = fs::read(RASTER_FILE).unwrap();
 
         let res = backend.read(0, len).await.unwrap();
         assert_eq!(res.bytes.len(), len);
@@ -204,7 +207,7 @@ mod tests {
         let res = backend.read(offset as u64, 100).await.unwrap();
         assert_eq!(res.bytes.len(), 10);
 
-        let expected = std::fs::read(RASTER_FILE).unwrap();
+        let expected = fs::read(RASTER_FILE).unwrap();
         assert_eq!(&res.bytes[..], &expected[offset..]);
     }
 
@@ -229,7 +232,7 @@ mod tests {
     #[tokio::test]
     async fn read_exact_matches_the_file() {
         let (backend, _) = backend().await;
-        let expected = std::fs::read(RASTER_FILE).unwrap();
+        let expected = fs::read(RASTER_FILE).unwrap();
 
         let res = backend.read_exact(20, 50).await.unwrap();
         assert_eq!(&res.bytes[..], &expected[20..70]);
@@ -276,7 +279,7 @@ mod tests {
         let (backend, _) = backend().await;
 
         let (a, b) = tokio::join!(backend.read_exact(0, 40), backend.read_exact(60, 40));
-        let expected = std::fs::read(RASTER_FILE).unwrap();
+        let expected = fs::read(RASTER_FILE).unwrap();
 
         assert_eq!(&a.unwrap().bytes[..], &expected[0..40]);
         assert_eq!(&b.unwrap().bytes[..], &expected[60..100]);

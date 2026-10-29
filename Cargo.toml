@@ -105,6 +105,7 @@ unused_qualifications = "warn"
 
 [lints.clippy]
 # Restrictions
+absolute_paths = "warn"
 panic_in_result_fn = "warn"
 todo = "warn"
 unwrap_used = "warn"

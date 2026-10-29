@@ -98,6 +98,8 @@ impl AsyncBackend for HttpBackend {
 
 #[cfg(test)]
 mod tests {
+    use mockito::{Matcher, Server};
+
     use super::*;
     use crate::backends::test_server::serve_file;
     use crate::tests::RASTER_FILE;
@@ -105,7 +107,7 @@ mod tests {
 
     #[tokio::test]
     async fn reader_reads_tiles() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = serve_file(&mut server, RASTER_FILE, &[]).await;
         let tile = TileCoord::new(3, 4, 2).unwrap();
 
@@ -126,7 +128,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_requires_range_support() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = server
             .mock("GET", "/")
             .with_status(200)
@@ -140,7 +142,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_rejects_too_long_body() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = server
             .mock("GET", "/")
             .with_status(206)
@@ -152,16 +154,16 @@ mod tests {
         assert!(matches!(result, Err(PmtError::ResponseBodyTooLong(65, 64))));
     }
 
-    fn make_backend(server: &mockito::Server) -> HttpBackend {
+    fn make_backend(server: &Server) -> HttpBackend {
         HttpBackend::try_from(Client::new(), server.url()).expect("valid url")
     }
 
     #[tokio::test]
     async fn read_no_data_version_header() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = server
             .mock("GET", "/")
-            .match_header("range", mockito::Matcher::Any)
+            .match_header("range", Matcher::Any)
             .with_status(206)
             .with_body(vec![0u8; 64])
             .create_async()
@@ -174,10 +176,10 @@ mod tests {
 
     #[tokio::test]
     async fn read_prefers_etag_over_last_modified() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = server
             .mock("GET", "/")
-            .match_header("range", mockito::Matcher::Any)
+            .match_header("range", Matcher::Any)
             .with_status(206)
             .with_header("ETag", "\"abc123\"")
             .with_header("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")
@@ -192,10 +194,10 @@ mod tests {
 
     #[tokio::test]
     async fn read_falls_back_to_last_modified() {
-        let mut server = mockito::Server::new_async().await;
+        let mut server = Server::new_async().await;
         let _mock = server
             .mock("GET", "/")
-            .match_header("range", mockito::Matcher::Any)
+            .match_header("range", Matcher::Any)
             .with_status(206)
             .with_header("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")
             .with_body(vec![0u8; 64])

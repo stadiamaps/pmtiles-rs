@@ -15,7 +15,7 @@ use pmtiles::{
     AsyncBackend, AsyncPmTilesReader, BackendResponse, Compression, DirectoryCache, HashMapCache,
     MokaCache, NoCache, PYRAMID_SIZE_BY_ZOOM, PmTilesWriter, PmtResult, TileId, TileType,
 };
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder as TokioBuilder, Runtime};
 
 /// Number of tiles in zoom levels 0 through 8.
 const TILE_COUNT: u64 = PYRAMID_SIZE_BY_ZOOM[9];
@@ -101,7 +101,7 @@ fn bench_get_tile<C: DirectoryCache + Sync + Send>(
 }
 
 fn directory_cache(c: &mut Criterion) {
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let runtime = TokioBuilder::new_current_thread()
         .build()
         .expect("runtime should be created");
     let archive = build_archive();

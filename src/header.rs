@@ -1,8 +1,14 @@
+#[cfg(feature = "write")]
+use std::io::{self, Write};
 use std::num::NonZeroU64;
 use std::panic::catch_unwind;
 
 use bytes::{Buf, Bytes};
+#[cfg(feature = "tilejson")]
+use tilejson::{Bounds, Center, TileJSON};
 
+#[cfg(feature = "write")]
+use crate::writer::WriteTo;
 use crate::{PmtError, PmtResult};
 
 #[cfg(any(feature = "__async", feature = "write"))]
@@ -168,7 +174,7 @@ impl TryInto<Compression> for u8 {
 impl Header {
     #[must_use]
     /// Generates a `TileJSON` object from the header data.
-    pub fn get_tilejson(&self, sources: Vec<String>) -> tilejson::TileJSON {
+    pub fn get_tilejson(&self, sources: Vec<String>) -> TileJSON {
         tilejson::tilejson! {
             tiles: sources,
             minzoom: self.min_zoom,
@@ -180,8 +186,8 @@ impl Header {
 
     #[must_use]
     /// Returns the bounds of the tiles as a `TileJSON` Bounds object.
-    pub fn get_bounds(&self) -> tilejson::Bounds {
-        tilejson::Bounds::new(
+    pub fn get_bounds(&self) -> Bounds {
+        Bounds::new(
             self.min_longitude,
             self.min_latitude,
             self.max_longitude,
@@ -191,8 +197,8 @@ impl Header {
 
     #[must_use]
     /// Returns the center point of the tiles as a `TileJSON` Center object.
-    pub fn get_center(&self) -> tilejson::Center {
-        tilejson::Center::new(
+    pub fn get_center(&self) -> Center {
+        Center::new(
             self.center_longitude,
             self.center_latitude,
             self.center_zoom,
@@ -312,8 +318,8 @@ impl Header {
 }
 
 #[cfg(feature = "write")]
-impl crate::writer::WriteTo for Header {
-    fn write_to<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+impl WriteTo for Header {
+    fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         use std::num::NonZero;
 
         // Write a magic number
@@ -353,7 +359,7 @@ impl crate::writer::WriteTo for Header {
 impl Header {
     #[cfg(feature = "write")]
     #[expect(clippy::cast_possible_truncation)]
-    fn write_coordinate_part<W: std::io::Write>(writer: &mut W, value: f64) -> std::io::Result<()> {
+    fn write_coordinate_part<W: Write>(writer: &mut W, value: f64) -> io::Result<()> {
         writer.write_all(&((value * 10_000_000.0).round() as i32).to_le_bytes())
     }
 }
@@ -366,8 +372,8 @@ mod tests {
         reason = "exact round-trips; clippy versions differ on flagging float `assert_eq!`"
     )]
 
-    use std::fs::File;
-    use std::io::Read;
+    use std::fs::{self, File};
+    use std::io::Read as _;
     use std::num::NonZeroU64;
 
     use bytes::{Bytes, BytesMut};
@@ -422,7 +428,7 @@ mod tests {
     #[case(b"PM\x02\x00\x00\x00\x00", Some(PmtError::UnsupportedPmTilesVersion))]
     #[case(b"NOTPMTI", Some(PmtError::InvalidMagicNumber))]
     fn header_magic_number(#[case] magic: &[u8], #[case] error: Option<PmtError>) {
-        let mut bytes = std::fs::read(RASTER_FILE).unwrap();
+        let mut bytes = fs::read(RASTER_FILE).unwrap();
         bytes[..magic.len()].copy_from_slice(magic);
         let result = Header::try_from_bytes(Bytes::from(bytes));
         match error {

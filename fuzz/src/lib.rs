@@ -3,6 +3,7 @@
 //! Each harness must return for any input. Errors are expected, but a panic, an abort
 //! (e.g. a failed allocation), a hang or running out of memory is a bug.
 
+use std::future;
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -25,7 +26,7 @@ impl AsyncBackend for MemoryBackend {
         let len = self.0.len();
         let start = usize::try_from(offset).map_or(len, |offset| offset.min(len));
         let end = start.saturating_add(length).min(len);
-        std::future::ready(Ok(BackendResponse::new(self.0.slice(start..end))))
+        future::ready(Ok(BackendResponse::new(self.0.slice(start..end))))
     }
 }
 
