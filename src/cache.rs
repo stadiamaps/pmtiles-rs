@@ -317,6 +317,33 @@ mod tests {
         assert!(get_result.unwrap().is_some());
     }
 
+    /// Offsets are keyed by their full `u64` value, so two offsets that differ only
+    /// above the 32-bit boundary map to distinct cache slots.
+    #[tokio::test]
+    async fn hash_map_cache_keys_on_full_u64_offset() {
+        let cache = HashMapCache::default();
+        let tile_id = TileId::new(0).unwrap();
+
+        let low = 0u64;
+        let high = 1u64 << 32; // 4 GiB; shares the low 32 bits with `low`
+
+        // Cache a directory at the low offset only.
+        let mut dir = Directory::default();
+        dir.entries.push(DirEntry::default());
+        cache.insert_dir(low, dir);
+
+        // The low offset is a hit...
+        assert!(matches!(
+            cache.get_dir_entry(low, tile_id),
+            DirCacheResult::Found(_)
+        ));
+        // ...while the high offset is a distinct, uncached slot.
+        assert!(matches!(
+            cache.get_dir_entry(high, tile_id),
+            DirCacheResult::NotCached
+        ));
+    }
+
     #[cfg(feature = "moka")]
     /// A hit returns the cached directory without calling the fetcher or replacing the entry.
     #[tokio::test]
@@ -344,6 +371,37 @@ mod tests {
 
         let cached_after_hit = cache.cache.get(&key).await.unwrap();
         assert!(Arc::ptr_eq(&initially_cached, &cached_after_hit));
+    }
+
+    /// Offsets are keyed by their full `u64` value, so two offsets that differ only
+    /// above the 32-bit boundary map to distinct cache slots.
+    #[cfg(feature = "moka")]
+    #[tokio::test]
+    async fn moka_cache_keys_on_full_u64_offset() {
+        let cache = MokaCache::new(100);
+        let tile_id = TileId::new(0).unwrap();
+
+        let low = 0u64;
+        let high = 1u64 << 32; // 4 GiB; shares the low 32 bits with `low`
+
+        // Cache a directory containing the tile at the low offset.
+        let found = cache
+            .get_dir_entry_or_insert(low, tile_id, async {
+                let mut dir = Directory::default();
+                dir.entries.push(DirEntry::default());
+                Ok(dir)
+            })
+            .await
+            .unwrap();
+        assert!(found.is_some());
+
+        // The high offset is a distinct key, so its fetcher runs and returns an empty
+        // directory. A collision would instead return the cached low entry.
+        let found = cache
+            .get_dir_entry_or_insert(high, tile_id, async { Ok(Directory::default()) })
+            .await
+            .unwrap();
+        assert!(found.is_none());
     }
 
     #[cfg(feature = "moka")]

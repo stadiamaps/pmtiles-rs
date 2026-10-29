@@ -446,6 +446,40 @@ mod tests {
         AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     }
 
+    /// Records the `(offset, length)` of the last `read` so tests can assert the
+    /// values reach the backend untruncated.
+    struct RecordingBackend(std::sync::Mutex<Option<(u64, u64)>>);
+
+    impl crate::AsyncBackend for RecordingBackend {
+        fn read(
+            &self,
+            offset: u64,
+            length: u64,
+        ) -> impl Future<Output = crate::PmtResult<crate::BackendResponse>> + Send {
+            *self.0.lock().unwrap() = Some((offset, length));
+            let response = crate::BackendResponse {
+                bytes: bytes::Bytes::from(vec![0u8; usize::try_from(length).unwrap()]),
+                data_version_string: None,
+            };
+            std::future::ready(Ok(response))
+        }
+    }
+
+    /// An offset above `u32::MAX` reaches the backend as its full `u64` value.
+    #[tokio::test]
+    async fn backend_read_passes_full_u64_offset() {
+        use crate::AsyncBackend;
+
+        let backend = RecordingBackend(std::sync::Mutex::new(None));
+
+        let offset = (1u64 << 32) + 7; // 4 GiB + 7; low 32 bits are just 7
+        let length = 16u64;
+        let response = backend.read_exact(offset, length).await.unwrap();
+
+        assert_eq!(response.bytes.len() as u64, length);
+        assert_eq!(*backend.0.lock().unwrap(), Some((offset, length)));
+    }
+
     #[rstest]
     #[case(id(0, 0, 0), include_bytes!("../fixtures/0_0_0.png"))]
     #[case(id(2, 2, 2), include_bytes!("../fixtures/2_2_2.png"))]
