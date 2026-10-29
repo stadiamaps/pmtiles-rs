@@ -130,7 +130,7 @@ mod tests {
     use crate::PmtError;
 
     #[test]
-    fn test_new_backend() {
+    fn new_backend() {
         let store = Box::new(InMemory::new());
         let backend = ObjectStoreBackend::new(store, "test.pmtiles");
 
@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_error_nonexistant() {
+    async fn error_nonexistant() {
         let store = Box::new(InMemory::new());
         let backend = ObjectStoreBackend::new(store, "nonexistent.pmtiles");
 
@@ -151,7 +151,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_read_returns_etag() {
+    async fn read_returns_etag() {
         let store = Box::new(InMemory::new());
         let path = Path::from("test.bin");
         let payload: PutPayload = Bytes::copy_from_slice(&[0u8; 64]).into();

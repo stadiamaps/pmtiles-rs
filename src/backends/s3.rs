@@ -53,7 +53,7 @@ pub struct S3Backend {
 impl S3Backend {
     #[must_use]
     /// Creates a new S3 backend.
-    pub fn from(bucket: Bucket, path: String) -> S3Backend {
+    pub fn from(bucket: Bucket, path: String) -> Self {
         Self { bucket, path }
     }
 }

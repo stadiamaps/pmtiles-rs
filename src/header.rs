@@ -147,10 +147,10 @@ impl Compression {
     /// Returns the content encoding string for this compression type, if applicable.
     pub fn content_encoding(self) -> Option<&'static str> {
         Some(match self {
-            Compression::Gzip => "gzip",
-            Compression::Brotli => "br",
-            Compression::Zstd => "zstd",
-            _ => None?,
+            Self::Gzip => "gzip",
+            Self::Brotli => "br",
+            Self::Zstd => "zstd",
+            Self::Unknown | Self::None => None?,
         })
     }
 }
@@ -230,13 +230,13 @@ impl TileType {
     /// Returns the MIME content type for this tile type.
     pub fn content_type(self) -> &'static str {
         match self {
-            TileType::Mvt => "application/vnd.mapbox-vector-tile",
-            TileType::Png => "image/png",
-            TileType::Webp => "image/webp",
-            TileType::Jpeg => "image/jpeg",
-            TileType::Avif => "image/avif",
-            TileType::Mlt => "application/vnd.maplibre-vector-tile",
-            TileType::Unknown => "application/octet-stream",
+            Self::Mvt => "application/vnd.mapbox-vector-tile",
+            Self::Png => "image/png",
+            Self::Webp => "image/webp",
+            Self::Jpeg => "image/jpeg",
+            Self::Avif => "image/avif",
+            Self::Mlt => "application/vnd.maplibre-vector-tile",
+            Self::Unknown => "application/octet-stream",
         }
     }
 }

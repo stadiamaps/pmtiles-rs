@@ -638,7 +638,7 @@ mod tests {
 
     #[tokio::test]
     #[cfg(feature = "object-store")]
-    async fn test_data_version_source_modified() {
+    async fn data_version_source_modified() {
         // Tests that if the underlying storage object changes after initial read of a
         // pmtiles header, a subsequent read will fail.
         use std::sync::Arc;
@@ -715,7 +715,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_data_version_source_modified_leaf_directory() {
+    async fn data_version_source_modified_leaf_directory() {
         let data: &[u8] = include_bytes!("../fixtures/leaf.pmtiles");
         let tiles = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, Some("v1")))
             .await
@@ -741,7 +741,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_data_version_missing_on_later_read() {
+    async fn data_version_missing_on_later_read() {
         let data: &[u8] = include_bytes!("../fixtures/leaf.pmtiles");
         let tiles = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, Some("v1")))
             .await
@@ -750,11 +750,11 @@ mod tests {
 
         let tile = tiles.get_tile(id(1, 1, 0)).await.unwrap().unwrap();
         assert_eq!(tile.as_ref(), b"4");
-        assert!(tiles.get_metadata().await.is_ok());
+        tiles.get_metadata().await.unwrap();
     }
 
     #[tokio::test]
-    async fn test_read_error_after_initialization() {
+    async fn read_error_after_initialization() {
         let data: &[u8] = include_bytes!("../fixtures/leaf.pmtiles");
         let tiles = AsyncPmTilesReader::try_from_source(VersionedBackend::new(data, Some("v1")))
             .await
@@ -788,7 +788,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_leaf_tile_compressed() {
+    async fn leaf_tile_compressed() {
         let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let coord = id(12, 2174, 1492);
@@ -808,7 +808,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_metadata() {
+    async fn get_metadata() {
         let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
@@ -850,7 +850,7 @@ mod tests {
         .await;
         let tj = reader.parse_tilejson(vec!["url".into()]).await.unwrap();
 
-        assert_eq!(tj.tiles, vec!["url".to_string()]);
+        assert_eq!(tj.tiles, vec!["url".to_owned()]);
         assert_eq!(tj.name.as_deref(), Some("name"));
         assert_eq!(tj.description.as_deref(), Some("description"));
         assert_eq!(tj.attribution.as_deref(), Some("attribution"));
@@ -956,7 +956,7 @@ mod tests {
 
     #[tokio::test]
     #[cfg(feature = "iter-async")]
-    async fn test_entries() {
+    async fn entries() {
         use futures_util::TryStreamExt as _;
 
         let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
@@ -1099,8 +1099,8 @@ mod tests {
             expected.get_metadata().await.unwrap()
         );
 
-        let entries: Vec<_> = expected.clone().entries().try_collect().await.unwrap();
-        let shifted_entries: Vec<_> = shifted.clone().entries().try_collect().await.unwrap();
+        let entries: Vec<_> = Arc::clone(&expected).entries().try_collect().await.unwrap();
+        let shifted_entries: Vec<_> = Arc::clone(&shifted).entries().try_collect().await.unwrap();
         assert_eq!(entries.len(), 5);
         assert_eq!(shifted_entries, entries);
 
