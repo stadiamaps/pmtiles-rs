@@ -79,7 +79,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ///
     /// This function will return an error if
     /// - the backend fails to read the header/root directory,
-    /// - or if the root directory is malformed
+    /// - or if the header or root directory is malformed
     pub async fn try_from_cached_source(backend: B, cache: C) -> PmtResult<Self> {
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
         let initial_response = backend.read(0, MAX_INITIAL_BYTES).await?;
@@ -90,6 +90,9 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         }
 
         let header = Header::try_from_bytes(initial_bytes.split_to(HEADER_SIZE))?;
+        if !sections_fit_in_u64(&header) {
+            return Err(PmtError::InvalidHeader);
+        }
 
         let Some(root_range) = root_directory_range(&header, initial_bytes.len()) else {
             return Err(PmtError::InvalidHeader);
@@ -174,11 +177,15 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// # Errors
     ///
     /// This function will return an error if the
+    /// - metadata is empty, so it is not a JSON object,
     /// - backend fails to read the metadata or
     /// - metadata cannot be decompressed or
     /// - is not valid UTF-8 or
     /// - underlying `PMTiles` archive has changed since initialization
     pub async fn get_metadata(&self) -> PmtResult<String> {
+        if self.header.metadata_length == 0 {
+            return Err(PmtError::InvalidMetadata);
+        }
         let offset = self.header.metadata_offset;
         let length =
             usize::try_from(self.header.metadata_length).map_err(|_| PmtError::InvalidHeader)?;
@@ -406,6 +413,18 @@ fn root_directory_range(header: &Header, available: usize) -> Option<Range<usize
     (end <= available).then_some(start..end)
 }
 
+/// Returns whether the end of each section fits in `u64`, so that no read within a section
+/// overflows when computing its end.
+fn sections_fit_in_u64(header: &Header) -> bool {
+    [
+        (header.metadata_offset, header.metadata_length),
+        (header.leaf_offset, header.leaf_length),
+        (header.data_offset, header.data_length),
+    ]
+    .into_iter()
+    .all(|(offset, length)| offset.checked_add(length).is_some())
+}
+
 /// Returns the offset of an entry in the archive, failing if a malformed directory points it
 /// outside of its section, so that it is never read.
 fn entry_offset(section_offset: u64, section_length: u64, entry: &DirEntry) -> PmtResult<u64> {
@@ -447,6 +466,8 @@ pub trait AsyncBackend {
     }
 
     /// Reads up to `length` bytes starting at `offset`.
+    ///
+    /// The reader only asks for a `length` greater than 0, with `offset + length` within `u64`.
     fn read(
         &self,
         offset: u64,
@@ -475,9 +496,15 @@ mod tests {
         AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     }
 
-    /// Byte positions of the header's root directory fields.
+    /// Byte positions of the header's root directory and section fields.
     const ROOT_OFFSET: usize = 8;
     const ROOT_LENGTH: usize = 16;
+    const METADATA_OFFSET: usize = 24;
+    const METADATA_LENGTH: usize = 32;
+    const LEAF_OFFSET: usize = 40;
+    const LEAF_LENGTH: usize = 48;
+    const DATA_OFFSET: usize = 56;
+    const DATA_LENGTH: usize = 64;
 
     /// A root directory outside the initial bytes is an invalid header, not a panic or a misread.
     #[rstest]
@@ -495,6 +522,39 @@ mod tests {
 
         let result = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None)).await;
         assert!(matches!(result, Err(crate::PmtError::InvalidHeader)));
+    }
+
+    /// A section whose end overflows `u64` is an invalid header, not an overflow in a later read.
+    #[rstest]
+    #[case::metadata_offset(METADATA_OFFSET)]
+    #[case::metadata_length(METADATA_LENGTH)]
+    #[case::leaf_offset(LEAF_OFFSET)]
+    #[case::leaf_length(LEAF_LENGTH)]
+    #[case::data_offset(DATA_OFFSET)]
+    #[case::data_length(DATA_LENGTH)]
+    #[tokio::test]
+    async fn rejects_section_end_overflowing_u64(#[case] field: usize) {
+        let mut data = include_bytes!("../fixtures/leaf.pmtiles").to_vec();
+        data[field..field + 8].copy_from_slice(&u64::MAX.to_le_bytes());
+
+        let result = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None)).await;
+        assert!(matches!(result, Err(crate::PmtError::InvalidHeader)));
+    }
+
+    /// Empty metadata is not a JSON object, so it is rejected without being read.
+    #[tokio::test]
+    async fn rejects_empty_metadata() {
+        let mut data = include_bytes!("../fixtures/leaf.pmtiles").to_vec();
+        data[METADATA_LENGTH..METADATA_LENGTH + 8].copy_from_slice(&0_u64.to_le_bytes());
+
+        let reader = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None))
+            .await
+            .unwrap();
+        let result = reader.get_metadata().await;
+        assert!(
+            matches!(result, Err(crate::PmtError::InvalidMetadata)),
+            "{result:?}"
+        );
     }
 
     #[rstest]
@@ -878,18 +938,6 @@ mod tests {
         assert_eq!(all_entries.len(), 108);
     }
 
-    /// Byte positions of the header's section fields.
-    #[cfg(feature = "iter-async")]
-    const METADATA_OFFSET: usize = 24;
-    #[cfg(feature = "iter-async")]
-    const LEAF_OFFSET: usize = 40;
-    #[cfg(feature = "iter-async")]
-    const LEAF_LENGTH: usize = 48;
-    #[cfg(feature = "iter-async")]
-    const DATA_OFFSET: usize = 56;
-    #[cfg(feature = "iter-async")]
-    const DATA_LENGTH: usize = 64;
-
     /// Opens `leaf.pmtiles` with one header field changed, and returns the entry of its
     /// last tile in the data section.
     #[cfg(feature = "iter-async")]
@@ -929,7 +977,6 @@ mod tests {
     /// A tile or leaf directory outside its section is an invalid entry, not a panic,
     /// a wrapped offset, or a read of another section's bytes.
     #[rstest]
-    #[case::tile_offset_overflows(DATA_OFFSET, |_| u64::MAX)]
     #[case::tile_past_data_section(DATA_LENGTH, |tile_end| tile_end - 1)]
     #[case::leaf_past_leaf_section(LEAF_LENGTH, |_| 0)]
     #[tokio::test]
