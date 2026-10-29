@@ -123,9 +123,12 @@ impl TryFrom<Bytes> for Directory {
             }
         }
 
-        // Read Lengths
+        // Read Lengths, which must not be 0
         for entry in &mut entries {
             entry.length = read_varint(&mut buf)?;
+            if entry.length == 0 {
+                return Err(PmtError::InvalidEntry);
+            }
         }
 
         // Read Offsets
@@ -332,6 +335,7 @@ mod tests {
     #[case::varint_too_long(&[0xFF; 12])]
     #[case::varint_overflow(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x02])]
     #[case::length_over_u32(&[1, 0, 1, 0x80, 0x80, 0x80, 0x80, 0x20, 1])]
+    #[case::zero_length(&[1, 0, 1, 0, 1])]
     #[case::tile_id_overflow(&[2, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 1, 1, 1, 1, 1, 1, 1])]
     #[case::offset_overflow(&[2, 0, 1, 1, 1, 2, 1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0])]
     fn malformed_directory(#[case] bytes: &[u8]) {
@@ -400,31 +404,33 @@ mod tests {
         }
 
         // Ported from go-pmtiles/pmtiles/directory_test.go:TestDirectoryRoundtrip (line 10)
+        // The first entry has length 1 instead of 0, which the spec does not allow
         #[test]
         fn directory_roundtrip_gzip() {
             let entries = vec![
-                new_dir_entry(0, 0, 0, 0),
+                new_dir_entry(0, 0, 1, 0),
                 new_dir_entry(1, 1, 1, 1),
                 new_dir_entry(2, 2, 2, 2),
             ];
             let result = roundtrip(entries, Compression::Gzip);
             assert_eq!(result.len(), 3);
-            assert_eq!(result[0], new_dir_entry(0, 0, 0, 0));
+            assert_eq!(result[0], new_dir_entry(0, 0, 1, 0));
             assert_eq!(result[1], new_dir_entry(1, 1, 1, 1));
             assert_eq!(result[2], new_dir_entry(2, 2, 2, 2));
         }
 
         // Ported from go-pmtiles/pmtiles/directory_test.go:TestDirectoryRoundtripNoCompress (line 33)
+        // The first entry has length 1 instead of 0, which the spec does not allow
         #[test]
         fn directory_roundtrip_no_compression() {
             let entries = vec![
-                new_dir_entry(0, 0, 0, 0),
+                new_dir_entry(0, 0, 1, 0),
                 new_dir_entry(1, 1, 1, 1),
                 new_dir_entry(2, 2, 2, 2),
             ];
             let result = roundtrip(entries, Compression::None);
             assert_eq!(result.len(), 3);
-            assert_eq!(result[0], new_dir_entry(0, 0, 0, 0));
+            assert_eq!(result[0], new_dir_entry(0, 0, 1, 0));
             assert_eq!(result[1], new_dir_entry(1, 1, 1, 1));
             assert_eq!(result[2], new_dir_entry(2, 2, 2, 2));
         }
