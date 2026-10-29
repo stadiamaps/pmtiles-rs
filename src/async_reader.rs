@@ -1,3 +1,5 @@
+#[cfg(feature = "iter-async")]
+use std::collections::{HashSet, VecDeque};
 use std::future::Future;
 use std::ops::Range;
 #[cfg(feature = "iter-async")]
@@ -16,6 +18,9 @@ use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::{Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileId};
 #[cfg(feature = "__async")]
 use crate::{DirectoryCache, NoCache};
+
+/// The deepest leaf directory a tile lookup reads, counting one listed in the root directory as 0.
+const MAX_LEAF_DEPTH: u8 = 5;
 
 /// The response from a backend [`AsyncBackend::read`] call.
 #[derive(Debug)]
@@ -222,7 +227,9 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         C: 'a,
     {
         Box::pin(try_stream! {
-            let mut queue = std::collections::VecDeque::new();
+            let mut queue = VecDeque::new();
+            // A valid archive lists each leaf directory once, so a repeat is a cycle
+            let mut leaf_offsets = HashSet::new();
 
             for entry in &self.root_directory.entries {
                 queue.push_back(entry.clone());
@@ -230,6 +237,9 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
             while let Some(entry) = queue.pop_front() {
                 if entry.is_leaf() {
+                    if !leaf_offsets.insert(entry.offset) {
+                        Err(PmtError::InvalidEntry)?;
+                    }
                     let offset =
                         entry_offset(self.header.leaf_offset, self.header.leaf_length, &entry)?;
                     let leaf_dir = self.read_directory(offset, entry.length as usize).await?;
@@ -312,6 +322,9 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         entry: &DirEntry,
         depth: u8,
     ) -> PmtResult<Option<DirEntry>> {
+        if depth > MAX_LEAF_DEPTH {
+            return Err(PmtError::InvalidEntry);
+        }
         // the recursion is done as two functions because it is a bit cleaner,
         // and it allows the directory to be cached later without cloning it first.
         let offset = entry_offset(self.header.leaf_offset, self.header.leaf_length, entry)?;
@@ -326,11 +339,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         if let Some(ref entry) = entry
             && entry.is_leaf()
         {
-            return if depth <= 4 {
-                Box::pin(self.find_entry_rec(tile_id, entry, depth + 1)).await
-            } else {
-                Ok(None)
-            };
+            return Box::pin(self.find_entry_rec(tile_id, entry, depth + 1)).await;
         }
 
         Ok(entry)
@@ -1092,5 +1101,82 @@ mod tests {
             assert!(tile.is_some());
             assert_eq!(tile, expected.get_tile(tile_id).await.unwrap());
         }
+    }
+
+    /// Builds an uncompressed archive whose root directory lists one leaf directory, which
+    /// lists itself.
+    #[cfg(feature = "write")]
+    fn archive_with_self_listing_leaf() -> Vec<u8> {
+        use crate::writer::WriteTo as _;
+        use crate::{Compression, DirEntry, Directory, Header, TileType};
+
+        let leaf_entry = |length| DirEntry {
+            tile_id: 0,
+            offset: 0,
+            length,
+            run_length: 0,
+        };
+        let mut leaf = Vec::new();
+        // One entry takes 5 bytes: the entry count, and one byte for each of its four fields
+        Directory::from_entries(vec![leaf_entry(5)])
+            .write_to(&mut leaf)
+            .unwrap();
+        assert_eq!(leaf.len(), 5);
+        let mut root = Vec::new();
+        Directory::from_entries(vec![leaf_entry(5)])
+            .write_to(&mut root)
+            .unwrap();
+        let metadata = b"{}";
+
+        let mut header = Header::new(Compression::None, TileType::Mvt);
+        header.internal_compression = Compression::None;
+        header.root_length = root.len() as u64;
+        header.metadata_offset = header.root_offset + header.root_length;
+        header.metadata_length = metadata.len() as u64;
+        header.leaf_offset = header.metadata_offset + header.metadata_length;
+        header.leaf_length = leaf.len() as u64;
+        header.data_offset = header.leaf_offset + header.leaf_length;
+
+        let mut data = Vec::new();
+        header.write_to(&mut data).unwrap();
+        data.extend([root.as_slice(), metadata, &leaf].concat());
+        data
+    }
+
+    /// A tile lookup through leaf directories that never end is an invalid entry.
+    #[tokio::test]
+    #[cfg(feature = "write")]
+    async fn get_tile_rejects_self_listing_leaf() {
+        let data = archive_with_self_listing_leaf();
+        let reader = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None))
+            .await
+            .unwrap();
+
+        let tile = reader.get_tile(id(0, 0, 0)).await;
+        assert!(
+            matches!(tile, Err(crate::PmtError::InvalidEntry)),
+            "{tile:?}"
+        );
+    }
+
+    /// Listing entries rejects a leaf directory it already read, instead of looping forever.
+    #[tokio::test]
+    #[cfg(all(feature = "write", feature = "iter-async"))]
+    async fn entries_rejects_self_listing_leaf() {
+        use futures_util::TryStreamExt as _;
+
+        let data = archive_with_self_listing_leaf();
+        let reader = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None))
+            .await
+            .unwrap();
+
+        let entries = std::sync::Arc::new(reader)
+            .entries()
+            .try_collect::<Vec<_>>()
+            .await;
+        assert!(
+            matches!(entries, Err(crate::PmtError::InvalidEntry)),
+            "{entries:?}"
+        );
     }
 }
