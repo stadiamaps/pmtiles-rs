@@ -3,6 +3,7 @@
 #![expect(clippy::cast_possible_truncation)]
 
 use std::future::Future;
+use std::ops::Range;
 #[cfg(feature = "iter-async")]
 use std::sync::Arc;
 
@@ -94,9 +95,10 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
         let header = Header::try_from_bytes(initial_bytes.split_to(HEADER_SIZE))?;
 
-        let directory_bytes = initial_bytes
-            .split_off((header.root_offset as usize) - HEADER_SIZE)
-            .split_to(header.root_length as _);
+        let Some(root_range) = root_directory_range(&header, initial_bytes.len()) else {
+            return Err(PmtError::InvalidHeader);
+        };
+        let directory_bytes = initial_bytes.slice(root_range);
 
         let root_directory =
             Self::read_compressed_directory(header.internal_compression, directory_bytes).await?;
@@ -395,6 +397,17 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 }
 
+/// Returns where the root directory is within the `available` bytes read after the header,
+/// or `None` if the header places it anywhere else.
+fn root_directory_range(header: &Header, available: usize) -> Option<Range<usize>> {
+    // The header's offsets count from the start of the archive, which includes the header.
+    let start = usize::try_from(header.root_offset)
+        .ok()?
+        .checked_sub(HEADER_SIZE)?;
+    let end = start.checked_add(usize::try_from(header.root_length).ok()?)?;
+    (end <= available).then_some(start..end)
+}
+
 /// A trait for asynchronous backends that can read data from a `PMTiles` source.
 pub trait AsyncBackend {
     /// Reads exactly `length` bytes starting at `offset`
@@ -447,6 +460,28 @@ mod tests {
     async fn open_sanity_check(#[case] file: &str) {
         let backend = MmapBackend::try_from(file).await.unwrap();
         AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+    }
+
+    /// Byte positions of the header's root directory fields.
+    const ROOT_OFFSET: usize = 8;
+    const ROOT_LENGTH: usize = 16;
+
+    /// A root directory outside the initial bytes is an invalid header, not a panic or a misread.
+    #[rstest]
+    #[case::before_header(ROOT_OFFSET, 0)]
+    #[case::past_initial_bytes(ROOT_OFFSET, 16_384)]
+    #[case::above_4_gib(ROOT_OFFSET, (1 << 32) + 127)] // truncates to a valid offset on 32-bit
+    #[case::too_long(ROOT_LENGTH, u64::MAX)]
+    #[tokio::test]
+    async fn rejects_root_directory_outside_initial_bytes(
+        #[case] field: usize,
+        #[case] value: u64,
+    ) {
+        let mut data = std::fs::read(RASTER_FILE).unwrap();
+        data[field..field + 8].copy_from_slice(&value.to_le_bytes());
+
+        let result = AsyncPmTilesReader::try_from_source(VersionedBackend::new(&data, None)).await;
+        assert!(matches!(result, Err(crate::PmtError::InvalidHeader)));
     }
 
     #[rstest]
