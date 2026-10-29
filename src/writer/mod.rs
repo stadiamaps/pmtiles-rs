@@ -4,12 +4,11 @@ mod dedup;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::hash::{BuildHasherDefault, Hash};
-use std::io::{BufWriter, Seek, Write};
+use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 
 pub use compressor::Compressor;
 pub(crate) use compressor::{GzipCompressor, NoCompression};
-use countio::Counter;
 pub use dedup::{CallerKey, ContentHash, DedupMode};
 use twox_hash::{XxHash3_64, XxHash3_128};
 
@@ -19,7 +18,7 @@ use crate::{
 };
 
 /// Maximum size of the root directory in bytes.
-const MAX_ROOT_DIR_BYTES: usize = MAX_INITIAL_BYTES - HEADER_SIZE;
+const MAX_ROOT_DIR_BYTES: u64 = (MAX_INITIAL_BYTES - HEADER_SIZE) as u64;
 
 /// Builder for creating a new writer.
 ///
@@ -54,7 +53,7 @@ pub struct PmTilesStreamWriter<W: Write + Seek, D: DedupMode = ContentHash> {
 /// Separated from `PmTilesStreamWriter` so that internal methods can borrow
 /// this state mutably while `finalize` simultaneously reads the compressors.
 struct WriterState<W: Write + Seek, K> {
-    out: Counter<BufWriter<W>>,
+    out: CountingWriter<BufWriter<W>>,
     header: Header,
     entries: Vec<DirEntry>,
 
@@ -87,6 +86,41 @@ impl Write for DynWriter<'_> {
     }
 }
 
+/// Counts the bytes written as `u64`, so positions past 4 GiB fit on 32-bit targets.
+/// Seeking does not change the count.
+pub(crate) struct CountingWriter<W> {
+    inner: W,
+    written: u64,
+}
+
+impl<W> CountingWriter<W> {
+    fn new(inner: W) -> Self {
+        Self { inner, written: 0 }
+    }
+
+    fn written(&self) -> u64 {
+        self.written
+    }
+}
+
+impl<W: Write> Write for CountingWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        self.written += n as u64;
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+impl<W: Seek> Seek for CountingWriter<W> {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        self.inner.seek(pos)
+    }
+}
+
 pub(crate) trait WriteTo {
     fn write_to<W: Write>(&self, writer: &mut W) -> std::io::Result<()>;
 
@@ -103,18 +137,18 @@ pub(crate) trait WriteTo {
 
     fn write_compressed_to_counted<W: Write>(
         &self,
-        writer: &mut Counter<W>,
+        writer: &mut CountingWriter<W>,
         compressor: &dyn Compressor,
-    ) -> PmtResult<usize> {
-        let pos = writer.writer_bytes();
+    ) -> PmtResult<u64> {
+        let pos = writer.written();
         self.write_compressed_to(writer, compressor)?;
-        Ok(writer.writer_bytes() - pos)
+        Ok(writer.written() - pos)
     }
 
-    fn compressed_size(&self, compressor: &dyn Compressor) -> PmtResult<usize> {
-        let mut devnull = Counter::new(std::io::sink());
+    fn compressed_size(&self, compressor: &dyn Compressor) -> PmtResult<u64> {
+        let mut devnull = CountingWriter::new(std::io::sink());
         self.write_compressed_to(&mut devnull, compressor)?;
-        Ok(devnull.writer_bytes())
+        Ok(devnull.written())
     }
 }
 
@@ -270,7 +304,7 @@ impl<D: DedupMode> PmTilesWriter<D> {
     ///
     /// If writing to the output stream fails
     pub fn create<W: Write + Seek>(self, writer: W) -> PmtResult<PmTilesStreamWriter<W, D>> {
-        let mut out = Counter::new(BufWriter::new(writer));
+        let mut out = CountingWriter::new(BufWriter::new(writer));
 
         // We use the following layout:
         // +--------+----------------+----------+-----------+------------------+
@@ -286,8 +320,7 @@ impl<D: DedupMode> PmTilesWriter<D> {
         let metadata_length = self
             .metadata
             .as_bytes()
-            .write_compressed_to_counted(&mut out, &self.internal_compressor)?
-            as u64;
+            .write_compressed_to_counted(&mut out, &self.internal_compressor)?;
 
         let mut state = WriterState {
             out,
@@ -426,7 +459,7 @@ impl<W: Write + Seek, K: Copy + Eq + Hash> WriterState<W, K> {
             slot => {
                 let offset = self.prev_written_tile_offset;
                 let len = data.write_compressed_to_counted(&mut self.out, compressor)?;
-                self.prev_written_tile_offset += len as u64;
+                self.prev_written_tile_offset += len;
                 self.n_tile_contents += 1;
                 let loc = TileContentLocation {
                     offset,
@@ -464,24 +497,24 @@ impl<W: Write + Seek, K: Copy + Eq + Hash> WriterState<W, K> {
             self.entries.sort_by_key(|entry| entry.tile_id);
         }
         let (root_dir, leaf_dirs) = self.optimize_directories(MAX_ROOT_DIR_BYTES, compressor)?;
-        let mut leaves_bytes = 0usize;
+        let mut leaves_bytes = 0;
 
         // If we have leaf directories, record their starting offset before writing them.
         if !leaf_dirs.is_empty() {
-            self.header.leaf_offset = self.out.writer_bytes() as u64;
+            self.header.leaf_offset = self.out.written();
         }
 
         for leaf in &leaf_dirs {
             leaves_bytes += leaf.write_compressed_to_counted(&mut self.out, compressor)?;
         }
 
-        self.header.leaf_length = leaves_bytes as u64;
+        self.header.leaf_length = leaves_bytes;
         Ok(root_dir)
     }
 
     fn optimize_directories(
         &mut self,
-        target_root_len: usize,
+        target_root_len: u64,
         compressor: &dyn Compressor,
     ) -> PmtResult<(Directory, Vec<Directory>)> {
         // Same logic as go-pmtiles (https://github.com/protomaps/go-pmtiles/blob/f1c24e6/pmtiles/directory.go#L368-L396)
@@ -537,7 +570,7 @@ impl<W: Write + Seek, K: Copy + Eq + Hash> WriterState<W, K> {
                 length: into_u32(leaf_size)?,
                 run_length: 0,
             });
-            offset += leaf_size as u64;
+            offset += leaf_size;
         }
 
         Ok((root_dir, leaves))
@@ -556,19 +589,17 @@ impl<W: Write + Seek, D: DedupMode> PmTilesStreamWriter<W, D> {
         let state = &mut self.state;
 
         // We're done writing data, so we can set the data_length here.
-        state.header.data_length = state.out.writer_bytes() as u64
-            - MAX_INITIAL_BYTES as u64
-            - state.header.metadata_length;
+        state.header.data_length =
+            state.out.written() - MAX_INITIAL_BYTES as u64 - state.header.metadata_length;
 
         // Write leaf directories and get a root directory
         let root_dir = state.build_directories(&self.internal_compressor)?;
 
         if let Some(metadata) = &self.late_metadata {
-            state.header.metadata_offset = state.out.writer_bytes() as u64;
+            state.header.metadata_offset = state.out.written();
             state.header.metadata_length = metadata
                 .as_bytes()
-                .write_compressed_to_counted(&mut state.out, &self.internal_compressor)?
-                as u64;
+                .write_compressed_to_counted(&mut state.out, &self.internal_compressor)?;
         }
 
         state.header.n_addressed_tiles = state.n_addressed_tiles.try_into().ok();
@@ -590,7 +621,7 @@ impl<W: Write + Seek, D: DedupMode> PmTilesStreamWriter<W, D> {
     }
 }
 
-fn into_u32(v: usize) -> PmtResult<u32> {
+fn into_u32(v: u64) -> PmtResult<u32> {
     v.try_into().map_err(|_| PmtError::IndexEntryOverflow)
 }
 
@@ -887,6 +918,18 @@ mod tests {
     async fn with_leaves() {
         let path = gen_entries(20000);
         verify_entries(&path, 20000).await;
+    }
+
+    #[test]
+    fn counting_writer_passes_4_gib() {
+        use std::io::Write as _;
+
+        let mut out = super::CountingWriter {
+            inner: std::io::sink(),
+            written: u64::from(u32::MAX) - 1,
+        };
+        out.write_all(b"four").unwrap();
+        assert_eq!(out.written(), u64::from(u32::MAX) + 3);
     }
 
     #[test]
