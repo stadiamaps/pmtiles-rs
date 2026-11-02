@@ -209,7 +209,6 @@ impl DirEntry {
         self.run_length == 0
     }
 
-    #[cfg(feature = "iter-async")]
     #[must_use]
     /// Returns an iterator over the tile coordinates covered by this entry.
     pub fn iter_coords(&self) -> DirEntryCoordsIter<'_> {
@@ -220,14 +219,12 @@ impl DirEntry {
     }
 }
 
-#[cfg(feature = "iter-async")]
 /// Iterator over tile coordinates in a directory entry.
 pub struct DirEntryCoordsIter<'a> {
     entry: &'a DirEntry,
     current: u32,
 }
 
-#[cfg(feature = "iter-async")]
 impl Iterator for DirEntryCoordsIter<'_> {
     type Item = TileId;
 
@@ -250,16 +247,14 @@ impl Iterator for DirEntryCoordsIter<'_> {
 #[cfg(test)]
 mod tests {
     use std::fs::File;
-    use std::io::{BufReader, Read as _, Write as _};
+    use std::io::{BufReader, Read as _};
 
     use bytes::{Bytes, BytesMut};
-    use flate2::write::GzDecoder;
     use integer_encoding::VarIntWriter as _;
     use rstest::rstest;
 
     use crate::header::HEADER_SIZE;
     use crate::tests::RASTER_FILE;
-    #[cfg(feature = "iter-async")]
     use crate::tile::test::coord;
     use crate::{Directory, Header, MAX_TILE_ID, PmtError};
 
@@ -274,13 +269,11 @@ mod tests {
         let mut directory_bytes = BytesMut::zeroed(usize::try_from(header.root_length).unwrap());
         reader.read_exact(directory_bytes.as_mut()).unwrap();
 
-        let mut decompressed = BytesMut::zeroed(directory_bytes.len() * 2);
-        {
-            let mut gunzip = GzDecoder::new(decompressed.as_mut());
-            gunzip.write_all(&directory_bytes).unwrap();
-        }
-
-        Directory::try_from(decompressed.freeze()).unwrap()
+        let decompressed = header
+            .internal_compression
+            .decompress(directory_bytes.freeze())
+            .unwrap();
+        Directory::try_from(decompressed).unwrap()
     }
 
     #[test]
@@ -292,7 +285,6 @@ mod tests {
             assert_eq!(directory.entries[nth].tile_id, nth as u64);
         }
 
-        #[cfg(feature = "iter-async")]
         assert_eq!(
             directory.entries[57].iter_coords().collect::<Vec<_>>(),
             vec![coord(3, 4, 6).into()]
@@ -305,7 +297,6 @@ mod tests {
         assert_eq!(directory.entries[58].length, 850);
 
         // that also means that it has two entries in xyz
-        #[cfg(feature = "iter-async")]
         assert_eq!(
             directory.entries[58].iter_coords().collect::<Vec<_>>(),
             vec![coord(3, 4, 7).into(), coord(3, 5, 7).into()]
@@ -333,7 +324,6 @@ mod tests {
             let entries = result.unwrap().entries;
             assert_eq!(entries[0].tile_id, tile_id);
             assert_eq!(entries[0].run_length, run_length);
-            #[cfg(feature = "iter-async")]
             assert_eq!(entries[0].iter_coords().count(), run_length as usize);
         } else {
             assert!(matches!(result, Err(PmtError::InvalidEntry)));
@@ -384,65 +374,32 @@ mod tests {
         }
 
         fn roundtrip(entries: Vec<DirEntry>, compression: Compression) -> Vec<DirEntry> {
-            use std::io::Read as _;
-
-            use flate2::read::GzDecoder;
-
-            use crate::writer::{Compressor, GzipCompressor, NoCompression, WriteTo as _};
+            use crate::writer::{Compressor, WriteTo as _};
 
             let dir = Directory::from_entries(entries);
             let mut buf = vec![];
-            let compressor: &dyn Compressor = match compression {
-                Compression::Gzip => &GzipCompressor::default(),
-                Compression::None => &NoCompression,
-                Compression::Unknown | Compression::Brotli | Compression::Zstd => {
-                    panic!("This compression not handled by tests (yet)")
-                }
-            };
-            dir.write_compressed_to(&mut buf, compressor).unwrap();
-
-            let raw = match compression {
-                Compression::Gzip => {
-                    let mut decoded = vec![];
-                    GzDecoder::new(buf.as_slice())
-                        .read_to_end(&mut decoded)
-                        .unwrap();
-                    decoded
-                }
-                Compression::None => buf,
-                Compression::Unknown | Compression::Brotli | Compression::Zstd => {
-                    panic!("This compression not handled by tests (yet)")
-                }
-            };
-            Directory::try_from(Bytes::from(raw)).unwrap().entries
+            let compressor: Box<dyn Compressor> = compression.into();
+            dir.write_compressed_to(&mut buf, compressor.as_ref())
+                .unwrap();
+            let raw = compression.decompress(Bytes::from(buf)).unwrap();
+            Directory::try_from(raw).unwrap().entries
         }
 
         // Ported from go-pmtiles/pmtiles/directory_test.go:TestDirectoryRoundtrip (line 10)
+        // and TestDirectoryRoundtripNoCompress (line 33), and extended to every codec.
         // The first entry has length 1 instead of 0, which the spec does not allow
-        #[test]
-        fn directory_roundtrip_gzip() {
+        #[rstest]
+        #[case(Compression::None)]
+        #[case(Compression::Gzip)]
+        #[cfg_attr(feature = "brotli", case(Compression::Brotli))]
+        #[cfg_attr(feature = "zstd", case(Compression::Zstd))]
+        fn directory_roundtrip(#[case] compression: Compression) {
             let entries = vec![
                 new_dir_entry(0, 0, 1, 0),
                 new_dir_entry(1, 1, 1, 1),
                 new_dir_entry(2, 2, 2, 2),
             ];
-            let result = roundtrip(entries, Compression::Gzip);
-            assert_eq!(result.len(), 3);
-            assert_eq!(result[0], new_dir_entry(0, 0, 1, 0));
-            assert_eq!(result[1], new_dir_entry(1, 1, 1, 1));
-            assert_eq!(result[2], new_dir_entry(2, 2, 2, 2));
-        }
-
-        // Ported from go-pmtiles/pmtiles/directory_test.go:TestDirectoryRoundtripNoCompress (line 33)
-        // The first entry has length 1 instead of 0, which the spec does not allow
-        #[test]
-        fn directory_roundtrip_no_compression() {
-            let entries = vec![
-                new_dir_entry(0, 0, 1, 0),
-                new_dir_entry(1, 1, 1, 1),
-                new_dir_entry(2, 2, 2, 2),
-            ];
-            let result = roundtrip(entries, Compression::None);
+            let result = roundtrip(entries, compression);
             assert_eq!(result.len(), 3);
             assert_eq!(result[0], new_dir_entry(0, 0, 1, 0));
             assert_eq!(result[1], new_dir_entry(1, 1, 1, 1));

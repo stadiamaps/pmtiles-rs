@@ -7,6 +7,7 @@ use std::hash::{BuildHasherDefault, Hash};
 use std::io::{self, BufWriter, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::mem;
+use std::num::NonZeroU64;
 
 pub use compressor::Compressor;
 pub(crate) use compressor::{GzipCompressor, NoCompression};
@@ -60,9 +61,6 @@ struct WriterState<W: Write + Seek, K> {
 
     /// The number of addressable tiles in this archive.
     n_addressed_tiles: u64,
-
-    /// The number of tile entries (not including directory entries) in this archive.
-    n_tile_entries: u64,
 
     /// Locations of the tile contents that may repeat. Tiles added without a key are not remembered.
     tile_content_map: HashMap<K, TileContentLocation, BuildHasherDefault<XxHash3_64>>,
@@ -270,10 +268,7 @@ impl<D: DedupMode> PmTilesWriter<D> {
     /// Set the bounds of the tiles
     #[must_use]
     pub fn bounds(mut self, min_lon: f64, min_lat: f64, max_lon: f64, max_lat: f64) -> Self {
-        self.header.min_latitude = min_lat;
-        self.header.min_longitude = min_lon;
-        self.header.max_latitude = max_lat;
-        self.header.max_longitude = max_lon;
+        self.header.set_bounds(min_lon, min_lat, max_lon, max_lat);
         self
     }
 
@@ -287,8 +282,7 @@ impl<D: DedupMode> PmTilesWriter<D> {
     /// Set the center position.
     #[must_use]
     pub fn center(mut self, lon: f64, lat: f64) -> Self {
-        self.header.center_latitude = lat;
-        self.header.center_longitude = lon;
+        self.header.set_center(lon, lat);
         self
     }
 
@@ -333,7 +327,6 @@ impl<D: DedupMode> PmTilesWriter<D> {
             header: self.header,
             entries: Vec::new(),
             n_addressed_tiles: 0,
-            n_tile_entries: 0,
             tile_content_map: HashMap::default(),
             n_tile_contents: 0,
             prev_content: None,
@@ -410,17 +403,15 @@ impl<W: Write + Seek, D: DedupMode> PmTilesStreamWriter<W, D> {
 
     /// Set the bounds in the header, as [`PmTilesWriter::bounds`] does, once the tiles are known.
     pub fn set_bounds(&mut self, min_lon: f64, min_lat: f64, max_lon: f64, max_lat: f64) {
-        self.state.header.min_longitude = min_lon;
-        self.state.header.min_latitude = min_lat;
-        self.state.header.max_longitude = max_lon;
-        self.state.header.max_latitude = max_lat;
+        self.state
+            .header
+            .set_bounds(min_lon, min_lat, max_lon, max_lat);
     }
 
     /// Set the center in the header, as [`PmTilesWriter::center`] and [`PmTilesWriter::center_zoom`]
     /// do, once the tiles are known.
     pub fn set_center(&mut self, lon: f64, lat: f64, zoom: u8) {
-        self.state.header.center_longitude = lon;
-        self.state.header.center_latitude = lat;
+        self.state.header.set_center(lon, lat);
         self.state.header.center_zoom = zoom;
     }
 }
@@ -480,7 +471,6 @@ impl<W: Write + Seek, K: Copy + Eq + Hash> WriterState<W, K> {
 
         self.prev_content = key;
 
-        self.n_tile_entries += 1;
         self.entries.push(DirEntry {
             tile_id,
             run_length: 1, // Will be increased by following identical tiles
@@ -598,6 +588,11 @@ impl<W: Write + Seek, D: DedupMode> PmTilesStreamWriter<W, D> {
     pub fn finalize(mut self) -> PmtResult<()> {
         let state = &mut self.state;
 
+        // Building the directories consumes the entries
+        state.header.n_tile_entries = u64::try_from(state.entries.len())
+            .ok()
+            .and_then(NonZeroU64::new);
+
         // We're done writing data, so we can set the data_length here.
         state.header.data_length =
             state.out.written() - MAX_INITIAL_BYTES as u64 - state.header.metadata_length;
@@ -614,7 +609,6 @@ impl<W: Write + Seek, D: DedupMode> PmTilesStreamWriter<W, D> {
 
         state.header.n_addressed_tiles = state.n_addressed_tiles.try_into().ok();
         state.header.n_tile_contents = state.n_tile_contents.try_into().ok();
-        state.header.n_tile_entries = state.n_tile_entries.try_into().ok();
 
         // Determine compressed root directory length
         let mut root_dir_buf = vec![];
@@ -1334,7 +1328,6 @@ mod tests {
                 })
                 .collect(),
             n_addressed_tiles: 0,
-            n_tile_entries: 0,
             tile_content_map: HashMap::default(),
             n_tile_contents: 0,
             prev_content: None,

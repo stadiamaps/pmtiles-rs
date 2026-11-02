@@ -1,7 +1,7 @@
 #[cfg(feature = "iter-async")]
 use std::collections::{HashSet, VecDeque};
 use std::future::Future;
-use std::io::{self, Read as _};
+use std::io;
 use std::ops::Range;
 #[cfg(feature = "iter-async")]
 use std::sync::Arc;
@@ -10,14 +10,12 @@ use std::time::Duration;
 #[cfg(feature = "iter-async")]
 use async_stream::try_stream;
 use bytes::Bytes;
-use flate2::bufread::GzDecoder;
 #[cfg(feature = "iter-async")]
 use futures_util::stream::BoxStream;
 #[cfg(feature = "tilejson")]
 use tilejson::{TileJSON, VectorLayer};
 use tokio::runtime::Handle;
 
-use crate::PmtError::UnsupportedCompression;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
 use crate::{Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileId};
 #[cfg(feature = "__async")]
@@ -115,6 +113,13 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
         let initial_response = backend.read(0, MAX_INITIAL_BYTES).await?;
         let mut initial_bytes = initial_response.bytes;
+        // Every later read is `read_exact`, which returns the same error for any other length
+        if initial_bytes.len() > MAX_INITIAL_BYTES {
+            return Err(PmtError::UnexpectedNumberOfBytesReturned(
+                MAX_INITIAL_BYTES,
+                initial_bytes.len(),
+            ));
+        }
         let initial_data_version_string = initial_response.data_version_string;
 
         // Fewer bytes than a header are still parsed, to report the version they are for
@@ -191,7 +196,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ) -> PmtResult<Option<Bytes>> {
         Ok(if let Some(data) = self.get_tile(tile_id).await? {
             Some(
-                self.decode(self.header.tile_compression, data, decompress)
+                self.decode(self.header.tile_compression, data, Compression::decompress)
                     .await?,
             )
         } else {
@@ -242,7 +247,11 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         let metadata = self.read_exact_unmodified(offset, length).await?;
 
         let decompressed_metadata = self
-            .decode(self.header.internal_compression, metadata, decompress)
+            .decode(
+                self.header.internal_compression,
+                metadata,
+                Compression::decompress,
+            )
             .await?;
 
         Ok(String::from_utf8(Vec::from(decompressed_metadata))?)
@@ -456,34 +465,7 @@ fn decode_estimate(compression: Compression, len: usize) -> Duration {
 }
 
 fn read_compressed_directory(compression: Compression, bytes: Bytes) -> PmtResult<Directory> {
-    let decompressed_bytes = decompress(compression, bytes)?;
-    Directory::try_from(decompressed_bytes)
-}
-
-/// Decompresses bytes that are already in memory, so there is no I/O to wait for.
-fn decompress(compression: Compression, bytes: Bytes) -> PmtResult<Bytes> {
-    if compression == Compression::None {
-        return Ok(bytes);
-    }
-
-    let mut decompressed_bytes = Vec::with_capacity(bytes.len() * 2);
-    match compression {
-        Compression::Gzip => {
-            GzDecoder::new(&bytes[..]).read_to_end(&mut decompressed_bytes)?;
-        }
-        #[cfg(feature = "brotli")]
-        Compression::Brotli => {
-            brotli::Decompressor::new(&bytes[..], 4096).read_to_end(&mut decompressed_bytes)?;
-        }
-        #[cfg(feature = "zstd")]
-        Compression::Zstd => {
-            zstd::stream::read::Decoder::with_buffer(&bytes[..])?
-                .read_to_end(&mut decompressed_bytes)?;
-        }
-        v => return Err(UnsupportedCompression(v)),
-    }
-
-    Ok(Bytes::from(decompressed_bytes))
+    Directory::try_from(compression.decompress(bytes)?)
 }
 
 /// Returns where the root directory is within the `available` bytes read after the header,
@@ -1184,6 +1166,29 @@ mod tests {
             matches!(entries, Err(PmtError::InvalidEntry)),
             "{entries:?}"
         );
+    }
+
+    /// Returns one byte more than requested.
+    struct TooLongBackend;
+
+    impl AsyncBackend for TooLongBackend {
+        fn read(
+            &self,
+            _offset: u64,
+            length: usize,
+        ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
+            future::ready(Ok(BackendResponse::new(Bytes::from(vec![0; length + 1]))))
+        }
+    }
+
+    /// The reader rejects a backend that returns more than it asked for, whatever the backend.
+    #[tokio::test]
+    async fn rejects_too_long_response() {
+        let result = AsyncPmTilesReader::try_from_source(TooLongBackend).await;
+        assert!(matches!(
+            result,
+            Err(PmtError::UnexpectedNumberOfBytesReturned(16_384, 16_385))
+        ));
     }
 
     /// Serves an archive with everything after the root directory moved 4 GiB further,

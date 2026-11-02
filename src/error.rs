@@ -61,14 +61,6 @@ pub enum PmtError {
     /// The server does not support range requests.
     #[error("Range requests unsupported")]
     RangeRequestsUnsupported,
-    #[cfg(any(
-        feature = "http-async",
-        feature = "__async-s3",
-        feature = "__async-aws-s3"
-    ))]
-    /// The HTTP response body exceeded the requested length.
-    #[error("HTTP response body is too long, Response {0}B > requested {1}B")]
-    ResponseBodyTooLong(usize, usize),
     #[cfg(feature = "http-async")]
     /// An HTTP client error occurred.
     #[error(transparent)]

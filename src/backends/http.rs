@@ -95,21 +95,16 @@ impl AsyncBackend for HttpBackend {
         }
 
         let headers = response.headers();
-        let data_version_header_value = headers.get(ETAG).or_else(|| headers.get(LAST_MODIFIED));
-        let data_version = data_version_header_value
+        let data_version_string = headers
+            .get(ETAG)
+            .or_else(|| headers.get(LAST_MODIFIED))
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
 
-        let response_bytes = response.bytes().await?;
-
-        if response_bytes.len() > length {
-            Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length))
-        } else {
-            Ok(match data_version {
-                Some(v) => BackendResponse::new_with_version(response_bytes, v),
-                None => BackendResponse::new(response_bytes),
-            })
-        }
+        Ok(BackendResponse {
+            bytes: response.bytes().await?,
+            data_version_string,
+        })
     }
 }
 
@@ -155,20 +150,6 @@ mod tests {
 
         let result = make_backend(&server).read(0, 64).await;
         assert!(matches!(result, Err(PmtError::RangeRequestsUnsupported)));
-    }
-
-    #[tokio::test]
-    async fn read_rejects_too_long_body() {
-        let mut server = Server::new_async().await;
-        let _mock = server
-            .mock("GET", "/")
-            .with_status(206)
-            .with_body(vec![0u8; 65])
-            .create_async()
-            .await;
-
-        let result = make_backend(&server).read(0, 64).await;
-        assert!(matches!(result, Err(PmtError::ResponseBodyTooLong(65, 64))));
     }
 
     fn make_backend(server: &Server) -> HttpBackend {

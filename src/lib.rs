@@ -15,7 +15,7 @@ pub use backends::*;
 #[cfg(feature = "__async")]
 mod cache;
 #[cfg(feature = "__async")]
-pub use cache::{DirCacheResult, DirectoryCache, HashMapCache, NoCache};
+pub use cache::{DirectoryCache, HashMapCache, NoCache};
 #[cfg(all(feature = "__async", feature = "moka"))]
 pub use cache::{MokaCache, SharedMokaCache};
 
@@ -29,7 +29,6 @@ mod writer;
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "__async-aws-s3")]
 pub use aws_sdk_s3;
-#[cfg(feature = "iter-async")]
 pub use directory::DirEntryCoordsIter;
 pub use directory::{DirEntry, Directory};
 pub use error::{PmtError, PmtResult};
