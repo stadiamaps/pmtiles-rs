@@ -88,7 +88,7 @@ async fn get_tile(z: u8, x: u32, y: u32) -> PmtResult<Option<Bytes>> {
     let cache = MokaCache::with_max_bytes(64 * 1024 * 1024);
     let client = Client::builder().use_rustls_tls().build()?;
     let url = "https://protomaps.github.io/PMTiles/protomaps(vector)ODbL_firenze.pmtiles";
-    let reader = AsyncPmTilesReader::new_with_cached_url(cache, client, url).await?;
+    let reader = AsyncPmTilesReader::new_with_url_and_cache(client, url, cache).await?;
     reader.get_tile(TileCoord::new(z, x, y)?).await
 }
 ```
@@ -103,8 +103,8 @@ use pmtiles::{AsyncPmTilesReader, PmtResult, SharedMokaCache};
 
 async fn open_archives() -> PmtResult<()> {
     let shared = SharedMokaCache::with_max_bytes(256 * 1024 * 1024);
-    let a = AsyncPmTilesReader::new_with_cached_path(shared.new_cache(), "a.pmtiles").await?;
-    let b = AsyncPmTilesReader::new_with_cached_path(shared.new_cache(), "b.pmtiles").await?;
+    let a = AsyncPmTilesReader::new_with_path_and_cache("a.pmtiles", shared.new_cache()).await?;
+    let b = AsyncPmTilesReader::new_with_path_and_cache("b.pmtiles", shared.new_cache()).await?;
     // ... read tiles from `a` and `b` ...
     println!("{} directories cached", shared.entry_count());
     Ok(())
@@ -127,7 +127,7 @@ async fn get_tile(client: Client, z: u8, x: u32, y: u32) -> PmtResult<Option<Byt
     let bucket = "my-bucket".to_string();
     let key = "example.pmtiles".to_string();
     let reader =
-        AsyncPmTilesReader::new_with_cached_client_bucket_and_path(cache, client, bucket, key)
+        AsyncPmTilesReader::new_with_client_bucket_path_and_cache(client, bucket, key, cache)
             .await?;
     reader.get_tile(TileCoord::new(z, x, y)?).await
 }
