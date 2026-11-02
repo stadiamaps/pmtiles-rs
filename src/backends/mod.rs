@@ -2,6 +2,10 @@
 mod aws_s3;
 #[cfg(feature = "aws-s3-async")]
 pub use crate::backends::aws_s3::AwsS3Backend;
+#[cfg(feature = "file-async-tokio")]
+mod file;
+#[cfg(feature = "file-async-tokio")]
+pub use crate::backends::file::{FileBackend, FileBackendOptions};
 #[cfg(feature = "http-async")]
 mod http;
 #[cfg(feature = "http-async")]

@@ -630,7 +630,7 @@ fn into_u32(v: u64) -> PmtResult<u32> {
 }
 
 #[cfg(test)]
-#[cfg(all(feature = "mmap-async-tokio", feature = "iter-async"))]
+#[cfg(all(feature = "file-async-tokio", feature = "iter-async"))]
 #[allow(
     clippy::float_cmp,
     reason = "exact round-trips; clippy versions differ on flagging float `assert_eq!`"
@@ -650,7 +650,7 @@ mod tests {
     use crate::tests::RASTER_FILE;
     use crate::writer::GzipCompressor;
     use crate::{
-        AsyncPmTilesReader, CallerKey, Compression, DirEntry, Header, MmapBackend,
+        AsyncPmTilesReader, CallerKey, Compression, DirEntry, FileBackend, Header,
         PmTilesStreamWriter, PmTilesWriter, PmtError, TileCoord, TileId, TileType,
     };
 
@@ -675,7 +675,7 @@ mod tests {
             .unwrap();
         writer.finalize().unwrap();
 
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let header = reader.get_header();
         assert_eq!(
@@ -716,7 +716,7 @@ mod tests {
         writer.set_center(1.0, 2.0, 3);
         writer.finalize().unwrap();
 
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         assert_eq!(reader.get_metadata().await.unwrap(), r#"{"name":"late"}"#);
         let header = reader.get_header();
@@ -761,7 +761,7 @@ mod tests {
         writer.add_tile(empty_coord, b"", None).unwrap();
         writer.finalize().unwrap();
 
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let header = reader.get_header();
         assert_eq!(header.n_addressed_tiles, NonZeroU64::new(6));
@@ -794,7 +794,7 @@ mod tests {
         writer.finalize().unwrap();
 
         verify_entries(&path, 20_000).await;
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let header = reader.get_header();
         assert!(header.leaf_length > 0, "test must produce leaf directories");
@@ -807,7 +807,7 @@ mod tests {
 
     #[tokio::test]
     async fn roundtrip_raster() {
-        let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
+        let backend = FileBackend::try_from(RASTER_FILE).await.unwrap();
         let tiles_in = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let header_in = tiles_in.get_header();
         let metadata_in = tiles_in.get_metadata().await.unwrap();
@@ -829,7 +829,7 @@ mod tests {
         }
         writer.finalize().unwrap();
 
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let tiles_out = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         // Compare headers
@@ -890,7 +890,7 @@ mod tests {
     }
 
     async fn verify_entries(file_path: &str, num_tiles: u64) {
-        let backend = MmapBackend::try_from(file_path).await.unwrap();
+        let backend = FileBackend::try_from(file_path).await.unwrap();
         let tiles_out = Arc::new(AsyncPmTilesReader::try_from_source(backend).await.unwrap());
         let header_out = tiles_out.get_header();
         assert_eq!(header_out.n_addressed_tiles, NonZeroU64::new(num_tiles));
@@ -987,7 +987,7 @@ mod tests {
         writer.finalize().unwrap();
 
         // Read it out
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let tiles_out = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let header = tiles_out.get_header();
@@ -1030,7 +1030,7 @@ mod tests {
         writer.finalize().unwrap();
 
         // Read it back and verify internal compression was used
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let tiles_out = Arc::new(AsyncPmTilesReader::try_from_source(backend).await.unwrap());
 
         let header = tiles_out.get_header();
@@ -1085,7 +1085,7 @@ mod tests {
         writer.finalize().unwrap();
 
         // Open and verify: 3 addressed/entries, 2 unique contents (A and C deduped), no RLE.
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let tiles_out = Arc::new(AsyncPmTilesReader::try_from_source(backend).await.unwrap());
         let header = tiles_out.get_header();
         assert_eq!(header.n_addressed_tiles, NonZeroU64::new(3));
@@ -1134,7 +1134,7 @@ mod tests {
         writer.add_tile(tile_id.into(), test_data).unwrap();
         writer.finalize().unwrap();
 
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let tiles_out = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         assert_eq!(tiles_out.get_header().tile_compression, Compression::Zstd);
 
@@ -1161,7 +1161,7 @@ mod tests {
         writer.add_tile(tile_id.into(), test_data).unwrap();
         writer.finalize().unwrap();
 
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let tiles_out = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         assert_eq!(tiles_out.get_header().tile_compression, Compression::Gzip);
 
@@ -1211,7 +1211,7 @@ mod tests {
         writer.add_tile(tile_id.into(), test_data).unwrap();
         writer.finalize().unwrap();
 
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let tiles_out = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let tile = tiles_out.get_tile(tile_id).await.unwrap().unwrap();
@@ -1241,7 +1241,7 @@ mod tests {
         writer.add_tile(tile_id.into(), test_data).unwrap();
         writer.finalize().unwrap();
 
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let tiles_out = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         assert_eq!(tiles_out.get_header().tile_compression, Compression::Brotli);
 
@@ -1273,7 +1273,7 @@ mod tests {
         }
         writer.finalize().unwrap();
 
-        let backend = MmapBackend::try_from(&path).await.unwrap();
+        let backend = FileBackend::try_from(&path).await.unwrap();
         let tiles_out = Arc::new(AsyncPmTilesReader::try_from_source(backend).await.unwrap());
 
         let header = tiles_out.get_header();

@@ -15,23 +15,25 @@ archives, the single-file tile format created by Brandon Liu for Protomaps.
 - **Reading** tiles, metadata, [TileJSON](https://github.com/mapbox/tilejson-spec) and the list of all tile entries
 - **Writing** archives, with identical tiles stored once
 - **Backends**, all async on Tokio:
-  - local files with `mmap`
+  - local files, read without blocking async threads on the disk, or memory-mapped
   - `http` and `https` URLs (Reqwest)
   - S3, with either the AWS SDK or Rust-S3
   - S3, Azure, GCP, local files, memory and custom stores through [`object_store`](https://docs.rs/object_store)
   - your own, by implementing `AsyncBackend`
 - **Directory caches**: a simple `HashMapCache`, a bounded `MokaCache`, or your own `DirectoryCache`
 - **Safe with untrusted archives**: invalid data returns an error instead of crashing, which CI checks by fuzzing
-- **32-bit targets**, such as `i686`, read and write archives larger than 4 GiB
+- **32-bit targets**, such as `i686`, read and write archives larger than 4 GiB (except through `MmapBackend`)
 - **WebAssembly**: the core library builds for the browser, see [below](#webassembly)
 
 ## Cargo features
 
-Only `mmap-async-tokio` and `iter-async` are enabled by default. The remaining backends
-pull in large dependency trees (the AWS SDK alone is a heavy build), so they are opt-in:
+Only `file-async-tokio`, the preferred local file backend, and `iter-async` are enabled by
+default. The remaining backends pull in large dependency trees (the AWS SDK alone is a heavy
+build), so they are opt-in:
 
 | Feature            | Enables                                                         |
 |--------------------|-----------------------------------------------------------------|
+| `mmap-async-tokio` | Memory-mapped local file backend (`MmapBackend`), see below     |
 | `write`            | Creating archives (`PmTilesWriter`)                             |
 | `http-async`       | `http` and `https` backend (Reqwest)                            |
 | `aws-s3-async`     | S3 backend using the AWS SDK                                    |
@@ -48,13 +50,17 @@ cargo add pmtiles --features http-async,moka,tilejson
 ## WebAssembly
 
 The `iter-async`, `write`, `tilejson`, `object-store`, `brotli` and `zstd` features build for
-`wasm32-unknown-unknown`, and the tests run on `wasm32-wasip1`. CI checks both. The `mmap`,
+`wasm32-unknown-unknown`, and the tests run on `wasm32-wasip1`. CI checks both. The local file,
 `http` and S3 backends and the `moka` cache do not build for wasm yet, so in a browser, read
 archives through `object_store` or your own `AsyncBackend`.
 
 ## Usage examples
 
 ### Reading from a local file
+
+Data already in the page cache is read directly on Linux, and the rest on Tokio's blocking thread
+pool. To update a file while a reader has it open, write a new file and rename it over the old
+one: the reader keeps reading the old file. `FileBackendOptions` can check for in-place changes.
 
 ```rust,no_run
 use bytes::Bytes;
@@ -69,6 +75,28 @@ async fn get_tile(z: u8, x: u32, y: u32) -> PmtResult<Option<Bytes>> {
 async fn get_metadata() -> PmtResult<String> {
     let reader = AsyncPmTilesReader::new_with_path("example.pmtiles").await?;
     reader.get_metadata().await // JSON string
+}
+```
+
+### Memory-mapping a local file
+
+With the `mmap-async-tokio` feature, `MmapBackend` reads a memory-mapped file. Reads of data in
+the page cache are not copied, which saves about 2.4 µs per 17 KB tile, but the `FileBackend`
+above is the better choice in most cases. Use `MmapBackend` only if all of these hold:
+
+- The archive is much smaller than the memory available to the process, including any container
+  limit, so that it stays in the page cache. Otherwise every read of uncached data blocks an
+  async worker thread on the disk, and reads up to 2 MiB around it: on a 139 GB archive, reads
+  were up to 6.7 times slower.
+- The file is never truncated or changed in place while it is mapped: that crashes the process.
+- The target is 64-bit: on 32-bit targets, mapping an archive of more than 1-2 GiB can fail.
+
+```rust,no_run
+use pmtiles::{AsyncPmTilesReader, MmapBackend, PmtResult};
+
+async fn open() -> PmtResult<AsyncPmTilesReader<MmapBackend>> {
+    // Or `new_with_mmap_path_and_cache`, like `new_with_path_and_cache` below
+    AsyncPmTilesReader::new_with_mmap_path("example.pmtiles").await
 }
 ```
 
