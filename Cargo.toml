@@ -16,7 +16,7 @@ default = ["mmap-async-tokio", "iter-async"]
 aws-s3-async = ["__async-aws-s3"]
 http-async = ["__async", "dep:reqwest"]
 iter-async = ["__async", "dep:async-stream", "dep:futures-util"]
-mmap-async-tokio = ["__async", "dep:memmap2", "tokio?/fs"]
+mmap-async-tokio = ["__async", "dep:memmap2", "tokio/fs"]
 moka = ["__async", "dep:moka"]
 s3-async-native = ["__async-s3", "__async-s3-nativetls"]
 s3-async-rustls = ["__async-s3", "__async-s3-rustls"]
@@ -47,7 +47,7 @@ __all_non_conflicting = [
     "brotli",
     "zstd",
 ]
-__async = ["dep:tokio", "tokio?/rt"]
+__async = ["dep:tokio", "tokio/rt"]
 __async-s3 = ["__async", "dep:rust-s3"]
 __async-s3-nativetls = ["rust-s3?/tokio-native-tls"]
 __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]

@@ -88,6 +88,20 @@ impl Header {
         }
     }
 
+    #[cfg(feature = "write")]
+    pub(crate) fn set_bounds(&mut self, min_lon: f64, min_lat: f64, max_lon: f64, max_lat: f64) {
+        self.min_longitude = min_lon;
+        self.min_latitude = min_lat;
+        self.max_longitude = max_lon;
+        self.max_latitude = max_lat;
+    }
+
+    #[cfg(feature = "write")]
+    pub(crate) fn set_center(&mut self, lon: f64, lat: f64) {
+        self.center_longitude = lon;
+        self.center_latitude = lat;
+    }
+
     /// Get the `PMTiles` spec version of the archive.
     #[must_use]
     pub fn spec_version(&self) -> u8 {
@@ -151,18 +165,49 @@ impl Compression {
             Self::Unknown | Self::None => None?,
         })
     }
+
+    /// Decompresses bytes that are already in memory, so there is no I/O to wait for.
+    #[cfg(any(feature = "__async", test))]
+    pub(crate) fn decompress(self, bytes: Bytes) -> PmtResult<Bytes> {
+        use std::io::Read as _;
+
+        use flate2::bufread::GzDecoder;
+
+        if self == Self::None {
+            return Ok(bytes);
+        }
+
+        let mut decompressed_bytes = Vec::with_capacity(bytes.len() * 2);
+        match self {
+            Self::Gzip => {
+                GzDecoder::new(&bytes[..]).read_to_end(&mut decompressed_bytes)?;
+            }
+            #[cfg(feature = "brotli")]
+            Self::Brotli => {
+                brotli::Decompressor::new(&bytes[..], 4096).read_to_end(&mut decompressed_bytes)?;
+            }
+            #[cfg(feature = "zstd")]
+            Self::Zstd => {
+                zstd::stream::read::Decoder::with_buffer(&bytes[..])?
+                    .read_to_end(&mut decompressed_bytes)?;
+            }
+            v => return Err(PmtError::UnsupportedCompression(v)),
+        }
+
+        Ok(Bytes::from(decompressed_bytes))
+    }
 }
 
-impl TryInto<Compression> for u8 {
+impl TryFrom<u8> for Compression {
     type Error = PmtError;
 
-    fn try_into(self) -> Result<Compression, Self::Error> {
-        match self {
-            0 => Ok(Compression::Unknown),
-            1 => Ok(Compression::None),
-            2 => Ok(Compression::Gzip),
-            3 => Ok(Compression::Brotli),
-            4 => Ok(Compression::Zstd),
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Unknown),
+            1 => Ok(Self::None),
+            2 => Ok(Self::Gzip),
+            3 => Ok(Self::Brotli),
+            4 => Ok(Self::Zstd),
             _ => Err(PmtError::InvalidCompression),
         }
     }
@@ -239,25 +284,25 @@ impl TileType {
     }
 }
 
-impl TryInto<TileType> for u8 {
+impl TryFrom<u8> for TileType {
     type Error = PmtError;
 
-    fn try_into(self) -> Result<TileType, Self::Error> {
-        match self {
-            0 => Ok(TileType::Unknown),
-            1 => Ok(TileType::Mvt),
-            2 => Ok(TileType::Png),
-            3 => Ok(TileType::Jpeg),
-            4 => Ok(TileType::Webp),
-            5 => Ok(TileType::Avif),
-            6 => Ok(TileType::Mlt),
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Unknown),
+            1 => Ok(Self::Mvt),
+            2 => Ok(Self::Png),
+            3 => Ok(Self::Jpeg),
+            4 => Ok(Self::Webp),
+            5 => Ok(Self::Avif),
+            6 => Ok(Self::Mlt),
             _ => Err(PmtError::InvalidTileType),
         }
     }
 }
 
-static V3_MAGIC: &str = "PMTiles";
-static V2_MAGIC: &str = "PM";
+const V3_MAGIC: &str = "PMTiles";
+const V2_MAGIC: &str = "PM";
 
 impl Header {
     fn read_coordinate_part<B: Buf>(mut buf: B) -> f64 {

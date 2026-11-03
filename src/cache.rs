@@ -14,25 +14,6 @@ use moka::future::Cache;
 use crate::PmtError;
 use crate::{DirEntry, Directory, PmtResult, TileId};
 
-/// Result of a directory cache lookup.
-pub enum DirCacheResult {
-    /// The directory was not found in the cache.
-    NotCached,
-    /// The tile was not found in the directory.
-    NotFound,
-    /// The tile was found in the directory.
-    Found(DirEntry),
-}
-
-impl From<Option<&DirEntry>> for DirCacheResult {
-    fn from(entry: Option<&DirEntry>) -> Self {
-        match entry {
-            Some(entry) => Self::Found(*entry),
-            None => Self::NotFound,
-        }
-    }
-}
-
 /// A cache for `PMTiles` directories.
 ///
 /// Directories are identified by their `offset` in the archive, so each cache instance must
@@ -70,41 +51,24 @@ pub struct HashMapCache {
     cache: RwLock<HashMap<u64, Directory>>,
 }
 
-impl HashMapCache {
-    fn get_dir_entry(&self, offset: u64, tile_id: TileId) -> DirCacheResult {
-        // Panic if the lock is poisoned is not something the user can handle
-        #[expect(clippy::unwrap_used)]
-        if let Some(dir) = self.cache.read().unwrap().get(&offset) {
-            return dir.find_tile_id(tile_id).into();
-        }
-        DirCacheResult::NotCached
-    }
-
-    fn insert_dir(&self, offset: u64, directory: Directory) {
-        // Panic if the lock is poisoned is not something the user can handle
-        #[expect(clippy::unwrap_used)]
-        self.cache.write().unwrap().insert(offset, directory);
-    }
-}
-
 impl DirectoryCache for HashMapCache {
+    #[expect(
+        clippy::unwrap_used,
+        reason = "a poisoned lock is not something the caller can handle"
+    )]
     async fn get_dir_entry_or_insert(
         &self,
         offset: u64,
         tile_id: TileId,
         fetcher: impl Future<Output = PmtResult<Directory>> + Send,
     ) -> PmtResult<Option<DirEntry>> {
-        let dir_entry = self.get_dir_entry(offset, tile_id);
-        match dir_entry {
-            DirCacheResult::Found(entry) => Ok(Some(entry)),
-            DirCacheResult::NotFound => Ok(None),
-            DirCacheResult::NotCached => {
-                let directory = fetcher.await?;
-                let dir_entry = directory.find_tile_id(tile_id).copied();
-                self.insert_dir(offset, directory);
-                Ok(dir_entry)
-            }
+        if let Some(directory) = self.cache.read().unwrap().get(&offset) {
+            return Ok(directory.find_tile_id(tile_id).copied());
         }
+        let directory = fetcher.await?;
+        let entry = directory.find_tile_id(tile_id).copied();
+        self.cache.write().unwrap().insert(offset, directory);
+        Ok(entry)
     }
 }
 
@@ -283,16 +247,12 @@ mod tests {
         let mut dir_to_cache = Directory::default();
         dir_to_cache.entries.push(DirEntry::default());
 
-        // Initially, the cache should be empty.
-        let get_result = cache.get_dir_entry(offset, tile_id);
-        assert!(matches!(get_result, DirCacheResult::NotCached));
-
-        // Insert a directory into the cache.
-        cache.insert_dir(offset, dir_to_cache);
-
-        // Now, the cache should return Found since the directory contains an entry.
-        let get_result = cache.get_dir_entry(offset, tile_id);
-        assert!(matches!(get_result, DirCacheResult::Found(_)));
+        // Initially, the cache is empty, so the fetcher is called and its directory cached.
+        let get_result = cache
+            .get_dir_entry_or_insert(offset, tile_id, async { Ok(dir_to_cache) })
+            .await
+            .unwrap();
+        assert!(get_result.is_some());
 
         // The fetcher won't get called, because the entry is already cached.
         let get_result = cache
@@ -416,9 +376,13 @@ mod tests {
             length: 1,
             run_length: 1,
         });
-        cache.insert_dir(0, directory);
-
         let tile_id = TileId::new(5).unwrap();
+        let first = cache
+            .get_dir_entry_or_insert(0, tile_id, async { Ok(directory) })
+            .await
+            .unwrap();
+        assert!(first.is_none());
+
         let entry = cache
             .get_dir_entry_or_insert(0, tile_id, async { Err(PmtError::InvalidEntry) })
             .await

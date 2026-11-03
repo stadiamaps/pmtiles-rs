@@ -103,24 +103,20 @@ impl AsyncBackend for AwsS3Backend {
             .await
             .map_err(Box::new)?;
 
-        let response_bytes = obj
+        let bytes = obj
             .body
             .collect()
             .await
             .map_err(|e| PmtError::Reading(e.into()))?
             .into_bytes();
-        if response_bytes.len() > length {
-            return Err(PmtError::ResponseBodyTooLong(response_bytes.len(), length));
-        }
-
-        let data_version = obj
+        let data_version_string = obj
             .e_tag
             .take()
             .or_else(|| obj.last_modified.as_ref().map(ToString::to_string));
 
-        Ok(match data_version {
-            Some(v) => BackendResponse::new_with_version(response_bytes, v),
-            None => BackendResponse::new(response_bytes),
+        Ok(BackendResponse {
+            bytes,
+            data_version_string,
         })
     }
 }
@@ -210,20 +206,6 @@ mod tests {
             response.data_version_string.as_deref(),
             Some("2025-01-01T00:00:00Z")
         );
-    }
-
-    #[tokio::test]
-    async fn read_rejects_too_long_body() {
-        let mut server = Server::new_async().await;
-        let _mock = server
-            .mock("GET", Matcher::Any)
-            .with_status(206)
-            .with_body(vec![0u8; 65])
-            .create_async()
-            .await;
-
-        let result = backend(&server).read(0, 64).await;
-        assert!(matches!(result, Err(PmtError::ResponseBodyTooLong(65, 64))));
     }
 
     #[tokio::test]

@@ -1,6 +1,5 @@
 use s3::Bucket;
 
-use crate::PmtError::ResponseBodyTooLong;
 use crate::{
     AsyncBackend, AsyncPmTilesReader, BackendResponse, DirectoryCache, NoCache, PmtResult,
 };
@@ -83,27 +82,21 @@ impl AsyncBackend for S3Backend {
             .get_object_range(self.path.as_str(), offset, Some(offset + length as u64 - 1))
             .await?;
 
-        let response_len = response.bytes().len();
-        if response_len > length {
-            return Err(ResponseBodyTooLong(response_len, length));
-        }
-
         let mut headers = response.headers();
-        let data_version = headers
+        let data_version_string = headers
             .remove("etag")
             .or_else(|| headers.remove("last-modified"));
-        let response_bytes = response.into_bytes();
 
-        Ok(match data_version {
-            Some(v) => BackendResponse::new_with_version(response_bytes, v),
-            None => BackendResponse::new(response_bytes),
+        Ok(BackendResponse {
+            bytes: response.into_bytes(),
+            data_version_string,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use mockito::{Matcher, Server, ServerGuard};
+    use mockito::{Server, ServerGuard};
     use s3::Region;
     use s3::creds::Credentials;
 
@@ -179,20 +172,5 @@ mod tests {
             response.data_version_string.as_deref(),
             Some("Wed, 01 Jan 2025 00:00:00 GMT")
         );
-    }
-
-    #[tokio::test]
-    async fn read_rejects_too_long_body() {
-        let mut server = Server::new_async().await;
-        let _mock = server
-            .mock("GET", Matcher::Any)
-            .with_status(206)
-            .with_body(vec![0u8; 65])
-            .create_async()
-            .await;
-
-        let backend = S3Backend::from(bucket(&server), "a.pmtiles".into());
-        let result = backend.read(0, 64).await;
-        assert!(matches!(result, Err(ResponseBodyTooLong(65, 64))));
     }
 }
