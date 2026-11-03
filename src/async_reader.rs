@@ -1,24 +1,21 @@
 #[cfg(feature = "iter-async")]
 use std::collections::{HashSet, VecDeque};
 use std::future::Future;
+use std::io::{self, Read as _};
 use std::ops::Range;
 #[cfg(feature = "iter-async")]
 use std::sync::Arc;
+use std::time::Duration;
 
-#[cfg(feature = "brotli")]
-use async_compression::tokio::bufread::BrotliDecoder;
-use async_compression::tokio::bufread::GzipDecoder;
-#[cfg(feature = "zstd")]
-use async_compression::tokio::bufread::ZstdDecoder;
 #[cfg(feature = "iter-async")]
 use async_stream::try_stream;
 use bytes::Bytes;
+use flate2::bufread::GzDecoder;
 #[cfg(feature = "iter-async")]
 use futures_util::stream::BoxStream;
 #[cfg(feature = "tilejson")]
 use tilejson::{TileJSON, VectorLayer};
-#[cfg(feature = "__async")]
-use tokio::io::AsyncReadExt as _;
+use tokio::runtime::Handle;
 
 use crate::PmtError::UnsupportedCompression;
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
@@ -58,6 +55,10 @@ impl BackendResponse {
     }
 }
 
+/// Decoding estimated to take longer than this runs on Tokio's blocking thread pool by default,
+/// the upper end of Tokio's guideline for how long a task may run between `.await`s.
+const DEFAULT_BLOCKING_DECODE: Duration = Duration::from_micros(100);
+
 /// An asynchronous reader for `PMTiles` archives.
 pub struct AsyncPmTilesReader<B, C = NoCache> {
     backend: B,
@@ -65,6 +66,8 @@ pub struct AsyncPmTilesReader<B, C = NoCache> {
     header: Header,
     root_directory: Directory,
     initial_data_version_string: Option<String>,
+    /// Decoding estimated to take longer than this runs on Tokio's blocking thread pool.
+    blocking_decode: Option<Duration>,
 }
 
 impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
@@ -110,8 +113,9 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         };
         let directory_bytes = initial_bytes.slice(root_range);
 
+        // The root directory is at most 16 KiB, and is decoded only once
         let root_directory =
-            Self::read_compressed_directory(header.internal_compression, directory_bytes).await?;
+            read_compressed_directory(header.internal_compression, directory_bytes)?;
 
         Ok(Self {
             backend,
@@ -119,6 +123,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             header,
             root_directory,
             initial_data_version_string,
+            blocking_decode: Some(DEFAULT_BLOCKING_DECODE),
         })
     }
 
@@ -169,10 +174,28 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         tile_id: Id,
     ) -> PmtResult<Option<Bytes>> {
         Ok(if let Some(data) = self.get_tile(tile_id).await? {
-            Some(Self::decompress(self.header.tile_compression, data).await?)
+            Some(
+                self.decode(self.header.tile_compression, data, decompress)
+                    .await?,
+            )
         } else {
             None
         })
+    }
+
+    /// Sets how long decoding may be expected to take on the calling thread, which is 100 µs by
+    /// default. Decoding is decompressing directories, metadata and tiles, and parsing
+    /// directories. Decoding estimated to take longer runs on Tokio's blocking thread pool, so
+    /// that it does not hold up other tasks on the same thread: a large leaf directory can take
+    /// milliseconds. `None` decodes everything on the calling thread, as does running outside
+    /// a Tokio runtime.
+    ///
+    /// The estimate comes from the compressed size and the compression, at rates measured on a
+    /// recent desktop CPU. Handing work to the blocking pool costs about 15-40 µs.
+    #[must_use]
+    pub fn blocking_decode_above(mut self, threshold: Option<Duration>) -> Self {
+        self.blocking_decode = threshold;
+        self
     }
 
     /// Access header information.
@@ -202,8 +225,9 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             usize::try_from(self.header.metadata_length).map_err(|_| PmtError::InvalidHeader)?;
         let metadata = self.read_exact_unmodified(offset, length).await?;
 
-        let decompressed_metadata =
-            Self::decompress(self.header.internal_compression, metadata).await?;
+        let decompressed_metadata = self
+            .decode(self.header.internal_compression, metadata, decompress)
+            .await?;
 
         Ok(String::from_utf8(Vec::from(decompressed_metadata))?)
     }
@@ -336,7 +360,8 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         let entry = self
             .cache
             .get_dir_entry_or_insert(offset, tile_id, async move {
-                self.read_directory(offset, entry.length as usize).await
+                // Boxed, so that a cache hit, which never polls it, does not move its state
+                Box::pin(self.read_directory(offset, entry.length as usize)).await
             })
             .await?;
 
@@ -351,7 +376,33 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
     async fn read_directory(&self, offset: u64, length: usize) -> PmtResult<Directory> {
         let data = self.read_exact_unmodified(offset, length).await?;
-        Self::read_compressed_directory(self.header.internal_compression, data).await
+        self.decode(
+            self.header.internal_compression,
+            data,
+            read_compressed_directory,
+        )
+        .await
+    }
+
+    /// Runs `decode` on Tokio's blocking thread pool if it is estimated to take longer than the
+    /// threshold, and there is a Tokio runtime to run it on, or on this thread otherwise.
+    async fn decode<T: Send + 'static>(
+        &self,
+        compression: Compression,
+        bytes: Bytes,
+        decode: fn(Compression, Bytes) -> PmtResult<T>,
+    ) -> PmtResult<T> {
+        if self
+            .blocking_decode
+            .is_some_and(|threshold| decode_estimate(compression, bytes.len()) > threshold)
+            && let Ok(runtime) = Handle::try_current()
+        {
+            return runtime
+                .spawn_blocking(move || decode(compression, bytes))
+                .await
+                .map_err(io::Error::other)?;
+        }
+        decode(compression, bytes)
     }
 
     /// Reads exactly `length` bytes starting at `offset`, failing if the archive changed since initialization.
@@ -372,45 +423,51 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         }
         Ok(response.bytes)
     }
+}
 
-    async fn read_compressed_directory(
-        compression: Compression,
-        bytes: Bytes,
-    ) -> PmtResult<Directory> {
-        let decompressed_bytes = Self::decompress(compression, bytes).await?;
-        Directory::try_from(decompressed_bytes)
+/// Estimates how long decoding `len` compressed bytes takes, at rates per compressed byte
+/// measured on a recent desktop CPU, near the slower end so as not to underestimate. Parsing a
+/// directory costs little next to decompressing it, so the same rates cover directories.
+fn decode_estimate(compression: Compression, len: usize) -> Duration {
+    let ns_per_byte: u64 = match compression {
+        Compression::Gzip => 20,
+        Compression::Brotli => 30,
+        Compression::Zstd => 6,
+        Compression::None | Compression::Unknown => 0,
+    };
+    let len = u64::try_from(len).unwrap_or(u64::MAX);
+    Duration::from_nanos(len.saturating_mul(ns_per_byte))
+}
+
+fn read_compressed_directory(compression: Compression, bytes: Bytes) -> PmtResult<Directory> {
+    let decompressed_bytes = decompress(compression, bytes)?;
+    Directory::try_from(decompressed_bytes)
+}
+
+/// Decompresses bytes that are already in memory, so there is no I/O to wait for.
+fn decompress(compression: Compression, bytes: Bytes) -> PmtResult<Bytes> {
+    if compression == Compression::None {
+        return Ok(bytes);
     }
 
-    async fn decompress(compression: Compression, bytes: Bytes) -> PmtResult<Bytes> {
-        if compression == Compression::None {
-            return Ok(bytes);
+    let mut decompressed_bytes = Vec::with_capacity(bytes.len() * 2);
+    match compression {
+        Compression::Gzip => {
+            GzDecoder::new(&bytes[..]).read_to_end(&mut decompressed_bytes)?;
         }
-
-        let mut decompressed_bytes = Vec::with_capacity(bytes.len() * 2);
-        match compression {
-            Compression::Gzip => {
-                GzipDecoder::new(&bytes[..])
-                    .read_to_end(&mut decompressed_bytes)
-                    .await?;
-            }
-            #[cfg(feature = "brotli")]
-            Compression::Brotli => {
-                BrotliDecoder::new(&bytes[..])
-                    .read_to_end(&mut decompressed_bytes)
-                    .await?;
-            }
-            #[cfg(feature = "zstd")]
-            Compression::Zstd => {
-                ZstdDecoder::new(&bytes[..])
-                    .read_to_end(&mut decompressed_bytes)
-                    .await?;
-            }
-            Compression::None => return Ok(bytes),
-            v => return Err(UnsupportedCompression(v)),
+        #[cfg(feature = "brotli")]
+        Compression::Brotli => {
+            brotli::Decompressor::new(&bytes[..], 4096).read_to_end(&mut decompressed_bytes)?;
         }
-
-        Ok(Bytes::from(decompressed_bytes))
+        #[cfg(feature = "zstd")]
+        Compression::Zstd => {
+            zstd::stream::read::Decoder::with_buffer(&bytes[..])?
+                .read_to_end(&mut decompressed_bytes)?;
+        }
+        v => return Err(UnsupportedCompression(v)),
     }
+
+    Ok(Bytes::from(decompressed_bytes))
 }
 
 /// Returns where the root directory is within the `available` bytes read after the header,
@@ -489,16 +546,21 @@ pub trait AsyncBackend {
 #[cfg(test)]
 #[cfg(feature = "mmap-async-tokio")]
 mod tests {
+    use std::pin::pin;
     #[cfg(feature = "iter-async")]
     use std::sync::Arc;
     use std::sync::Mutex;
+    use std::task::{Context, Poll, Waker};
+    use std::time::Duration;
     use std::{fs, future};
 
     use bytes::Bytes;
     use rstest::rstest;
     #[cfg(feature = "tilejson")]
     use tilejson::TileJSON;
+    use tokio::runtime::Builder;
 
+    use super::decode_estimate;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::{
         AsyncBackend, AsyncPmTilesReader, BackendResponse, Compression, MmapBackend, PmtError,
@@ -847,6 +909,54 @@ mod tests {
 
         let metadata = tiles.get_metadata().await.unwrap();
         assert_ne!(metadata, "");
+    }
+
+    #[test]
+    fn decode_estimate_grows_with_size_and_codec_cost() {
+        let gzip = decode_estimate(Compression::Gzip, 5000);
+        assert_eq!(gzip, Duration::from_micros(100));
+        assert!(decode_estimate(Compression::Brotli, 5000) > gzip);
+        assert!(decode_estimate(Compression::Zstd, 5000) < gzip);
+        assert!(decode_estimate(Compression::Gzip, 50_000) > gzip);
+        assert_eq!(decode_estimate(Compression::None, 5000), Duration::ZERO);
+    }
+
+    async fn open_vector(threshold: Option<Duration>) -> AsyncPmTilesReader<MmapBackend> {
+        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
+        reader.blocking_decode_above(threshold)
+    }
+
+    /// Decoding everything on the blocking pool returns the same data as decoding inline.
+    #[tokio::test]
+    async fn blocking_decode_returns_the_same_data() {
+        let inline = open_vector(None).await;
+        let blocking = open_vector(Some(Duration::ZERO)).await;
+        assert_eq!(
+            inline.get_metadata().await.unwrap(),
+            blocking.get_metadata().await.unwrap()
+        );
+        // The second tile is in a leaf directory
+        for coord in [id(0, 0, 0), id(12, 2174, 1492)] {
+            assert_eq!(
+                inline.get_tile_decompressed(coord).await.unwrap(),
+                blocking.get_tile_decompressed(coord).await.unwrap()
+            );
+        }
+    }
+
+    /// Outside a Tokio runtime, decoding that would go to the blocking pool runs inline.
+    #[test]
+    fn blocking_decode_without_a_runtime_runs_inline() {
+        // Opening the file needs a runtime, but reading from it does not
+        let runtime = Builder::new_current_thread().build().unwrap();
+        let reader = runtime.block_on(open_vector(Some(Duration::ZERO)));
+
+        let future = pin!(reader.get_tile_decompressed(id(12, 2174, 1492)));
+        let Poll::Ready(tile) = future.poll(&mut Context::from_waker(Waker::noop())) else {
+            panic!("reads from a memory map are always ready");
+        };
+        assert!(tile.unwrap().is_some());
     }
 
     /// Returns a reader of an in-memory archive with one tile and the given metadata.
