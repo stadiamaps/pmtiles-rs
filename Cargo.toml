@@ -21,10 +21,10 @@ moka = ["__async", "dep:moka"]
 s3-async-native = ["__async-s3", "__async-s3-nativetls"]
 s3-async-rustls = ["__async-s3", "__async-s3-rustls"]
 tilejson = ["dep:tilejson", "dep:serde", "dep:serde_json"]
-write = ["dep:flate2", "dep:twox-hash"]
+write = ["dep:twox-hash"]
 object-store = ["__async", "dep:object_store"]
-brotli = ["dep:brotli", "async-compression/brotli"]
-zstd = ["dep:zstd", "async-compression/zstd"]
+brotli = ["dep:brotli"]
+zstd = ["dep:zstd"]
 
 # Forward some of the common features to reqwest dependency
 reqwest-default = ["reqwest?/default"]
@@ -47,7 +47,7 @@ __all_non_conflicting = [
     "brotli",
     "zstd",
 ]
-__async = ["dep:tokio", "async-compression/tokio"]
+__async = ["dep:tokio", "tokio?/rt"]
 __async-s3 = ["__async", "dep:rust-s3"]
 __async-s3-nativetls = ["rust-s3?/tokio-native-tls"]
 __async-s3-rustls = ["rust-s3?/tokio-rustls-tls"]
@@ -57,15 +57,14 @@ __async-aws-s3 = ["__async", "dep:aws-sdk-s3"]
 features = ["__all_non_conflicting"]
 
 [dependencies]
-# TODO: determine how we want to handle compression in async & sync environments
-async-compression = { version = "0.4", features = ["gzip"] }
 async-stream = { version = "0.3", optional = true }
 aws-sdk-s3 = { version = "1.49.0", optional = true }
 brotli = { version = ">=8.0.2, <10.0.0", optional = true }
 zstd = { version = ">=0.13, <0.15", optional = true }
 bytes = "1.10"
 fast_hilbert = "2.0.1"
-flate2 = { version = "1", optional = true }
+# zlib-rs decompresses gzip faster than the default miniz_oxide backend
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 futures-util = { version = "0.3", optional = true }
 integer-encoding = "4.1"
 memmap2 = { version = "0.9.11", optional = true }
@@ -77,12 +76,11 @@ serde = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
 thiserror = "2"
 tilejson = { version = "0.4", optional = true }
-tokio = { version = "1", default-features = false, features = ["io-util"], optional = true }
+tokio = { version = "1", default-features = false, optional = true }
 twox-hash = { version = "2.1", optional = true, default-features = false, features = ["std", "xxhash3_64", "xxhash3_128"] }
 
 [dev-dependencies]
 criterion = { version = "0.8", default-features = false, features = ["async_tokio", "cargo_bench_support"] }
-flate2 = "1"
 rstest = "0.28.0"
 tempfile = "3.13.0"
 tokio = { version = "1", features = ["test-util", "macros", "rt", "sync"] }
