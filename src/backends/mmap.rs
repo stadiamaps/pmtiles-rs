@@ -26,12 +26,12 @@ impl AsyncPmTilesReader<MmapBackend, NoCache> {
     /// - backend fails to read the header/root directory or
     /// - root directory is malformed
     pub async fn new_with_path<P: AsRef<Path>>(path: P) -> PmtResult<Self> {
-        Self::new_with_cached_path(NoCache, path).await
+        Self::new_with_path_and_cache(path, NoCache).await
     }
 }
 
 impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
-    /// Creates a new cached `PMTiles` reader from a file path using the async mmap backend.
+    /// Creates a new `PMTiles` reader with a directory cache from a file path using the async mmap backend.
     ///
     /// Fails if `path` does not exist or is an invalid archive.
     ///
@@ -46,10 +46,23 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
     /// - file cannot be opened for memory mapping,
     /// - backend fails to read the header/root directory or
     /// - root directory is malformed
-    pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> PmtResult<Self> {
+    pub async fn new_with_path_and_cache<P: AsRef<Path>>(path: P, cache: C) -> PmtResult<Self> {
         let backend = MmapBackend::try_from(path).await?;
 
-        Self::try_from_cached_source(backend, cache).await
+        Self::try_from_source_and_cache(backend, cache).await
+    }
+
+    /// Creates a new `PMTiles` reader with a directory cache from a file path using the async mmap backend.
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::new_with_path_and_cache`].
+    #[deprecated(
+        since = "0.27.0",
+        note = "renamed to `new_with_path_and_cache`, which takes the cache last"
+    )]
+    pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> PmtResult<Self> {
+        Self::new_with_path_and_cache(path, cache).await
     }
 }
 
@@ -163,7 +176,26 @@ mod tests {
             .unwrap();
         assert!(reader.get_tile(tile).await.unwrap().is_some());
 
+        let reader =
+            AsyncPmTilesReader::new_with_path_and_cache(RASTER_FILE, HashMapCache::default())
+                .await
+                .unwrap();
+        assert!(reader.get_tile(tile).await.unwrap().is_some());
+    }
+
+    /// The constructors from before the rename still work, with the cache first.
+    #[tokio::test]
+    #[expect(deprecated, reason = "tests the deprecated names")]
+    async fn deprecated_constructors_read_tiles() {
+        let tile = TileCoord::new(3, 4, 2).unwrap();
+
         let reader = AsyncPmTilesReader::new_with_cached_path(HashMapCache::default(), RASTER_FILE)
+            .await
+            .unwrap();
+        assert!(reader.get_tile(tile).await.unwrap().is_some());
+
+        let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
+        let reader = AsyncPmTilesReader::try_from_cached_source(backend, HashMapCache::default())
             .await
             .unwrap();
         assert!(reader.get_tile(tile).await.unwrap().is_some());

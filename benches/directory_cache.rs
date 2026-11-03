@@ -84,7 +84,7 @@ fn bench_get_tile<C: DirectoryCache + Sync + Send>(
 ) {
     let ids = lookup_ids();
     let reader = runtime
-        .block_on(AsyncPmTilesReader::try_from_cached_source(
+        .block_on(AsyncPmTilesReader::try_from_source_and_cache(
             MemoryBackend(archive.clone()),
             cache,
         ))

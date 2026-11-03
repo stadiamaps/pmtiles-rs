@@ -20,7 +20,7 @@ impl AsyncPmTilesReader<AwsS3Backend, NoCache> {
         bucket: String,
         key: String,
     ) -> PmtResult<Self> {
-        Self::new_with_cached_client_bucket_and_path(NoCache, client, bucket, key).await
+        Self::new_with_client_bucket_path_and_cache(client, bucket, key, NoCache).await
     }
 }
 
@@ -37,15 +37,35 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<AwsS3Backend, C> {
     ///
     /// This function will return an error if the S3 object does not exist,
     /// the S3 request fails, or if the data is not a valid `PMTiles` archive.
+    pub async fn new_with_client_bucket_path_and_cache(
+        client: Client,
+        bucket: String,
+        key: String,
+        cache: C,
+    ) -> PmtResult<Self> {
+        let backend = AwsS3Backend::from(client, bucket, key);
+
+        Self::try_from_source_and_cache(backend, cache).await
+    }
+
+    /// Creates a new `PMTiles` reader from a client, bucket and key to the
+    /// archive using the `aws-sdk-s3` backend. Caches using the designated
+    /// `cache`.
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::new_with_client_bucket_path_and_cache`].
+    #[deprecated(
+        since = "0.27.0",
+        note = "renamed to `new_with_client_bucket_path_and_cache`, which takes the cache last"
+    )]
     pub async fn new_with_cached_client_bucket_and_path(
         cache: C,
         client: Client,
         bucket: String,
         key: String,
     ) -> PmtResult<Self> {
-        let backend = AwsS3Backend::from(client, bucket, key);
-
-        Self::try_from_cached_source(backend, cache).await
+        Self::new_with_client_bucket_path_and_cache(client, bucket, key, cache).await
     }
 }
 
@@ -145,11 +165,11 @@ mod tests {
         .unwrap();
         assert!(reader.get_tile(tile).await.unwrap().is_some());
 
-        let reader = AsyncPmTilesReader::new_with_cached_client_bucket_and_path(
-            HashMapCache::default(),
+        let reader = AsyncPmTilesReader::new_with_client_bucket_path_and_cache(
             client(&server),
             "tiles".into(),
             "a.pmtiles".into(),
+            HashMapCache::default(),
         )
         .await
         .unwrap();

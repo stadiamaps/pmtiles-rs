@@ -17,7 +17,7 @@ impl AsyncPmTilesReader<S3Backend, NoCache> {
     /// - the backend fails to read the header/root directory,
     /// - or if the root directory is malformed
     pub async fn new_with_bucket_path(bucket: Bucket, path: String) -> PmtResult<Self> {
-        Self::new_with_cached_bucket_path(NoCache, bucket, path).await
+        Self::new_with_bucket_path_and_cache(bucket, path, NoCache).await
     }
 }
 
@@ -33,14 +33,32 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<S3Backend, C> {
     /// This function will return an error if the
     /// - the backend fails to read the header/root directory,
     /// - or if the root directory is malformed
+    pub async fn new_with_bucket_path_and_cache(
+        bucket: Bucket,
+        path: String,
+        cache: C,
+    ) -> PmtResult<Self> {
+        let backend = S3Backend::from(bucket, path);
+
+        Self::try_from_source_and_cache(backend, cache).await
+    }
+
+    /// Creates a new `PMTiles` reader from a bucket and path to the
+    /// archive using the `rust-s3` backend with a given `cache` backend.
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::new_with_bucket_path_and_cache`].
+    #[deprecated(
+        since = "0.27.0",
+        note = "renamed to `new_with_bucket_path_and_cache`, which takes the cache last"
+    )]
     pub async fn new_with_cached_bucket_path(
         cache: C,
         bucket: Bucket,
         path: String,
     ) -> PmtResult<Self> {
-        let backend = S3Backend::from(bucket, path);
-
-        Self::try_from_cached_source(backend, cache).await
+        Self::new_with_bucket_path_and_cache(bucket, path, cache).await
     }
 }
 
@@ -114,10 +132,10 @@ mod tests {
             .unwrap();
         assert!(reader.get_tile(tile).await.unwrap().is_some());
 
-        let reader = AsyncPmTilesReader::new_with_cached_bucket_path(
-            HashMapCache::default(),
+        let reader = AsyncPmTilesReader::new_with_bucket_path_and_cache(
             bucket(&server),
             "a.pmtiles".into(),
+            HashMapCache::default(),
         )
         .await
         .unwrap();

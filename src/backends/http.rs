@@ -17,12 +17,12 @@ impl AsyncPmTilesReader<HttpBackend, NoCache> {
     /// - the backend fails to read the header/root directory,
     /// - or if the root directory is malformed
     pub async fn new_with_url<U: IntoUrl>(client: Client, url: U) -> PmtResult<Self> {
-        Self::new_with_cached_url(NoCache, client, url).await
+        Self::new_with_url_and_cache(client, url, NoCache).await
     }
 }
 
 impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
-    /// Creates a new `PMTiles` reader with cache from a URL using the Reqwest backend.
+    /// Creates a new `PMTiles` reader with a directory cache from a URL using the Reqwest backend.
     ///
     /// Fails if `url` does not exist or is an invalid archive. (Note: HTTP requests are made to validate it.)
     ///
@@ -32,14 +32,31 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<HttpBackend, C> {
     /// - URL is invalid,
     /// - the backend fails to read the header/root directory,
     /// - or if the root directory is malformed
+    pub async fn new_with_url_and_cache<U: IntoUrl>(
+        client: Client,
+        url: U,
+        cache: C,
+    ) -> PmtResult<Self> {
+        let backend = HttpBackend::try_from(client, url)?;
+
+        Self::try_from_source_and_cache(backend, cache).await
+    }
+
+    /// Creates a new `PMTiles` reader with a directory cache from a URL using the Reqwest backend.
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::new_with_url_and_cache`].
+    #[deprecated(
+        since = "0.27.0",
+        note = "renamed to `new_with_url_and_cache`, which takes the cache last"
+    )]
     pub async fn new_with_cached_url<U: IntoUrl>(
         cache: C,
         client: Client,
         url: U,
     ) -> PmtResult<Self> {
-        let backend = HttpBackend::try_from(client, url)?;
-
-        Self::try_from_cached_source(backend, cache).await
+        Self::new_with_url_and_cache(client, url, cache).await
     }
 }
 
@@ -116,10 +133,10 @@ mod tests {
             .unwrap();
         assert!(reader.get_tile(tile).await.unwrap().is_some());
 
-        let reader = AsyncPmTilesReader::new_with_cached_url(
-            HashMapCache::default(),
+        let reader = AsyncPmTilesReader::new_with_url_and_cache(
             Client::new(),
             server.url(),
+            HashMapCache::default(),
         )
         .await
         .unwrap();
