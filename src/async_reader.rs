@@ -81,12 +81,12 @@ impl<B: AsyncBackend + Sync + Send> AsyncPmTilesReader<B, NoCache> {
     /// - the backend fails to read the header/root directory or
     /// - or if the root directory is malformed
     pub async fn try_from_source(backend: B) -> PmtResult<Self> {
-        Self::try_from_cached_source(backend, NoCache).await
+        Self::try_from_source_and_cache(backend, NoCache).await
     }
 }
 
 impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTilesReader<B, C> {
-    /// Creates a new cached reader from a specified source and validates the provided `PMTiles` archive is valid.
+    /// Creates a new reader from a specified source with a directory cache, and validates the provided `PMTiles` archive is valid.
     ///
     /// Note: Prefer using `new_with_*` methods.
     ///
@@ -95,7 +95,23 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     /// This function will return an error if
     /// - the backend fails to read the header/root directory,
     /// - or if the header or root directory is malformed
+    #[deprecated(since = "0.27.0", note = "renamed to `try_from_source_and_cache`")]
     pub async fn try_from_cached_source(backend: B, cache: C) -> PmtResult<Self> {
+        Self::try_from_source_and_cache(backend, cache).await
+    }
+
+    /// Creates a new reader from a specified source with a directory cache, and validates the provided `PMTiles` archive is valid.
+    ///
+    /// The cache keeps directories between tile lookups, so that repeated lookups skip reading them.
+    ///
+    /// Note: Prefer using `new_with_*` methods.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if
+    /// - the backend fails to read the header/root directory,
+    /// - or if the header or root directory is malformed
+    pub async fn try_from_source_and_cache(backend: B, cache: C) -> PmtResult<Self> {
         // Read the first 127 and up to 16,384 bytes to ensure we can initialize the header and root directory.
         let initial_response = backend.read(0, MAX_INITIAL_BYTES).await?;
         let mut initial_bytes = initial_response.bytes;
@@ -1227,7 +1243,7 @@ mod tests {
             .await
             .unwrap();
         let expected = Arc::new(expected);
-        let shifted = AsyncPmTilesReader::try_from_cached_source(
+        let shifted = AsyncPmTilesReader::try_from_source_and_cache(
             ShiftedBackend::new(data),
             HashMapCache::default(),
         )
