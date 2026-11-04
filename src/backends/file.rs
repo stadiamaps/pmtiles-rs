@@ -564,6 +564,25 @@ mod tests {
         assert_eq!(res.bytes, data[100_000..200_000]);
     }
 
+    /// A file system that rejects `RWF_NOWAIT` turns page-cache reads off for good, and every
+    /// read then runs on the blocking pool. Reading a directory fails, so it stands in for one.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn unsupported_cached_reads_are_turned_off() {
+        let (dir, path, data) = temp_file(10_000);
+        let backend = FileBackend::try_from(dir.path()).await.unwrap();
+        assert_eq!(backend.read_cached(&mut [0; 10], 0), 0);
+        assert!(!backend.try_cached.load(Ordering::Relaxed));
+
+        // The file was just written, so its bytes are cached, but are not read from the cache
+        let mut backend = FileBackend::try_from(&path).await.unwrap();
+        *backend.try_cached.get_mut() = false;
+        assert_eq!(backend.read_cached(&mut [0; 10], 0), 0);
+
+        let res = backend.read(0, data.len()).await.unwrap();
+        assert_eq!(res.bytes, data);
+    }
+
     /// Truncating the file in place makes reads past the new end fail, without crashing.
     #[tokio::test]
     async fn truncating_fails_reads_without_crashing() {
