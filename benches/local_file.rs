@@ -1,23 +1,4 @@
-//! Benchmarks random tile reads from a local file, comparing [`FileBackend`] with
-//! [`MmapBackend`].
-//!
-//! The archive has every tile of zoom levels 0 through 7, each between 1 and 32 KiB, so it is
-//! far larger than the kernel's readahead window and tiles span several pages, as in real
-//! archives. The runtime has 4 worker threads, like a small server. Cases:
-//!
-//! - `hot`: every page is already in the page cache, so a read costs no I/O.
-//! - `cold` (Linux only): the file is evicted from the page cache before each batch of tiles,
-//!   which are read one at a time from a new reader, so directories are read from disk too.
-//! - `cold_dirs_cached`: as `cold`, but the directories stay cached, like in a long-running
-//!   server, so that only tile data is read from disk.
-//! - `cold_concurrent`: as `cold_dirs_cached`, but all tiles of a batch are read at once.
-//!
-//! Every byte of each tile is read, as sending it would: reads from a mapping are lazy, so
-//! without that, the mapped tile data would never be read from disk. The archive is written to
-//! Cargo's target temporary directory, not `/tmp`, which is often `tmpfs` and so cannot be
-//! evicted. Results depend heavily on the disk.
-//!
-//! Run with `just bench local_file`, or `cargo bench --features file-async-tokio,mmap-async-tokio,write --bench local_file`.
+//! Benchmarks random tile reads from a local file, comparing [`FileBackend`] with [`MmapBackend`].
 #![expect(
     clippy::expect_used,
     reason = "a benchmark should stop on any setup failure"
