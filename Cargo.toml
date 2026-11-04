@@ -12,8 +12,9 @@ rust-version = "1.88"
 exclude = ["/fixtures"]
 
 [features]
-default = ["mmap-async-tokio", "iter-async"]
+default = ["file-async-tokio", "iter-async"]
 aws-s3-async = ["__async-aws-s3"]
+file-async-tokio = ["__async", "dep:rustix"]
 http-async = ["__async", "dep:reqwest"]
 iter-async = ["__async", "dep:async-stream", "dep:futures-util"]
 mmap-async-tokio = ["__async", "dep:memmap2", "tokio/fs"]
@@ -36,6 +37,7 @@ reqwest-rustls = ["reqwest?/rustls"]
 # This list excludes these conflicting features: s3-async-native
 __all_non_conflicting = [
     "aws-s3-async",
+    "file-async-tokio",
     "http-async",
     "iter-async",
     "mmap-async-tokio",
@@ -79,22 +81,37 @@ tilejson = { version = "0.4", optional = true }
 tokio = { version = "1", default-features = false, optional = true }
 twox-hash = { version = "2.1", optional = true, default-features = false, features = ["std", "xxhash3_64", "xxhash3_128"] }
 
+# Reads cached file data without blocking
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", optional = true }
+
 [dev-dependencies]
 criterion = { version = "0.8", default-features = false, features = ["async_tokio", "cargo_bench_support"] }
 rstest = "0.28.0"
 tempfile = "3.13.0"
 tokio = { version = "1", features = ["test-util", "macros", "rt", "sync"] }
 
-# Only the network backends' tests use these, and those backends do not build for wasm
+# These do not build for wasm: the network backends' test servers, and the multi-threaded
+# runtime of the `local_file` benchmark
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 mockito = "1"
 reqwest = { version = "0.13.1", features = ["rustls"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
 url = "2"
+
+# Evicts files from the page cache, to measure and test reads from disk
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+rustix = { version = "1", features = ["fs"] }
 
 [[bench]]
 name = "directory_cache"
 harness = false
 required-features = ["moka", "write"]
+
+[[bench]]
+name = "local_file"
+harness = false
+required-features = ["file-async-tokio", "mmap-async-tokio", "write"]
 
 [lints.rust]
 # `deny` rather than `forbid`: the mmap backend must call the inherently-unsafe `Mmap::map`,

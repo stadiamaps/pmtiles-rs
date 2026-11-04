@@ -17,7 +17,7 @@ export RUST_BACKTRACE := env('RUST_BACKTRACE', if ci_mode == '1' {'1'} else {'0'
 # libFuzzer options: cap the input size, and treat a 10s input as a hang
 fuzz_args := '-max_len=65536 -timeout=10'
 
-# Features that build for wasm; `moka`, `mmap-async-tokio` and the network backends do not
+# Features that build for wasm; `moka`, the local file and the network backends do not
 wasm_features := 'brotli,iter-async,object-store,tilejson,write,zstd'
 # Features tested on WASI; `zstd` needs a WASI C library to build there
 wasi_features := replace(wasm_features, ',zstd', '')
@@ -46,6 +46,7 @@ check:
     cargo check --workspace --all-targets --no-default-features
     @echo "--------------  Checking individual crate features"
     cargo check --workspace --all-targets --no-default-features --features aws-s3-async
+    cargo check --workspace --all-targets --no-default-features --features file-async-tokio
     cargo check --workspace --all-targets --no-default-features --features http-async
     cargo check --workspace --all-targets --no-default-features --features iter-async
     cargo check --workspace --all-targets --no-default-features --features mmap-async-tokio
@@ -184,6 +185,7 @@ test:
     cargo test --workspace --all-targets
     @echo "--------------  Testing individual crate features"
     cargo test --workspace --all-targets --no-default-features --features aws-s3-async
+    cargo test --workspace --all-targets --no-default-features --features file-async-tokio
     cargo test --workspace --all-targets --no-default-features --features http-async
     cargo test --workspace --all-targets --no-default-features --features iter-async
     cargo test --workspace --all-targets --no-default-features --features mmap-async-tokio

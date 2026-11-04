@@ -10,7 +10,11 @@ use crate::{
 };
 
 impl AsyncPmTilesReader<MmapBackend, NoCache> {
-    /// Creates a new `PMTiles` reader from a file path using the async mmap backend.
+    /// Creates a new `PMTiles` reader from a memory-mapped file, using the [`MmapBackend`].
+    ///
+    /// Prefer [`new_with_path`](AsyncPmTilesReader::new_with_path), which uses the
+    /// [`FileBackend`](crate::FileBackend), unless the archive is much smaller than the memory
+    /// available to the process. See [`MmapBackend`] for why.
     ///
     /// Fails if `path` does not exist or is an invalid archive.
     ///
@@ -25,13 +29,18 @@ impl AsyncPmTilesReader<MmapBackend, NoCache> {
     /// - file cannot be opened for memory mapping,
     /// - backend fails to read the header/root directory or
     /// - root directory is malformed
-    pub async fn new_with_path<P: AsRef<Path>>(path: P) -> PmtResult<Self> {
-        Self::new_with_path_and_cache(path, NoCache).await
+    pub async fn new_with_mmap_path<P: AsRef<Path>>(path: P) -> PmtResult<Self> {
+        Self::new_with_mmap_path_and_cache(path, NoCache).await
     }
 }
 
 impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
-    /// Creates a new `PMTiles` reader with a directory cache from a file path using the async mmap backend.
+    /// Creates a new `PMTiles` reader with a directory cache from a memory-mapped file, using
+    /// the [`MmapBackend`].
+    ///
+    /// Prefer [`new_with_path_and_cache`](AsyncPmTilesReader::new_with_path_and_cache), which
+    /// uses the [`FileBackend`](crate::FileBackend), unless the archive is much smaller than the
+    /// memory available to the process. See [`MmapBackend`] for why.
     ///
     /// Fails if `path` does not exist or is an invalid archive.
     ///
@@ -46,27 +55,38 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
     /// - file cannot be opened for memory mapping,
     /// - backend fails to read the header/root directory or
     /// - root directory is malformed
-    pub async fn new_with_path_and_cache<P: AsRef<Path>>(path: P, cache: C) -> PmtResult<Self> {
+    pub async fn new_with_mmap_path_and_cache<P: AsRef<Path>>(
+        path: P,
+        cache: C,
+    ) -> PmtResult<Self> {
         let backend = MmapBackend::try_from(path).await?;
 
         Self::try_from_source_and_cache(backend, cache).await
     }
-
-    /// Creates a new `PMTiles` reader with a directory cache from a file path using the async mmap backend.
-    ///
-    /// # Errors
-    ///
-    /// See [`Self::new_with_path_and_cache`].
-    #[deprecated(
-        since = "0.27.0",
-        note = "renamed to `new_with_path_and_cache`, which takes the cache last"
-    )]
-    pub async fn new_with_cached_path<P: AsRef<Path>>(cache: C, path: P) -> PmtResult<Self> {
-        Self::new_with_path_and_cache(path, cache).await
-    }
 }
 
 /// Backend for reading `PMTiles` from a memory-mapped file.
+///
+/// Prefer the [`FileBackend`](crate::FileBackend) for local files. Use this backend only when
+/// the archive is much smaller than the memory available to the process, including any
+/// container (cgroup) limit, so that it stays in the page cache once read. Its one advantage is
+/// that reads of cached data are not copied: in the `local_file` benchmark, a cached 17 KB tile
+/// takes 1.6 µs instead of 4.0 µs. A server spends far more than that per tile on HTTP and
+/// compression.
+///
+/// Otherwise, it is slower and less robust:
+/// - Every read of data not in the page cache is a page fault, which blocks a Tokio worker
+///   thread, and with it every task on that thread, for the whole disk read.
+/// - Each page fault reads up to the kernel's readahead size around it, 128 KiB to 2 MiB,
+///   evicting other data to cache tiles nobody asked for. On a 139 GB archive with 32
+///   concurrent requests, reads were 1.6-6.7x slower than with the `FileBackend`, and read
+///   2.6-10x more from disk.
+/// - If another process truncates the file, the next read of a lost page crashes the process
+///   (`SIGBUS` on Unix). See [`MmapBackend::try_from`].
+/// - The whole file is mapped into the address space at once. On 32-bit targets, which have at
+///   most 4 GiB of it, mapping an archive of more than 1-2 GiB can fail for lack of contiguous
+///   space, and one of 4 GiB or more always fails. The `FileBackend` reads archives of any size
+///   there.
 pub struct MmapBackend {
     /// The entire mapping, viewed as [`Bytes`].
     ///
@@ -165,39 +185,21 @@ mod tests {
 
     use super::*;
     use crate::tests::RASTER_FILE;
-    use crate::{HashMapCache, TileCoord};
+    use crate::{AsyncPmTilesReader, HashMapCache, TileCoord};
 
     #[tokio::test]
     async fn reader_reads_tiles() {
         let tile = TileCoord::new(3, 4, 2).unwrap();
 
-        let reader = AsyncPmTilesReader::new_with_path(RASTER_FILE)
+        let reader = AsyncPmTilesReader::new_with_mmap_path(RASTER_FILE)
             .await
             .unwrap();
         assert!(reader.get_tile(tile).await.unwrap().is_some());
 
         let reader =
-            AsyncPmTilesReader::new_with_path_and_cache(RASTER_FILE, HashMapCache::default())
+            AsyncPmTilesReader::new_with_mmap_path_and_cache(RASTER_FILE, HashMapCache::default())
                 .await
                 .unwrap();
-        assert!(reader.get_tile(tile).await.unwrap().is_some());
-    }
-
-    /// The constructors from before the rename still work, with the cache first.
-    #[tokio::test]
-    #[expect(deprecated, reason = "tests the deprecated names")]
-    async fn deprecated_constructors_read_tiles() {
-        let tile = TileCoord::new(3, 4, 2).unwrap();
-
-        let reader = AsyncPmTilesReader::new_with_cached_path(HashMapCache::default(), RASTER_FILE)
-            .await
-            .unwrap();
-        assert!(reader.get_tile(tile).await.unwrap().is_some());
-
-        let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
-        let reader = AsyncPmTilesReader::try_from_cached_source(backend, HashMapCache::default())
-            .await
-            .unwrap();
         assert!(reader.get_tile(tile).await.unwrap().is_some());
     }
 

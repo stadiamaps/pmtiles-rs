@@ -152,7 +152,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ///
     /// ```no_run
     /// # async fn test() {
-    /// #     let backend = pmtiles::MmapBackend::try_from("").await.unwrap();
+    /// #     let backend = pmtiles::FileBackend::try_from("").await.unwrap();
     /// #     let reader = pmtiles::AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     /// // Using a tile (z, x, y) coordinate to fetch a tile
     /// let coord = pmtiles::TileCoord::new(0, 0, 0).unwrap();
@@ -262,11 +262,11 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ///
     /// ```
     /// # use std::sync::Arc;
-    /// # use pmtiles::{AsyncPmTilesReader, MmapBackend};
+    /// # use pmtiles::{AsyncPmTilesReader, FileBackend};
     /// # use futures_util::TryStreamExt as _;
     /// #[tokio::main(flavor="current_thread")]
     /// async fn main() -> Result<(), pmtiles::PmtError> {
-    ///     let backend = MmapBackend::try_from("fixtures/protomaps(vector)ODbL_firenze.pmtiles").await?;
+    ///     let backend = FileBackend::try_from("fixtures/protomaps(vector)ODbL_firenze.pmtiles").await?;
     ///     let reader = Arc::new(AsyncPmTilesReader::try_from_source(backend).await?);
     ///     let mut entries = reader.entries();
     ///     while let Some(entry) = entries.try_next().await? {
@@ -542,7 +542,7 @@ pub trait AsyncBackend {
 }
 
 #[cfg(test)]
-#[cfg(feature = "mmap-async-tokio")]
+#[cfg(feature = "file-async-tokio")]
 mod tests {
     use std::pin::pin;
     #[cfg(feature = "iter-async")]
@@ -556,12 +556,11 @@ mod tests {
     use rstest::rstest;
     #[cfg(feature = "tilejson")]
     use tilejson::TileJSON;
-    use tokio::runtime::Builder;
 
     use super::decode_estimate;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::{
-        AsyncBackend, AsyncPmTilesReader, BackendResponse, Compression, MmapBackend, PmtError,
+        AsyncBackend, AsyncPmTilesReader, BackendResponse, Compression, FileBackend, PmtError,
         PmtResult, TileCoord,
     };
     #[cfg(feature = "iter-async")]
@@ -576,7 +575,7 @@ mod tests {
     #[case(VECTOR_FILE)]
     #[tokio::test]
     async fn open_sanity_check(#[case] file: &str) {
-        let backend = MmapBackend::try_from(file).await.unwrap();
+        let backend = FileBackend::try_from(file).await.unwrap();
         AsyncPmTilesReader::try_from_source(backend).await.unwrap();
     }
 
@@ -680,7 +679,7 @@ mod tests {
     #[case(id(3, 4, 5), include_bytes!("../fixtures/3_4_5.png"))]
     #[tokio::test]
     async fn get_tiles(#[case] coord: TileCoord, #[case] fixture_bytes: &[u8]) {
-        let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
+        let backend = FileBackend::try_from(RASTER_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let tile = tiles.get_tile_decompressed(coord).await.unwrap().unwrap();
 
@@ -864,7 +863,7 @@ mod tests {
     #[case(id(12, 2174, 1492), true)] // existing leaf tile
     #[tokio::test]
     async fn test_tile_existence(#[case] coord: TileCoord, #[case] should_exist: bool) {
-        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let backend = FileBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let tile = tiles.get_tile(coord).await;
@@ -882,7 +881,7 @@ mod tests {
 
     #[tokio::test]
     async fn leaf_tile_compressed() {
-        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let backend = FileBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let coord = id(12, 2174, 1492);
 
@@ -902,7 +901,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_metadata() {
-        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let backend = FileBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let metadata = tiles.get_metadata().await.unwrap();
@@ -919,8 +918,8 @@ mod tests {
         assert_eq!(decode_estimate(Compression::None, 5000), Duration::ZERO);
     }
 
-    async fn open_vector(threshold: Option<Duration>) -> AsyncPmTilesReader<MmapBackend> {
-        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+    async fn open_vector(threshold: Option<Duration>) -> AsyncPmTilesReader<FileBackend> {
+        let backend = FileBackend::try_from(VECTOR_FILE).await.unwrap();
         let reader = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         reader.blocking_decode_above(threshold)
     }
@@ -946,15 +945,20 @@ mod tests {
     /// Outside a Tokio runtime, decoding that would go to the blocking pool runs inline.
     #[test]
     fn blocking_decode_without_a_runtime_runs_inline() {
-        // Opening the file needs a runtime, but reading from it does not
-        let runtime = Builder::new_current_thread().build().unwrap();
-        let reader = runtime.block_on(open_vector(Some(Duration::ZERO)));
+        let backend = VersionedBackend::new(&fs::read(VECTOR_FILE).unwrap(), None);
+        let reader = ready(AsyncPmTilesReader::try_from_source(backend)).unwrap();
+        let reader = reader.blocking_decode_above(Some(Duration::ZERO));
 
-        let future = pin!(reader.get_tile_decompressed(id(12, 2174, 1492)));
-        let Poll::Ready(tile) = future.poll(&mut Context::from_waker(Waker::noop())) else {
-            panic!("reads from a memory map are always ready");
+        let tile = ready(reader.get_tile_decompressed(id(12, 2174, 1492))).unwrap();
+        assert!(tile.is_some());
+    }
+
+    /// Polls a future once, which reads from memory always complete.
+    fn ready<F: Future>(future: F) -> F::Output {
+        let Poll::Ready(output) = pin!(future).poll(&mut Context::from_waker(Waker::noop())) else {
+            panic!("reads from memory are always ready");
         };
-        assert!(tile.unwrap().is_some());
+        output
     }
 
     /// Returns a reader of an in-memory archive with one tile and the given metadata.
@@ -1023,7 +1027,7 @@ mod tests {
     #[tokio::test]
     #[cfg(feature = "tilejson")]
     async fn test_parse_tilejson(#[case] file: &str, #[case] assertion: impl Fn(&TileJSON)) {
-        let backend = MmapBackend::try_from(file).await.unwrap();
+        let backend = FileBackend::try_from(file).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
         let tj = tiles.parse_tilejson(Vec::new()).await.unwrap();
         assertion(&tj);
@@ -1064,7 +1068,7 @@ mod tests {
     #[case(id(1, 1, 0), b"4")]
     #[tokio::test]
     async fn test_martin_675(#[case] coord: TileCoord, #[case] expected_contents: &[u8]) {
-        let backend = MmapBackend::try_from("fixtures/leaf.pmtiles")
+        let backend = FileBackend::try_from("fixtures/leaf.pmtiles")
             .await
             .unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
@@ -1078,7 +1082,7 @@ mod tests {
     #[tokio::test]
     async fn brotli_decompression() {
         // This fixture has brotli internal and tile compression, and one tile 0_0_0.png.
-        let backend = MmapBackend::try_from("fixtures/single_tile_brotli.pmtiles")
+        let backend = FileBackend::try_from("fixtures/single_tile_brotli.pmtiles")
             .await
             .unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
@@ -1098,7 +1102,7 @@ mod tests {
     async fn entries() {
         use futures_util::TryStreamExt as _;
 
-        let backend = MmapBackend::try_from(VECTOR_FILE).await.unwrap();
+        let backend = FileBackend::try_from(VECTOR_FILE).await.unwrap();
         let tiles = AsyncPmTilesReader::try_from_source(backend).await.unwrap();
 
         let entries = Arc::new(tiles).entries();
