@@ -189,6 +189,12 @@ impl FileBackend {
     }
 
     /// Reads into `buf` what the page cache holds, from `offset`, returning the number of bytes.
+    ///
+    /// This is one system call on the calling thread, with no hop to the blocking pool.
+    /// `tokio::fs::File` cannot do this: it has no positioned reads, so each read needs a seek
+    /// on the blocking pool, and it allows one operation at a time. Its `io_uring` support needs
+    /// `--cfg tokio_unstable` in the final binary, still seeks on the blocking pool, and is
+    /// often blocked in containers.
     #[cfg(target_os = "linux")]
     fn read_cached(&self, buf: &mut [u8], offset: u64) -> usize {
         use rustix::io::{Errno, ReadWriteFlags, preadv2};
