@@ -27,8 +27,7 @@ mod writer;
 /// Re-export of crate exposed in our API to simplify dependency management
 #[cfg(feature = "__async-aws-s3")]
 pub use aws_sdk_s3;
-pub use directory::DirEntryCoordsIter;
-pub use directory::{DirEntry, Directory};
+pub use directory::{DirEntry, DirEntryCoordsIter, Directory};
 pub use error::{PmtError, PmtResult};
 pub use header::{Compression, Header, TileType};
 /// Re-export of crate exposed in our API to simplify dependency management
