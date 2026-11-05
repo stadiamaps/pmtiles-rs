@@ -30,14 +30,8 @@ jobs:
       - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2.88.0
-        with: { tool: 'just' }
-      - name: Read MSRV
-        id: msrv
-        run: echo "value=$(just get-msrv)" >> $GITHUB_OUTPUT
-      - name: Install MSRV Rust ${{ steps.msrv.outputs.value }}
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ steps.msrv.outputs.value }}
+        with: { tool: 'just,cargo-hack,cargo-minimal-versions' }
+      # cargo-hack installs the `rust-version` toolchain from Cargo.toml
       - run: just ci_mode=0 ci-test-msrv  # Ignore warnings in MSRV
 
   test-32bit:

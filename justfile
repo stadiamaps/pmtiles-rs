@@ -71,13 +71,10 @@ ci-fuzz target bits='64':
 # Run all tests as expected by CI
 ci-test: env-info test-fmt clippy check test test-doc deny && assert-git-is-clean
 
-# Run minimal subset of tests to ensure compatibility with MSRV
-ci-test-msrv:
-    if [ ! -f Cargo.lock.bak ]; then  mv Cargo.lock Cargo.lock.bak ; fi
-    cp Cargo.lock.msrv Cargo.lock
-    {{just}} env-info test
-    rm Cargo.lock
-    mv Cargo.lock.bak Cargo.lock
+# Check the default features on the MSRV, with the newest and the oldest dependency versions that Cargo.toml allows
+ci-test-msrv:  env-info (cargo-install 'cargo-hack') (cargo-install 'cargo-minimal-versions')
+    cargo hack check --rust-version
+    cargo minimal-versions check --rust-version
 
 # Clean all build artifacts
 clean:
@@ -151,19 +148,7 @@ get-msrv package=main_crate:  (get-crate-field 'rust_version' package)
 
 # Find the minimum supported Rust version (MSRV) using cargo-msrv extension, and update Cargo.toml
 msrv:  (cargo-install 'cargo-msrv')
-    cargo msrv find --write-msrv --features __all_non_conflicting -- {{just}} ci-test-msrv
-
-# Initialize Cargo.lock file with minimal versions of dependencies.
-msrv-init:  (cargo-install 'cargo-minimal-versions')
-    rm -f Cargo.lock.msrv Cargo.lock
-    @if ! cargo minimal-versions check --workspace ; then \
-        echo "ERROR: Could not generate minimal Cargo.lock.msrv" ;\
-        echo "       fix the lock file with 'cargo update ... --precise ...'" ;\
-        echo "       make sure it passes 'just check' " ;\
-        echo "       once done, rename Cargo.lock to Cargo.lock.msrv" ;\
-        exit 1 ;\
-    fi
-    mv Cargo.lock Cargo.lock.msrv
+    cargo msrv find --write-msrv
 
 # Run cargo-release
 release *args='':  (cargo-install 'release-plz')
