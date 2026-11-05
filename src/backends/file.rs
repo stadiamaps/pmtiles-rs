@@ -2,7 +2,7 @@ use std::fs::{File, Metadata};
 use std::io;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt as _;
-use std::path::Path;
+use std::path::{Path, absolute};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime};
@@ -154,6 +154,7 @@ impl FileBackendOptions {
     pub async fn open<P: AsRef<Path>>(self, path: P) -> PmtResult<FileBackend> {
         let path = path.as_ref().to_path_buf();
         let (path, file, metadata) = spawn_blocking(move || {
+            let path = absolute(path)?;
             let file = File::open(&path)?;
             let metadata = file.metadata()?;
             Ok::<_, io::Error>((path, file, metadata))
@@ -283,7 +284,8 @@ impl From<&Metadata> for FileVersion {
 
 /// Checks the file at a path for changes, at most once per interval.
 struct ModifiedCheck {
-    /// The path the file was opened from.
+    /// The path the file was opened from, made absolute so a later change of the working
+    /// directory cannot move it. Symlinks are kept, so a replaced one is caught.
     path: Arc<Path>,
     /// The file's version when it was opened.
     version: FileVersion,
@@ -758,5 +760,15 @@ mod tests {
             reader.get_tile(tile()).await,
             Err(PmtError::SourceModified)
         ));
+    }
+
+    /// A relative path is checked where it pointed when the file was opened.
+    #[tokio::test]
+    async fn relative_path_is_checked_as_absolute() {
+        let options = FileBackendOptions::new().check_modified(Some(Duration::ZERO));
+        let backend = options.open(RASTER_FILE).await.unwrap();
+        let check = backend.modified_check.unwrap();
+        assert!(check.path.is_absolute());
+        assert!(check.path.ends_with(RASTER_FILE));
     }
 }
