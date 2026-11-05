@@ -1,5 +1,7 @@
 use std::fs::{File, Metadata};
 use std::io;
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt as _;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -87,7 +89,8 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<FileBackend, C> {
 /// new version.
 ///
 /// Changing the file in place cannot crash the process, but reads may then return a mix of old
-/// and new data, or fail. Enable [`FileBackendOptions::check_modified`] to detect such changes.
+/// and new data, or fail. Enable [`FileBackendOptions::check_modified`] to detect either kind of
+/// change, or the file being deleted.
 pub struct FileBackend {
     file: Arc<File>,
     /// The file's length when it was opened. Reads are clamped to it.
@@ -127,14 +130,16 @@ impl FileBackendOptions {
         Self::default()
     }
 
-    /// Checks the file's length and modification time at most once per `interval`, and fails
-    /// reads with [`PmtError::SourceModified`] once they changed since the file was opened.
-    /// `None` disables the check, and `Some(Duration::ZERO)` checks on every read.
+    /// Checks the file's path at most once per `interval`, and fails reads with
+    /// [`PmtError::SourceModified`] once the file there was replaced or deleted, or its length or
+    /// modification time changed since it was opened. `None` disables the check, and
+    /// `Some(Duration::ZERO)` checks on every read.
     ///
-    /// This catches most in-place changes within `interval`. When several reads run at once, only
-    /// one of them runs each check. A check runs on Tokio's blocking thread pool, because on a
-    /// network file system it may wait for the server, so checking on every read makes reads of
-    /// cached data noticeably slower.
+    /// This catches most in-place changes within `interval`. On Windows, a file renamed over the
+    /// path is caught only if its length or modification time differs. When several reads run at
+    /// once, only one of them runs each check. A check runs on Tokio's blocking thread pool,
+    /// because on a network file system it may wait for the server, so checking on every read
+    /// makes reads of cached data noticeably slower.
     #[must_use]
     pub fn check_modified(mut self, interval: Option<Duration>) -> Self {
         self.check_modified = interval;
@@ -148,10 +153,10 @@ impl FileBackendOptions {
     /// This function will return an error if the file cannot be opened.
     pub async fn open<P: AsRef<Path>>(self, path: P) -> PmtResult<FileBackend> {
         let path = path.as_ref().to_path_buf();
-        let (file, metadata) = spawn_blocking(move || {
-            let file = File::open(path)?;
+        let (path, file, metadata) = spawn_blocking(move || {
+            let file = File::open(&path)?;
             let metadata = file.metadata()?;
-            Ok::<_, io::Error>((file, metadata))
+            Ok::<_, io::Error>((path, file, metadata))
         })
         .await
         .map_err(io::Error::other)??;
@@ -161,9 +166,9 @@ impl FileBackendOptions {
             len: metadata.len(),
             #[cfg(target_os = "linux")]
             try_cached: AtomicBool::new(true),
-            modified_check: self
-                .check_modified
-                .map(|interval| ModifiedCheck::new(FileVersion::from(&metadata), interval)),
+            modified_check: self.check_modified.map(|interval| {
+                ModifiedCheck::new(path.into(), FileVersion::from(&metadata), interval)
+            }),
         })
     }
 }
@@ -180,11 +185,11 @@ impl FileBackend {
         FileBackendOptions::new().open(path).await
     }
 
-    /// Fails if checking for changes is enabled, and the file's length or modification time
-    /// changed since it was opened.
+    /// Fails if checking for changes is enabled, and the file was changed, replaced or deleted
+    /// since it was opened.
     async fn check_unmodified(&self) -> PmtResult<()> {
         match &self.modified_check {
-            Some(check) => check.check(&self.file).await,
+            Some(check) => check.check().await,
             None => Ok(()),
         }
     }
@@ -254,9 +259,12 @@ impl AsyncBackend for FileBackend {
     }
 }
 
-/// The length and modification time of a file, which change when it is written to.
+/// The length and modification time of a file, which change when it is written to, and on Unix
+/// its device and inode numbers.
 #[derive(Debug, PartialEq, Eq)]
 struct FileVersion {
+    #[cfg(unix)]
+    id: (u64, u64),
     len: u64,
     /// `None` on platforms that do not record modification times.
     modified: Option<SystemTime>,
@@ -265,14 +273,18 @@ struct FileVersion {
 impl From<&Metadata> for FileVersion {
     fn from(metadata: &Metadata) -> Self {
         Self {
+            #[cfg(unix)]
+            id: (metadata.dev(), metadata.ino()),
             len: metadata.len(),
             modified: metadata.modified().ok(),
         }
     }
 }
 
-/// Checks an open file for changes, at most once per interval.
+/// Checks the file at a path for changes, at most once per interval.
 struct ModifiedCheck {
+    /// The path the file was opened from.
+    path: Arc<Path>,
     /// The file's version when it was opened.
     version: FileVersion,
     interval: Duration,
@@ -285,8 +297,9 @@ struct ModifiedCheck {
 }
 
 impl ModifiedCheck {
-    fn new(version: FileVersion, interval: Duration) -> Self {
+    fn new(path: Arc<Path>, version: FileVersion, interval: Duration) -> Self {
         Self {
+            path,
             version,
             interval,
             opened: Instant::now(),
@@ -295,8 +308,9 @@ impl ModifiedCheck {
         }
     }
 
-    /// Fails if the file changed since it was opened, checking it if the interval has passed.
-    async fn check(&self, file: &Arc<File>) -> PmtResult<()> {
+    /// Fails if the file at the path changed since it was opened, checking it if the interval
+    /// has passed.
+    async fn check(&self) -> PmtResult<()> {
         if self.modified.load(Ordering::Relaxed) {
             return Err(PmtError::SourceModified);
         }
@@ -304,12 +318,18 @@ impl ModifiedCheck {
         if !self.claim(nanos(self.opened.elapsed())) {
             return Ok(());
         }
-        // An `fstat` of the open file, which follows it even after it is renamed or replaced
-        let file = Arc::clone(file);
-        let metadata = spawn_blocking(move || file.metadata())
+        // A `stat` of the path, because an `fstat` of the open file would miss a rename over it
+        let path = Arc::clone(&self.path);
+        let changed = match spawn_blocking(move || path.metadata())
             .await
-            .map_err(io::Error::other)??;
-        if FileVersion::from(&metadata) != self.version {
+            .map_err(io::Error::other)?
+        {
+            Ok(metadata) => FileVersion::from(&metadata) != self.version,
+            // The file was deleted, or renamed away
+            Err(err) if err.kind() == io::ErrorKind::NotFound => true,
+            Err(err) => return Err(err.into()),
+        };
+        if changed {
             self.modified.store(true, Ordering::Relaxed);
             return Err(PmtError::SourceModified);
         }
@@ -616,10 +636,12 @@ mod tests {
     #[test]
     fn claims_each_check_once() {
         let version = FileVersion {
+            #[cfg(unix)]
+            id: (0, 0),
             len: 0,
             modified: None,
         };
-        let check = ModifiedCheck::new(version, Duration::from_nanos(100));
+        let check = ModifiedCheck::new(Path::new("").into(), version, Duration::from_nanos(100));
         assert!(!check.claim(99), "the first interval has not passed");
         assert!(check.claim(150));
         assert!(
@@ -634,10 +656,12 @@ mod tests {
     #[test]
     fn zero_interval_claims_every_check() {
         let version = FileVersion {
+            #[cfg(unix)]
+            id: (0, 0),
             len: 0,
             modified: None,
         };
-        let check = ModifiedCheck::new(version, Duration::ZERO);
+        let check = ModifiedCheck::new(Path::new("").into(), version, Duration::ZERO);
         assert!(check.claim(0));
         assert!(check.claim(0));
         assert!(check.claim(1));
@@ -680,14 +704,14 @@ mod tests {
         ));
     }
 
-    /// Renaming another file over the open one is the safe way to update an archive. The
-    /// reader keeps reading the old file, until a new reader opens the new one.
+    /// Renaming another file over the open one is the safe way to update an archive. Without
+    /// `check_modified`, the reader keeps reading the old file, until a new reader opens the new
+    /// one.
     #[cfg(unix)]
     #[tokio::test]
     async fn replacing_by_rename_keeps_old_file() {
         let (dir, path) = copy_fixture();
-        let options = FileBackendOptions::new().check_modified(Some(Duration::ZERO));
-        let reader = open_reader(&path, options).await;
+        let reader = open_reader(&path, FileBackendOptions::new()).await;
         let before = reader.get_tile(tile()).await.unwrap();
 
         let replacement = dir.path().join("replacement.pmtiles");
@@ -698,6 +722,41 @@ mod tests {
         assert!(matches!(
             AsyncPmTilesReader::new_with_path(&path).await,
             Err(PmtError::InvalidMagicNumber)
+        ));
+    }
+
+    /// A file renamed over the open one is caught by its inode, even with the same length and
+    /// modification time.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn replacing_by_rename_is_source_modified() {
+        let (dir, path) = copy_fixture();
+        let options = FileBackendOptions::new().check_modified(Some(Duration::ZERO));
+        let reader = open_reader(&path, options).await;
+
+        let replacement = dir.path().join("replacement.pmtiles");
+        fs::copy(&path, &replacement).unwrap();
+        let file = File::options().write(true).open(&replacement).unwrap();
+        file.set_modified(fs::metadata(&path).unwrap().modified().unwrap())
+            .unwrap();
+        fs::rename(&replacement, &path).unwrap();
+        assert!(matches!(
+            reader.get_tile(tile()).await,
+            Err(PmtError::SourceModified)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn deleting_is_source_modified() {
+        let (_dir, path) = copy_fixture();
+        let options = FileBackendOptions::new().check_modified(Some(Duration::ZERO));
+        let reader = open_reader(&path, options).await;
+
+        fs::remove_file(&path).unwrap();
+        assert!(matches!(
+            reader.get_tile(tile()).await,
+            Err(PmtError::SourceModified)
         ));
     }
 }
