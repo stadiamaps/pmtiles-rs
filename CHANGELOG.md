@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.26.0...v0.27.0) - 2026-11-05
+
+### Added
+
+- add a synchronous PmTilesReader that needs no async runtime ([#182](https://github.com/stadiamaps/pmtiles-rs/pull/182))
+- [**breaking**] read local files with positioned reads by default ([#176](https://github.com/stadiamaps/pmtiles-rs/pull/176))
+- rename `new_with_cached_*` constructors to `*_and_cache` ([#178](https://github.com/stadiamaps/pmtiles-rs/pull/178))
+
+### Other
+
+- check the MSRV with cargo-hack and cargo-minimal-versions ([#181](https://github.com/stadiamaps/pmtiles-rs/pull/181))
+- *(deps)* bump the all-actions-version-updates group with 2 updates ([#175](https://github.com/stadiamaps/pmtiles-rs/pull/175))
+- [**breaking**] remove duplicated and unneeded code ([#177](https://github.com/stadiamaps/pmtiles-rs/pull/177))
+- decompress synchronously with zlib-rs, and offload large decodes ([#179](https://github.com/stadiamaps/pmtiles-rs/pull/179))
+
 ## [0.26.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.25.0...v0.26.0) - 2026-10-29
 
 ### ⚠️ Breaking changes
