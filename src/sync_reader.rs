@@ -20,7 +20,7 @@ use tilejson::TileJSON;
 use crate::DirEntry;
 use crate::async_reader::read_bytes;
 #[cfg(any(unix, windows))]
-use crate::async_reader::read_full_at;
+use crate::async_reader::{read_full_at, read_options};
 use crate::{
     AsyncBackend, AsyncPmTilesReader, BackendResponse, DirectoryCache, Header, NoCache, PmtResult,
     TileId,
@@ -123,6 +123,8 @@ pub struct PmTilesReader<B, C = NoCache> {
 impl PmTilesReader<File, NoCache> {
     /// Creates a new reader from a file path.
     ///
+    /// On Windows, no other process can open the file for writing while the reader has it open.
+    ///
     /// # Errors
     ///
     /// This function will return an error if the
@@ -130,7 +132,7 @@ impl PmTilesReader<File, NoCache> {
     /// - header/root directory cannot be read or
     /// - root directory is malformed
     pub fn new_with_path<P: AsRef<Path>>(path: P) -> PmtResult<Self> {
-        Self::try_from_source(File::open(path)?)
+        Self::try_from_source(read_options().open(path)?)
     }
 }
 

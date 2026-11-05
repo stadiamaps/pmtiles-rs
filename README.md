@@ -92,7 +92,8 @@ browser, read archives through `object_store`, `PmTilesReader` over bytes in mem
 
 Data already in the page cache is read directly on Linux, and the rest on Tokio's blocking thread
 pool. To update a file while a reader has it open, write a new file and rename it over the old
-one: the reader keeps reading the old file. `FileBackendOptions` can check for in-place changes.
+one: the reader keeps reading the old file. On Windows, other processes cannot write to an open
+archive; on Unix, `FileBackendOptions` can check for in-place changes.
 
 ```rust,no_run
 use bytes::Bytes;

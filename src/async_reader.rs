@@ -1,7 +1,7 @@
 #[cfg(feature = "iter")]
 use std::collections::{HashSet, VecDeque};
 #[cfg(any(unix, windows))]
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::future::Future;
 use std::io;
 use std::ops::Range;
@@ -69,6 +69,27 @@ pub(crate) fn read_bytes(bytes: &Bytes, offset: u64, length: usize) -> PmtResult
         .ok_or_else(|| PmtError::Reading(io::ErrorKind::UnexpectedEof.into()))?;
     let end = start.saturating_add(length).min(bytes.len());
     Ok(BackendResponse::new(bytes.slice(start..end)))
+}
+
+/// Options to open a file for reading. Unix cannot prevent writes to it: its file locks are
+/// advisory, and tools that overwrite files, such as `cp`, do not take them.
+#[cfg(unix)]
+pub(crate) fn read_options() -> OpenOptions {
+    let mut options = File::options();
+    options.read(true);
+    options
+}
+
+/// Options to open a file for reading, which keep other processes from opening it for writing
+/// while it is open, so it cannot change in place. It can still be renamed over or deleted,
+/// which is how an archive should be updated.
+#[cfg(windows)]
+pub(crate) fn read_options() -> OpenOptions {
+    use std::os::windows::fs::OpenOptionsExt as _;
+    let mut options = File::options();
+    // `FILE_SHARE_READ | FILE_SHARE_DELETE`, without `FILE_SHARE_WRITE`
+    options.read(true).share_mode(0x1 | 0x4);
+    options
 }
 
 /// Reads from `file` at `offset` until `buf` is full or the file ends, returning the number of
