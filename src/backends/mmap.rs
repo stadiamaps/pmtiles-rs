@@ -5,6 +5,7 @@ use bytes::Bytes;
 use memmap2::Mmap;
 use tokio::fs::File;
 
+use crate::async_reader::read_bytes;
 use crate::{
     AsyncBackend, AsyncPmTilesReader, BackendResponse, DirectoryCache, NoCache, PmtError, PmtResult,
 };
@@ -162,20 +163,7 @@ impl AsyncBackend for MmapBackend {
         offset: u64,
         length: usize,
     ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
-        // An offset at exactly the end of the file is a valid empty read; past it is an error.
-        let Some(offset) = usize::try_from(offset)
-            .ok()
-            .filter(|offset| *offset <= self.bytes.len())
-        else {
-            return future::ready(Err(eof()));
-        };
-
-        // Clamp to what is actually left *after* `offset`. Short reads are the normal path
-        // here: the reader always asks for `MAX_INITIAL_BYTES` up front, which is more than
-        // the total size of a small archive.
-        let end = offset.saturating_add(length).min(self.bytes.len());
-
-        future::ready(Ok(BackendResponse::new(self.bytes.slice(offset..end))))
+        future::ready(read_bytes(&self.bytes, offset, length))
     }
 }
 

@@ -1,25 +1,29 @@
-#[cfg(feature = "iter-async")]
+#[cfg(feature = "iter")]
 use std::collections::{HashSet, VecDeque};
+#[cfg(any(unix, windows))]
+use std::fs::File;
 use std::future::Future;
 use std::io;
 use std::ops::Range;
-#[cfg(feature = "iter-async")]
+#[cfg(feature = "iter")]
 use std::sync::Arc;
+#[cfg(feature = "tokio")]
 use std::time::Duration;
 
-#[cfg(feature = "iter-async")]
+#[cfg(feature = "iter")]
 use async_stream::try_stream;
 use bytes::Bytes;
-#[cfg(feature = "iter-async")]
+#[cfg(feature = "iter")]
 use futures_util::stream::BoxStream;
 #[cfg(feature = "tilejson")]
 use tilejson::{TileJSON, VectorLayer};
+#[cfg(feature = "tokio")]
 use tokio::runtime::Handle;
 
 use crate::header::{HEADER_SIZE, MAX_INITIAL_BYTES};
-use crate::{Compression, DirEntry, Directory, Header, PmtError, PmtResult, TileId};
-#[cfg(feature = "__async")]
-use crate::{DirectoryCache, NoCache};
+use crate::{
+    Compression, DirEntry, Directory, DirectoryCache, Header, NoCache, PmtError, PmtResult, TileId,
+};
 
 /// The deepest leaf directory a tile lookup reads, counting one listed in the root directory as 0.
 const MAX_LEAF_DEPTH: u8 = 5;
@@ -53,8 +57,51 @@ impl BackendResponse {
     }
 }
 
+/// Reads up to `length` bytes of an archive held in `bytes`, starting at `offset`.
+///
+/// An offset at exactly the end is a valid empty read; past it is an error. Short reads are the
+/// normal path: the reader always asks for `MAX_INITIAL_BYTES` up front, which is more than the
+/// total size of a small archive.
+pub(crate) fn read_bytes(bytes: &Bytes, offset: u64, length: usize) -> PmtResult<BackendResponse> {
+    let start = usize::try_from(offset)
+        .ok()
+        .filter(|start| *start <= bytes.len())
+        .ok_or_else(|| PmtError::Reading(io::ErrorKind::UnexpectedEof.into()))?;
+    let end = start.saturating_add(length).min(bytes.len());
+    Ok(BackendResponse::new(bytes.slice(start..end)))
+}
+
+/// Reads from `file` at `offset` until `buf` is full or the file ends, returning the number of
+/// bytes read. Positioned reads leave the file's cursor alone, so threads can share the file.
+#[cfg(any(unix, windows))]
+pub(crate) fn read_full_at(file: &File, buf: &mut [u8], offset: u64) -> io::Result<usize> {
+    #[cfg(unix)]
+    use std::os::unix::fs::FileExt as _;
+    #[cfg(windows)]
+    use std::os::windows::fs::FileExt as _;
+
+    let mut filled = 0;
+    while filled < buf.len() {
+        let (_, rest) = buf.split_at_mut(filled);
+        let offset = offset + filled as u64;
+        #[cfg(unix)]
+        let result = file.read_at(rest, offset);
+        #[cfg(windows)]
+        let result = file.seek_read(rest, offset);
+        match result {
+            // The end of the file
+            Ok(0) => break,
+            Ok(len) => filled += len,
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(filled)
+}
+
 /// Decoding estimated to take longer than this runs on Tokio's blocking thread pool by default,
 /// the upper end of Tokio's guideline for how long a task may run between `.await`s.
+#[cfg(feature = "tokio")]
 const DEFAULT_BLOCKING_DECODE: Duration = Duration::from_micros(100);
 
 /// An asynchronous reader for `PMTiles` archives.
@@ -65,6 +112,7 @@ pub struct AsyncPmTilesReader<B, C = NoCache> {
     root_directory: Directory,
     initial_data_version_string: Option<String>,
     /// Decoding estimated to take longer than this runs on Tokio's blocking thread pool.
+    #[cfg(feature = "tokio")]
     blocking_decode: Option<Duration>,
 }
 
@@ -144,6 +192,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
             header,
             root_directory,
             initial_data_version_string,
+            #[cfg(feature = "tokio")]
             blocking_decode: Some(DEFAULT_BLOCKING_DECODE),
         })
     }
@@ -213,6 +262,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ///
     /// The estimate comes from the compressed size and the compression, at rates measured on a
     /// recent desktop CPU. Handing work to the blocking pool costs about 15-40 µs.
+    #[cfg(feature = "tokio")]
     #[must_use]
     pub fn blocking_decode_above(mut self, threshold: Option<Duration>) -> Self {
         self.blocking_decode = threshold;
@@ -275,7 +325,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     ///     Ok(())
     /// }
     /// ```
-    #[cfg(feature = "iter-async")]
+    #[cfg(feature = "iter")]
     pub fn entries<'a>(self: Arc<Self>) -> BoxStream<'a, PmtResult<DirEntry>>
     where
         B: 'a,
@@ -411,12 +461,21 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 
     /// Runs `decode` on Tokio's blocking thread pool if it is estimated to take longer than the
     /// threshold, and there is a Tokio runtime to run it on, or on this thread otherwise.
+    #[cfg_attr(
+        not(feature = "tokio"),
+        expect(
+            clippy::unused_async,
+            clippy::unused_async_trait_impl,
+            reason = "only offloading to Tokio awaits"
+        )
+    )]
     async fn decode<T: Send + 'static>(
         &self,
         compression: Compression,
         bytes: Bytes,
         decode: fn(Compression, Bytes) -> PmtResult<T>,
     ) -> PmtResult<T> {
+        #[cfg(feature = "tokio")]
         if self
             .blocking_decode
             .is_some_and(|threshold| decode_estimate(compression, bytes.len()) > threshold)
@@ -453,6 +512,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
 /// Estimates how long decoding `len` compressed bytes takes, at rates per compressed byte
 /// measured on a recent desktop CPU, near the slower end so as not to underestimate. Parsing a
 /// directory costs little next to decompressing it, so the same rates cover directories.
+#[cfg(feature = "tokio")]
 fn decode_estimate(compression: Compression, len: usize) -> Duration {
     let ns_per_byte: u64 = match compression {
         Compression::Gzip => 20,
@@ -545,7 +605,7 @@ pub trait AsyncBackend {
 #[cfg(feature = "file-async-tokio")]
 mod tests {
     use std::pin::pin;
-    #[cfg(feature = "iter-async")]
+    #[cfg(feature = "iter")]
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::task::{Context, Poll, Waker};
@@ -563,7 +623,7 @@ mod tests {
         AsyncBackend, AsyncPmTilesReader, BackendResponse, Compression, FileBackend, PmtError,
         PmtResult, TileCoord,
     };
-    #[cfg(feature = "iter-async")]
+    #[cfg(feature = "iter")]
     use crate::{DirEntry, HashMapCache, TileId};
 
     fn id(z: u8, x: u32, y: u32) -> TileCoord {
@@ -1098,7 +1158,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[cfg(feature = "iter-async")]
+    #[cfg(feature = "iter")]
     async fn entries() {
         use futures_util::TryStreamExt as _;
 
@@ -1113,7 +1173,7 @@ mod tests {
 
     /// Opens `leaf.pmtiles` with one header field changed, and returns the entry of its
     /// last tile in the data section.
-    #[cfg(feature = "iter-async")]
+    #[cfg(feature = "iter")]
     async fn open_with_header_field(
         field: usize,
         value: fn(u64) -> u64,
@@ -1146,7 +1206,7 @@ mod tests {
     #[case::tile_past_data_section(DATA_LENGTH, |tile_end| tile_end - 1)]
     #[case::leaf_past_leaf_section(LEAF_LENGTH, |_| 0)]
     #[tokio::test]
-    #[cfg(feature = "iter-async")]
+    #[cfg(feature = "iter")]
     async fn rejects_entry_outside_its_section(
         #[case] field: usize,
         #[case] value: fn(u64) -> u64,
@@ -1159,7 +1219,7 @@ mod tests {
 
     /// Listing entries rejects a leaf directory outside the leaf section.
     #[tokio::test]
-    #[cfg(feature = "iter-async")]
+    #[cfg(feature = "iter")]
     async fn entries_rejects_leaf_outside_leaf_section() {
         use futures_util::TryStreamExt as _;
 
@@ -1197,10 +1257,10 @@ mod tests {
 
     /// Serves an archive with everything after the root directory moved 4 GiB further,
     /// so that all later reads are above `u32::MAX`.
-    #[cfg(feature = "iter-async")]
+    #[cfg(feature = "iter")]
     struct ShiftedBackend(Bytes);
 
-    #[cfg(feature = "iter-async")]
+    #[cfg(feature = "iter")]
     impl ShiftedBackend {
         const SHIFT: u64 = 1 << 32;
 
@@ -1215,7 +1275,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "iter-async")]
+    #[cfg(feature = "iter")]
     impl AsyncBackend for ShiftedBackend {
         fn read(
             &self,
@@ -1243,7 +1303,7 @@ mod tests {
     /// Metadata, leaf directories and tiles above 4 GiB are read from their full offsets.
     /// Offsets only truncate on 32-bit targets, so this can only fail there.
     #[tokio::test]
-    #[cfg(feature = "iter-async")]
+    #[cfg(feature = "iter")]
     async fn reads_offsets_above_4_gib() {
         use futures_util::TryStreamExt as _;
 
@@ -1333,7 +1393,7 @@ mod tests {
 
     /// Listing entries rejects a leaf directory it already read, instead of looping forever.
     #[tokio::test]
-    #[cfg(all(feature = "write", feature = "iter-async"))]
+    #[cfg(all(feature = "write", feature = "iter"))]
     async fn entries_rejects_self_listing_leaf() {
         use futures_util::TryStreamExt as _;
 

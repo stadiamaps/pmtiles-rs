@@ -8,6 +8,7 @@ use std::time::{Duration, Instant, SystemTime};
 use bytes::Bytes;
 use tokio::task::spawn_blocking;
 
+use crate::async_reader::read_full_at;
 use crate::{
     AsyncBackend, AsyncPmTilesReader, BackendResponse, DirectoryCache, NoCache, PmtError, PmtResult,
 };
@@ -240,37 +241,17 @@ impl AsyncBackend for FileBackend {
             let file = Arc::clone(&self.file);
             buf = spawn_blocking(move || {
                 let (_, rest) = buf.split_at_mut(cached);
-                read_exact_at(&file, rest, offset + cached as u64).map(|()| buf)
+                // The file is shorter than when it was opened
+                if read_full_at(&file, rest, offset + cached as u64)? < rest.len() {
+                    return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+                }
+                Ok(buf)
             })
             .await
             .map_err(io::Error::other)??;
         }
         Ok(BackendResponse::new(Bytes::from(buf)))
     }
-}
-
-#[cfg(unix)]
-fn read_exact_at(file: &File, buf: &mut [u8], offset: u64) -> io::Result<()> {
-    use std::os::unix::fs::FileExt as _;
-    file.read_exact_at(buf, offset)
-}
-
-#[cfg(windows)]
-fn read_exact_at(file: &File, mut buf: &mut [u8], mut offset: u64) -> io::Result<()> {
-    use std::mem;
-    use std::os::windows::fs::FileExt as _;
-    while !buf.is_empty() {
-        match file.seek_read(buf, offset) {
-            Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
-            Ok(len) => {
-                buf = mem::take(&mut buf).get_mut(len..).unwrap_or_default();
-                offset += len as u64;
-            }
-            Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
-            Err(err) => return Err(err),
-        }
-    }
-    Ok(())
 }
 
 /// The length and modification time of a file, which change when it is written to.

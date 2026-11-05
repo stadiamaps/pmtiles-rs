@@ -3,20 +3,18 @@
 // The first `cfg_attr` is exported to https://docs.rs
 #![cfg_attr(not(feature = "__all_non_conflicting"), doc = "# `PMTiles` (for Rust)")]
 
-#[cfg(feature = "__async")]
 mod async_reader;
-#[cfg(feature = "__async")]
 pub use async_reader::{AsyncBackend, AsyncPmTilesReader, BackendResponse};
+mod sync_reader;
+pub use sync_reader::{PmTilesReader, SyncBackend};
 
 mod backends;
 #[allow(unused_imports, reason = "only a warning if no backends are enabled")]
 pub use backends::*;
 
-#[cfg(feature = "__async")]
 mod cache;
-#[cfg(feature = "__async")]
 pub use cache::{DirectoryCache, HashMapCache, NoCache};
-#[cfg(all(feature = "__async", feature = "moka"))]
+#[cfg(feature = "moka")]
 pub use cache::{MokaCache, SharedMokaCache};
 
 mod directory;

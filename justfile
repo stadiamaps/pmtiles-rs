@@ -18,7 +18,7 @@ export RUST_BACKTRACE := env('RUST_BACKTRACE', if ci_mode == '1' {'1'} else {'0'
 fuzz_args := '-max_len=65536 -timeout=10'
 
 # Features that build for wasm; `moka`, the local file and the network backends do not
-wasm_features := 'brotli,iter-async,object-store,tilejson,write,zstd'
+wasm_features := 'brotli,iter,object-store,tilejson,write,zstd'
 # Features tested on WASI; `zstd` needs a WASI C library to build there
 wasi_features := replace(wasm_features, ',zstd', '')
 
@@ -48,12 +48,13 @@ check:
     cargo check --workspace --all-targets --no-default-features --features aws-s3-async
     cargo check --workspace --all-targets --no-default-features --features file-async-tokio
     cargo check --workspace --all-targets --no-default-features --features http-async
-    cargo check --workspace --all-targets --no-default-features --features iter-async
+    cargo check --workspace --all-targets --no-default-features --features iter
     cargo check --workspace --all-targets --no-default-features --features mmap-async-tokio
     cargo check --workspace --all-targets --no-default-features --features object-store
     cargo check --workspace --all-targets --no-default-features --features s3-async-native
     cargo check --workspace --all-targets --no-default-features --features s3-async-rustls
     cargo check --workspace --all-targets --no-default-features --features tilejson
+    cargo check --workspace --all-targets --no-default-features --features tokio
     cargo check --workspace --all-targets --no-default-features --features write
     cargo check --workspace --all-targets --no-default-features --features brotli
 
@@ -187,11 +188,12 @@ test:
     cargo test --workspace --all-targets --no-default-features --features aws-s3-async
     cargo test --workspace --all-targets --no-default-features --features file-async-tokio
     cargo test --workspace --all-targets --no-default-features --features http-async
-    cargo test --workspace --all-targets --no-default-features --features iter-async
+    cargo test --workspace --all-targets --no-default-features --features iter
     cargo test --workspace --all-targets --no-default-features --features mmap-async-tokio
     cargo test --workspace --all-targets --no-default-features --features s3-async-native
     cargo test --workspace --all-targets --no-default-features --features s3-async-rustls
     cargo test --workspace --all-targets --no-default-features --features tilejson
+    cargo test --workspace --all-targets --no-default-features --features tokio
     cargo test --workspace --all-targets --no-default-features --features write
     cargo test --workspace --all-targets --no-default-features --features brotli
 

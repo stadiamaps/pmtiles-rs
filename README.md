@@ -14,12 +14,13 @@ archives, the single-file tile format created by Brandon Liu for Protomaps.
 
 - **Reading** tiles, metadata, [TileJSON](https://github.com/mapbox/tilejson-spec) and the list of all tile entries
 - **Writing** archives, with identical tiles stored once
-- **Backends**, all async on Tokio:
+- **Backends** for the async reader, on Tokio:
   - local files, read without blocking async threads on the disk, or memory-mapped
   - `http` and `https` URLs (Reqwest)
   - S3, with either the AWS SDK or Rust-S3
   - S3, Azure, GCP, local files, memory and custom stores through [`object_store`](https://docs.rs/object_store)
-  - your own, by implementing `AsyncBackend`
+  - your own, on any async runtime, by implementing `AsyncBackend`
+- **Synchronous reading** from files or memory, without an async runtime
 - **Directory caches**: a simple `HashMapCache`, a bounded `MokaCache`, or your own `DirectoryCache`
 - **Safe with untrusted archives**: invalid data returns an error instead of crashing, which CI checks by fuzzing
 - **32-bit targets**, such as `i686`, read and write archives larger than 4 GiB (except through `MmapBackend`)
@@ -27,32 +28,63 @@ archives, the single-file tile format created by Brandon Liu for Protomaps.
 
 ## Cargo features
 
-Only `file-async-tokio`, the preferred local file backend, and `iter-async` are enabled by
-default. The remaining backends pull in large dependency trees (the AWS SDK alone is a heavy
-build), so they are opt-in:
-
-| Feature            | Enables                                                         |
-|--------------------|-----------------------------------------------------------------|
-| `mmap-async-tokio` | Memory-mapped local file backend (`MmapBackend`), see below     |
-| `write`            | Creating archives (`PmTilesWriter`)                             |
-| `http-async`       | `http` and `https` backend (Reqwest)                            |
-| `aws-s3-async`     | S3 backend using the AWS SDK                                    |
-| `s3-async-rustls`  | S3 backend using Rust-S3 with rustls (or `s3-async-native`)     |
-| `object-store`     | [`object_store`](https://docs.rs/object_store) backend          |
-| `moka`             | Bounded directory caches based on `moka`                        |
-| `tilejson`         | `TileJSON` support for metadata                                 |
-| `brotli`, `zstd`   | Additional tile and directory compression codecs                |
+Both readers, `AsyncPmTilesReader` and `PmTilesReader`, are always available, as are the
+`HashMapCache` and `NoCache` directory caches: they need nothing beyond the core dependencies.
+Without any features, `PmTilesReader` reads local files and bytes in memory, and
+`AsyncPmTilesReader` reads through your own `AsyncBackend` on any async runtime, or in a browser.
+Each feature adds something that needs another crate. Only `file-async-tokio` and `iter` are
+enabled by default: most backends pull in large dependency trees, and the AWS SDK alone is a heavy
+build.
 
 ```bash
-cargo add pmtiles --features http-async,moka,tilejson
+cargo add pmtiles --features http-async,reqwest-rustls,moka,tilejson
 ```
+
+### Reading
+
+- `tokio`: decoding large directories, metadata and tiles on Tokio's blocking thread pool, so
+  that a slow decode does not hold up other tasks on the same thread. Decoding estimated to take
+  longer than 100 µs moves there, and `blocking_decode_above` changes or disables that threshold.
+  It only applies to `AsyncPmTilesReader` inside a Tokio runtime, which `pmtiles` never starts
+  itself: outside one, everything decodes on the calling thread. Every backend enables it.
+- `iter`: `entries()`, which lists every tile entry in an archive, read through all leaf
+  directories: a stream on `AsyncPmTilesReader`, and an iterator on `PmTilesReader`.
+- `moka`: `MokaCache` and `SharedMokaCache`, directory caches that stay within a size limit.
+
+### Backends
+
+The async reader's backends all run on Tokio:
+
+- `file-async-tokio`: `FileBackend`, which reads local files with positioned reads, and
+  `AsyncPmTilesReader::new_with_path`. The preferred backend for local files, see
+  [below](#reading-from-a-local-file).
+- `mmap-async-tokio`: `MmapBackend`, which reads memory-mapped local files, and
+  `AsyncPmTilesReader::new_with_mmap_path`. It suits only archives much smaller than the memory
+  available, see [below](#memory-mapping-a-local-file).
+- `http-async`: `HttpBackend`, which reads `http` URLs with Reqwest. For `https`, also enable one
+  of `reqwest-rustls`, `reqwest-native-tls` (the platform's TLS library) or `reqwest-default`
+  (Reqwest's default features, which use rustls).
+- `aws-s3-async`: `AwsS3Backend`, which reads S3 with the AWS SDK.
+- `s3-async-rustls` or `s3-async-native`: `S3Backend`, which reads S3 with Rust-S3, using rustls
+  or the platform's TLS library. Enable only one of them.
+- `object-store`: `ObjectStoreBackend`, which reads any [`object_store`](https://docs.rs/object_store)
+  store: S3, Azure, GCP, local files, memory or your own.
+
+### Writing and formats
+
+- `write`: `PmTilesWriter`, which creates archives.
+- `tilejson`: `parse_tilejson` on either reader and `get_tilejson` on `Header`, which build a
+  [TileJSON](https://github.com/mapbox/tilejson-spec) from an archive's header and metadata.
+- `brotli`, `zstd`: reading and writing archives compressed with Brotli or Zstandard. Gzip and
+  uncompressed archives need no feature.
 
 ## WebAssembly
 
-The `iter-async`, `write`, `tilejson`, `object-store`, `brotli` and `zstd` features build for
-`wasm32-unknown-unknown`, and the tests run on `wasm32-wasip1`. CI checks both. The local file,
-`http` and S3 backends and the `moka` cache do not build for wasm yet, so in a browser, read
-archives through `object_store` or your own `AsyncBackend`.
+The core library and the `iter`, `write`, `tilejson`, `object-store`, `brotli` and `zstd` features
+build for `wasm32-unknown-unknown`, and the tests run on `wasm32-wasip1`. CI checks both. The
+local file, `http` and S3 backends and the `moka` cache do not build for wasm yet, so in a
+browser, read archives through `object_store`, `PmTilesReader` over bytes in memory, or your own
+`AsyncBackend`.
 
 ## Usage examples
 
@@ -97,6 +129,21 @@ use pmtiles::{AsyncPmTilesReader, MmapBackend, PmtResult};
 async fn open() -> PmtResult<AsyncPmTilesReader<MmapBackend>> {
     // Or `new_with_mmap_path_and_cache`, like `new_with_path_and_cache` below
     AsyncPmTilesReader::new_with_mmap_path("example.pmtiles").await
+}
+```
+
+### Reading without async
+
+`PmTilesReader` reads files or bytes in memory synchronously, with no async runtime. With
+`default-features = false`, `pmtiles` pulls in neither Tokio nor any other async crate.
+
+```rust,no_run
+use bytes::Bytes;
+use pmtiles::{PmTilesReader, PmtResult, TileCoord};
+
+fn get_tile(z: u8, x: u32, y: u32) -> PmtResult<Option<Bytes>> {
+    let reader = PmTilesReader::new_with_path("example.pmtiles")?;
+    reader.get_tile(TileCoord::new(z, x, y)?)
 }
 ```
 

@@ -630,7 +630,7 @@ fn into_u32(v: u64) -> PmtResult<u32> {
 }
 
 #[cfg(test)]
-#[cfg(all(feature = "file-async-tokio", feature = "iter-async"))]
+#[cfg(all(feature = "file-async-tokio", feature = "iter"))]
 #[allow(
     clippy::float_cmp,
     reason = "exact round-trips; clippy versions differ on flagging float `assert_eq!`"
