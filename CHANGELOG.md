@@ -9,18 +9,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.27.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.26.0...v0.27.0) - 2026-11-05
 
+### ⚠️ Breaking changes
+
+- **`new_with_path` reads with positioned reads (`FileBackend`) instead of a memory map**, and `file-async-tokio` replaces `mmap-async-tokio` as a default feature. A page fault in a memory map blocks a Tokio worker; on Linux, `FileBackend` reads cached pages inline with `preadv2(RWF_NOWAIT)` and waits for the disk on the blocking pool ([#176](https://github.com/stadiamaps/pmtiles-rs/pull/176)). To keep the memory map, which suits archives much smaller than RAM:
+
+  ```toml
+  pmtiles = { version = "0.27", features = ["mmap-async-tokio"] }
+  ```
+
+  ```rust
+  // Before: AsyncPmTilesReader<MmapBackend>
+  let reader = AsyncPmTilesReader::new_with_path(path).await?;
+  // After
+  let reader = AsyncPmTilesReader::new_with_mmap_path(path).await?;
+  ```
+
+- **Features only add dependencies** ([#182](https://github.com/stadiamaps/pmtiles-rs/pull/182)):
+  - `iter-async` is renamed to `iter`.
+  - The new `tokio` feature decodes large directories, metadata and tiles on Tokio's blocking pool, and adds `blocking_decode_above`. Every backend enables it, so their behavior is unchanged.
+  - `iter` and `moka` no longer enable Tokio. With only a custom backend, add `tokio` to keep the offload.
+
+  ```toml
+  # Before
+  pmtiles = { version = "0.26", default-features = false, features = ["iter-async", "moka"] }
+  # After
+  pmtiles = { version = "0.27", default-features = false, features = ["iter", "moka", "tokio"] }
+  ```
+
+- **`DirCacheResult` and `PmtError::ResponseBodyTooLong` are removed.** A backend that returns more bytes than requested fails with `UnexpectedNumberOfBytesReturned`, now checked for every backend, including `ObjectStoreBackend` and custom ones ([#177](https://github.com/stadiamaps/pmtiles-rs/pull/177)).
+
+### Deprecated
+
+- The `new_with_cached_*` constructors are renamed to `*_and_cache`, with the cache as the last argument. The old names still work, with a warning ([#178](https://github.com/stadiamaps/pmtiles-rs/pull/178)).
+
+  ```rust
+  // Before
+  AsyncPmTilesReader::new_with_cached_path(cache, path).await?;
+  // After
+  AsyncPmTilesReader::new_with_path_and_cache(path, cache).await?;
+  ```
+
+  The same applies to `try_from_cached_source`, `new_with_cached_url`, `new_with_cached_bucket_path` and `new_with_cached_client_bucket_and_path`.
+
 ### Added
 
-- add a synchronous PmTilesReader that needs no async runtime ([#182](https://github.com/stadiamaps/pmtiles-rs/pull/182))
-- [**breaking**] read local files with positioned reads by default ([#176](https://github.com/stadiamaps/pmtiles-rs/pull/176))
-- rename `new_with_cached_*` constructors to `*_and_cache` ([#178](https://github.com/stadiamaps/pmtiles-rs/pull/178))
+- `PmTilesReader`, a synchronous reader that needs no async runtime, with `SyncBackend` implemented for `std::fs::File` and `Bytes` ([#182](https://github.com/stadiamaps/pmtiles-rs/pull/182)).
+- Both readers, `AsyncBackend`, `HashMapCache` and `NoCache` need no feature. With `default-features = false` the crate pulls in no Tokio or other async crate, so a custom `AsyncBackend` works on any runtime ([#182](https://github.com/stadiamaps/pmtiles-rs/pull/182)).
+- `FileBackendOptions::check_modified` fails reads with `SourceModified` once the file's length or modification time changes ([#176](https://github.com/stadiamaps/pmtiles-rs/pull/176)).
+- `AsyncPmTilesReader::blocking_decode_above` sets when decoding moves to Tokio's blocking pool, 100 µs of estimated work by default ([#179](https://github.com/stadiamaps/pmtiles-rs/pull/179)).
+
+### Changed
+
+- Decompression calls `flate2`, `brotli` and `zstd` directly instead of `async-compression`, and gzip uses zlib-rs, about twice as fast as miniz_oxide. Archives written with gzip are no longer byte-identical to earlier versions; they decode the same ([#179](https://github.com/stadiamaps/pmtiles-rs/pull/179)).
+- Large decodes no longer stall the Tokio worker. With 8 concurrent lookups and no directory cache, throughput doubled and other tasks kept running ([#179](https://github.com/stadiamaps/pmtiles-rs/pull/179)).
+- `DirEntry::iter_coords` needs no feature, and `Compression` and `TileType` implement `TryFrom<u8>` ([#177](https://github.com/stadiamaps/pmtiles-rs/pull/177)).
+- The README documents every feature, including what `tokio` does and that `https` needs a `reqwest-*` feature ([#182](https://github.com/stadiamaps/pmtiles-rs/pull/182)).
 
 ### Other
 
-- check the MSRV with cargo-hack and cargo-minimal-versions ([#181](https://github.com/stadiamaps/pmtiles-rs/pull/181))
-- *(deps)* bump the all-actions-version-updates group with 2 updates ([#175](https://github.com/stadiamaps/pmtiles-rs/pull/175))
-- [**breaking**] remove duplicated and unneeded code ([#177](https://github.com/stadiamaps/pmtiles-rs/pull/177))
-- decompress synchronously with zlib-rs, and offload large decodes ([#179](https://github.com/stadiamaps/pmtiles-rs/pull/179))
+- CI checks the MSRV (1.88) with the newest and the oldest allowed dependency versions ([#181](https://github.com/stadiamaps/pmtiles-rs/pull/181)), and dependency updates ([#175](https://github.com/stadiamaps/pmtiles-rs/pull/175)).
+
+### Thanks
+
+[@nyurik](https://github.com/nyurik) for most of the work in this release, [@johncarmack1984](https://github.com/johncarmack1984) for the `FileBackend` work in [maplibre/martin#3858](https://github.com/maplibre/martin/pull/3858), and [@CommanderStorm](https://github.com/CommanderStorm) and [@lseelenbinder](https://github.com/lseelenbinder) for reviews.
 
 ## [0.26.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.25.0...v0.26.0) - 2026-10-29
 
