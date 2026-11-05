@@ -33,7 +33,8 @@ bytes = "1"
 futures-executor = "0.3"
 futures-util = "0.3"
 libfuzzer-sys = "0.4"
-pmtiles = { path = "..", default-features = false, features = ["brotli", "iter-async", "tilejson", "zstd"] }
+# `async` is the reader without Tokio; the harness runs it with `futures-executor`
+pmtiles = { path = "..", default-features = false, features = ["async", "brotli", "iter", "tilejson", "zstd"] }
 
 [lints.rust]
 unsafe_code = "forbid"

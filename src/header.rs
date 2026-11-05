@@ -10,7 +10,7 @@ use tilejson::{Bounds, Center, TileJSON};
 use crate::writer::WriteTo;
 use crate::{PmtError, PmtResult};
 
-#[cfg(any(feature = "__async", feature = "write"))]
+#[cfg(any(feature = "async", feature = "write"))]
 pub(crate) const MAX_INITIAL_BYTES: usize = 16_384;
 pub(crate) const HEADER_SIZE: usize = 127;
 
@@ -167,7 +167,7 @@ impl Compression {
     }
 
     /// Decompresses bytes that are already in memory, so there is no I/O to wait for.
-    #[cfg(any(feature = "__async", test))]
+    #[cfg(any(feature = "async", test))]
     pub(crate) fn decompress(self, bytes: Bytes) -> PmtResult<Bytes> {
         use std::io::Read as _;
 

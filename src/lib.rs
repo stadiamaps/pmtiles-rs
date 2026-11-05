@@ -3,20 +3,26 @@
 // The first `cfg_attr` is exported to https://docs.rs
 #![cfg_attr(not(feature = "__all_non_conflicting"), doc = "# `PMTiles` (for Rust)")]
 
-#[cfg(feature = "__async")]
+// `iter` and `moka` only extend the reader, so on their own they would build an unusable crate
+#[cfg(all(any(feature = "iter", feature = "moka"), not(feature = "async")))]
+compile_error!(
+    "the `iter` and `moka` features need a reader: also enable `async`, or a backend such as `file-async-tokio`"
+);
+
+#[cfg(feature = "async")]
 mod async_reader;
-#[cfg(feature = "__async")]
+#[cfg(feature = "async")]
 pub use async_reader::{AsyncBackend, AsyncPmTilesReader, BackendResponse};
 
 mod backends;
 #[allow(unused_imports, reason = "only a warning if no backends are enabled")]
 pub use backends::*;
 
-#[cfg(feature = "__async")]
+#[cfg(feature = "async")]
 mod cache;
-#[cfg(feature = "__async")]
+#[cfg(feature = "async")]
 pub use cache::{DirectoryCache, HashMapCache, NoCache};
-#[cfg(all(feature = "__async", feature = "moka"))]
+#[cfg(all(feature = "async", feature = "moka"))]
 pub use cache::{MokaCache, SharedMokaCache};
 
 mod directory;

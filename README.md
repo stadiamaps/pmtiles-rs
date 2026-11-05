@@ -27,21 +27,27 @@ archives, the single-file tile format created by Brandon Liu for Protomaps.
 
 ## Cargo features
 
-Only `file-async-tokio`, the preferred local file backend, and `iter-async` are enabled by
+Only `file-async-tokio`, the preferred local file backend, and `iter` are enabled by
 default. The remaining backends pull in large dependency trees (the AWS SDK alone is a heavy
 build), so they are opt-in:
 
-| Feature            | Enables                                                         |
-|--------------------|-----------------------------------------------------------------|
-| `mmap-async-tokio` | Memory-mapped local file backend (`MmapBackend`), see below     |
-| `write`            | Creating archives (`PmTilesWriter`)                             |
-| `http-async`       | `http` and `https` backend (Reqwest)                            |
-| `aws-s3-async`     | S3 backend using the AWS SDK                                    |
-| `s3-async-rustls`  | S3 backend using Rust-S3 with rustls (or `s3-async-native`)     |
-| `object-store`     | [`object_store`](https://docs.rs/object_store) backend          |
-| `moka`             | Bounded directory caches based on `moka`                        |
-| `tilejson`         | `TileJSON` support for metadata                                 |
-| `brotli`, `zstd`   | Additional tile and directory compression codecs                |
+| Feature            | Enables                                                                |
+|--------------------|------------------------------------------------------------------------|
+| `async`            | `AsyncPmTilesReader` for your own `AsyncBackend`, on any runtime       |
+| `tokio`            | `async`, decoding large directories and tiles on Tokio's blocking pool |
+| `iter`             | `entries()`, which lists every tile in an archive                      |
+| `mmap-async-tokio` | Memory-mapped local file backend (`MmapBackend`), see below            |
+| `write`            | Creating archives (`PmTilesWriter`)                                    |
+| `http-async`       | `http` and `https` backend (Reqwest)                                   |
+| `aws-s3-async`     | S3 backend using the AWS SDK                                           |
+| `s3-async-rustls`  | S3 backend using Rust-S3 with rustls (or `s3-async-native`)            |
+| `object-store`     | [`object_store`](https://docs.rs/object_store) backend                 |
+| `moka`             | Bounded directory caches based on `moka`                               |
+| `tilejson`         | `TileJSON` support for metadata                                        |
+| `brotli`, `zstd`   | Additional tile and directory compression codecs                       |
+
+Every backend enables `tokio`. `iter` and `moka` extend the reader, so building with either of
+them but without `async` or a backend fails.
 
 ```bash
 cargo add pmtiles --features http-async,moka,tilejson
@@ -49,10 +55,10 @@ cargo add pmtiles --features http-async,moka,tilejson
 
 ## WebAssembly
 
-The `iter-async`, `write`, `tilejson`, `object-store`, `brotli` and `zstd` features build for
+The `async`, `iter`, `write`, `tilejson`, `object-store`, `brotli` and `zstd` features build for
 `wasm32-unknown-unknown`, and the tests run on `wasm32-wasip1`. CI checks both. The local file,
 `http` and S3 backends and the `moka` cache do not build for wasm yet, so in a browser, read
-archives through `object_store` or your own `AsyncBackend`.
+archives through `object_store`, or your own `AsyncBackend` with only the `async` feature.
 
 ## Usage examples
 
