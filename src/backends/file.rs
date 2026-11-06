@@ -10,7 +10,7 @@ use std::time::{Duration, Instant, SystemTime};
 use bytes::Bytes;
 use tokio::task::spawn_blocking;
 
-use crate::async_reader::read_full_at;
+use crate::async_reader::{read_full_at, read_options};
 use crate::{
     AsyncBackend, AsyncPmTilesReader, BackendResponse, DirectoryCache, NoCache, PmtError, PmtResult,
 };
@@ -83,14 +83,15 @@ impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<FileBackend, C> {
 ///
 /// # Changes to the file
 ///
-/// To update an archive on Unix, write the new version to another file in the same directory and
-/// rename it over the old one. The rename is atomic, and this backend keeps reading the old
-/// file, which the operating system keeps until it is closed. Create a new backend to read the
-/// new version.
+/// To update an archive, write the new version to another file in the same directory and rename
+/// it over the old one. The rename is atomic, and this backend keeps reading the old file, which
+/// the operating system keeps until it is closed. Create a new backend to read the new version.
 ///
-/// Changing the file in place cannot crash the process, but reads may then return a mix of old
-/// and new data, or fail. Enable [`FileBackendOptions::check_modified`] to detect either kind of
-/// change, or the file being deleted.
+/// On Windows, no other process can open the file for writing while this backend has it open,
+/// and opening fails if another process already has it open for writing. On Unix, changing the
+/// file in place cannot crash the process, but reads may then return a mix of old and new data,
+/// or fail. Enable [`FileBackendOptions::check_modified`] to detect either kind of change, or the
+/// file being deleted.
 pub struct FileBackend {
     file: Arc<File>,
     /// The file's length when it was opened. Reads are clamped to it.
@@ -135,11 +136,12 @@ impl FileBackendOptions {
     /// modification time changed since it was opened. `None` disables the check, and
     /// `Some(Duration::ZERO)` checks on every read.
     ///
-    /// This catches most in-place changes within `interval`. On Windows, a file renamed over the
-    /// path is caught only if its length or modification time differs. When several reads run at
-    /// once, only one of them runs each check. A check runs on Tokio's blocking thread pool,
-    /// because on a network file system it may wait for the server, so checking on every read
-    /// makes reads of cached data noticeably slower.
+    /// This catches most in-place changes within `interval`, which Windows prevents while the
+    /// file is open, see [`FileBackend`]. On Windows, a file renamed over the path is caught only
+    /// if its length or modification time differs. When several reads run at once, only one of
+    /// them runs each check. A check runs on Tokio's blocking thread pool, because on a network
+    /// file system it may wait for the server, so checking on every read makes reads of cached
+    /// data noticeably slower.
     #[must_use]
     pub fn check_modified(mut self, interval: Option<Duration>) -> Self {
         self.check_modified = interval;
@@ -155,7 +157,7 @@ impl FileBackendOptions {
         let path = path.as_ref().to_path_buf();
         let (path, file, metadata) = spawn_blocking(move || {
             let path = absolute(path)?;
-            let file = File::open(&path)?;
+            let file = read_options().open(&path)?;
             let metadata = file.metadata()?;
             Ok::<_, io::Error>((path, file, metadata))
         })
@@ -366,7 +368,6 @@ fn nanos(duration: Duration) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::OpenOptions;
     use std::io::Write as _;
     #[cfg(target_os = "linux")]
     use std::num::NonZeroU64;
@@ -425,14 +426,16 @@ mod tests {
         reader
     }
 
-    /// Appends to the file, changing its length.
-    fn append(path: &Path) {
-        OpenOptions::new()
-            .append(true)
-            .open(path)
-            .unwrap()
-            .write_all(b"more")
-            .unwrap();
+    /// Opens the file for writing. An open reader prevents that on Windows, so there this checks
+    /// that it fails, and returns `None` to skip the rest of the test.
+    fn open_to_append(path: &Path) -> Option<File> {
+        let file = File::options().append(true).open(path);
+        if cfg!(windows) {
+            // `ERROR_SHARING_VIOLATION`
+            assert_eq!(file.unwrap_err().raw_os_error(), Some(32));
+            return None;
+        }
+        Some(file.unwrap())
     }
 
     #[tokio::test]
@@ -598,12 +601,10 @@ mod tests {
         let (_dir, path, _) = temp_file(10_000);
         let backend = FileBackend::try_from(&path).await.unwrap();
 
-        File::options()
-            .write(true)
-            .open(&path)
-            .unwrap()
-            .set_len(100)
-            .unwrap();
+        let Some(file) = open_to_append(&path) else {
+            return;
+        };
+        file.set_len(100).unwrap();
         assert!(matches!(
             backend.read(0, 1000).await,
             Err(PmtError::Reading(_))
@@ -617,7 +618,10 @@ mod tests {
         let (_dir, path) = copy_fixture();
         let reader = open_reader(&path, FileBackendOptions::new()).await;
 
-        append(&path);
+        let Some(mut file) = open_to_append(&path) else {
+            return;
+        };
+        file.write_all(b"more").unwrap();
         assert!(reader.get_tile(tile()).await.unwrap().is_some());
     }
 
@@ -627,7 +631,10 @@ mod tests {
         let options = FileBackendOptions::new().check_modified(Some(Duration::ZERO));
         let reader = open_reader(&path, options).await;
 
-        append(&path);
+        let Some(mut file) = open_to_append(&path) else {
+            return;
+        };
+        file.write_all(b"more").unwrap();
         assert!(matches!(
             reader.get_tile(tile()).await,
             Err(PmtError::SourceModified)
@@ -676,7 +683,10 @@ mod tests {
         let options = FileBackendOptions::new().check_modified(Some(Duration::from_secs(3600)));
         let reader = open_reader(&path, options).await;
 
-        append(&path);
+        let Some(mut file) = open_to_append(&path) else {
+            return;
+        };
+        file.write_all(b"more").unwrap();
         assert!(reader.get_tile(tile()).await.unwrap().is_some());
     }
 
@@ -692,7 +702,9 @@ mod tests {
             .unwrap();
         backend.read_exact(0, 10).await.unwrap();
 
-        let file = File::options().write(true).open(&path).unwrap();
+        let Some(file) = open_to_append(&path) else {
+            return;
+        };
         let modified = file.metadata().unwrap().modified().unwrap();
         file.set_modified(modified + Duration::from_secs(1))
             .unwrap();
@@ -709,7 +721,6 @@ mod tests {
     /// Renaming another file over the open one is the safe way to update an archive. Without
     /// `check_modified`, the reader keeps reading the old file, until a new reader opens the new
     /// one.
-    #[cfg(unix)]
     #[tokio::test]
     async fn replacing_by_rename_keeps_old_file() {
         let (dir, path) = copy_fixture();
