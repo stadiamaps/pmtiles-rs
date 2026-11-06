@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.27.0...v0.28.0) - 2026-11-06
+
+### Added
+
+- keep other processes from writing to an open archive on Windows ([#186](https://github.com/stadiamaps/pmtiles-rs/pull/186))
+- [**breaking**] make `check_modified` catch renames and deletion ([#185](https://github.com/stadiamaps/pmtiles-rs/pull/185))
+
 ## [0.27.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.26.0...v0.27.0) - 2026-11-05
 
 ### ⚠️ Breaking changes
