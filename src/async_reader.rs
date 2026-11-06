@@ -623,7 +623,7 @@ pub trait AsyncBackend {
 }
 
 #[cfg(test)]
-#[cfg(feature = "file-async-tokio")]
+#[cfg(all(feature = "file-async-tokio", any(unix, windows)))]
 mod tests {
     use std::pin::pin;
     #[cfg(feature = "iter")]
