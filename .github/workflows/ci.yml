@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v7
       - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2.88.0
+      - uses: taiki-e/install-action@v2.90.1
         with: { tool: 'just,cargo-binstall' }
       - run: just ci-test
 
@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v7
       - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2.88.0
+      - uses: taiki-e/install-action@v2.90.1
         with: { tool: 'just,cargo-hack,cargo-minimal-versions' }
       # cargo-hack installs the `rust-version` toolchain from Cargo.toml
       - run: just ci_mode=0 ci-test-msrv  # Ignore warnings in MSRV
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v7
       - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2.88.0
+      - uses: taiki-e/install-action@v2.90.1
         with: { tool: 'just,cargo-binstall' }
       - run: just check-wasm test-wasm
 
@@ -71,7 +71,7 @@ jobs:
       - if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: Swatinem/rust-cache@v2
         with: { workspaces: fuzz, key: '${{ matrix.bits }}' }
-      - uses: taiki-e/install-action@v2.88.0
+      - uses: taiki-e/install-action@v2.90.1
         with: { tool: 'just,cargo-binstall' }
       # g++-multilib provides the 32-bit C and C++ toolchain for libFuzzer and zstd-sys
       - if: matrix.bits == 32
@@ -90,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2.88.0
+      - uses: taiki-e/install-action@v2.90.1
         with: { tool: 'just,cargo-llvm-cov' }
       - name: Generate code coverage
         run: just ci-coverage
