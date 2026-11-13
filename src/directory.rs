@@ -205,7 +205,35 @@ pub struct DirEntry {
 }
 
 impl DirEntry {
-    pub(crate) fn is_leaf(&self) -> bool {
+    /// Get the first tile ID that the entry covers
+    #[must_use]
+    pub fn tile_id(&self) -> u64 {
+        self.tile_id
+    }
+
+    /// Get the offset of the entry's data: in the tile data section for a
+    /// tile, in the leaf directories section for a leaf directory
+    #[must_use]
+    pub fn offset(&self) -> u64 {
+        self.offset
+    }
+
+    /// Get the length of the entry's data in bytes
+    #[must_use]
+    pub fn length(&self) -> u32 {
+        self.length
+    }
+
+    /// Get how many consecutive tile IDs share the entry's data, or 0 for a
+    /// leaf directory
+    #[must_use]
+    pub fn run_length(&self) -> u32 {
+        self.run_length
+    }
+
+    /// Check if the entry points to a leaf directory rather than to tile data
+    #[must_use]
+    pub fn is_leaf(&self) -> bool {
         self.run_length == 0
     }
 
@@ -301,6 +329,18 @@ mod tests {
             directory.entries[58].iter_coords().collect::<Vec<_>>(),
             vec![coord(3, 4, 7).into(), coord(3, 5, 7).into()]
         );
+    }
+
+    #[test]
+    fn entry_getters() {
+        let directory = read_root_directory(RASTER_FILE);
+        // The second tile of the 59th entry's run
+        let entry = directory.find_tile_id(coord(3, 5, 7).into()).unwrap();
+        assert_eq!(entry.tile_id(), 58);
+        assert_eq!(entry.offset(), 422_070);
+        assert_eq!(entry.length(), 850);
+        assert_eq!(entry.run_length(), 2);
+        assert!(!entry.is_leaf());
     }
 
     #[rstest]

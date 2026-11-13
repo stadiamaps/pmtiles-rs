@@ -136,6 +136,54 @@ impl Header {
     pub fn internal_compression(&self) -> Compression {
         self.internal_compression
     }
+
+    /// Get the offset of the root directory in the archive
+    #[must_use]
+    pub fn root_offset(&self) -> u64 {
+        self.root_offset
+    }
+
+    /// Get the length of the root directory in bytes
+    #[must_use]
+    pub fn root_length(&self) -> u64 {
+        self.root_length
+    }
+
+    /// Get the offset of the JSON metadata in the archive
+    #[must_use]
+    pub fn metadata_offset(&self) -> u64 {
+        self.metadata_offset
+    }
+
+    /// Get the length of the JSON metadata in bytes
+    #[must_use]
+    pub fn metadata_length(&self) -> u64 {
+        self.metadata_length
+    }
+
+    /// Get the offset of the leaf directories in the archive
+    #[must_use]
+    pub fn leaf_offset(&self) -> u64 {
+        self.leaf_offset
+    }
+
+    /// Get the length of the leaf directories in bytes
+    #[must_use]
+    pub fn leaf_length(&self) -> u64 {
+        self.leaf_length
+    }
+
+    /// Get the offset of the tile data in the archive
+    #[must_use]
+    pub fn data_offset(&self) -> u64 {
+        self.data_offset
+    }
+
+    /// Get the length of the tile data in bytes
+    #[must_use]
+    pub fn data_length(&self) -> u64 {
+        self.data_length
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -466,6 +514,14 @@ mod tests {
         assert_eq!(header.n_tile_contents(), NonZeroU64::new(106));
         assert!(header.clustered());
         assert_eq!(header.internal_compression(), Compression::Gzip);
+        assert_eq!(header.root_offset(), 127);
+        assert_eq!(header.root_length(), 403);
+        assert_eq!(header.metadata_offset(), 530);
+        assert_eq!(header.metadata_length(), 266);
+        assert_eq!(header.leaf_offset(), 796);
+        assert_eq!(header.leaf_length(), 0);
+        assert_eq!(header.data_offset(), 796);
+        assert_eq!(header.data_length(), 3_938_905);
     }
 
     #[rstest]
