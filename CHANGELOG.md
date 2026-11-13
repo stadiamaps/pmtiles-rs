@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.28.0...v0.28.1) - 2026-11-13
+
+### Added
+
+- make the archive's section offsets and directory entries readable ([#189](https://github.com/stadiamaps/pmtiles-rs/pull/189))
+
+### Other
+
+- *(deps)* bump taiki-e/install-action from 2.88.0 to 2.90.1 in the all-actions-version-updates group ([#188](https://github.com/stadiamaps/pmtiles-rs/pull/188))
+
 ## [0.28.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.27.0...v0.28.0) - 2026-11-06
 
 ### Added
