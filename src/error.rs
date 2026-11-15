@@ -41,6 +41,10 @@ pub enum PmtError {
     /// Directory index entry overflow occurred during writing.
     #[error("Directory index element overflow")]
     IndexEntryOverflow,
+    #[cfg(feature = "write")]
+    /// The writer was given the same tile more than once.
+    #[error("Tile ID {0} was added more than once")]
+    DuplicateTileId(u64),
     /// Metadata contains invalid UTF-8 encoding.
     #[error("Invalid metadata UTF-8 encoding: {0}")]
     InvalidMetadataUtf8Encoding(#[from] FromUtf8Error),
