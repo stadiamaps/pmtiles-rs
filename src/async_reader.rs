@@ -1,5 +1,5 @@
 #[cfg(feature = "iter")]
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 #[cfg(any(unix, windows))]
 use std::fs::{File, OpenOptions};
 use std::future::Future;
@@ -329,6 +329,8 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
     }
 
     /// Return an async stream over all tile entries in the archive. Directory entries are traversed, and not included in the result.
+    /// Each leaf directory is read when the stream reaches it, so entries come in the order the
+    /// directories list them, which is tile ID order in a well-formed archive.
     /// Because this function requires the reader for the duration of the stream, you need to wrap the reader in an `Arc`.
     ///
     /// ```
@@ -353,13 +355,17 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
         C: 'a,
     {
         Box::pin(try_stream! {
-            let mut queue = VecDeque::new();
+            // Depth-first, so that entries come in tile ID order, the first one is listed without
+            // reading every leaf directory, and only one directory per level is held at a time
+            let mut stack = vec![self.root_directory.entries.clone().into_iter()];
             // A valid archive lists each leaf directory once, so a repeat is a cycle
             let mut leaf_offsets = HashSet::new();
 
-            queue.extend(self.root_directory.entries.iter().copied());
-
-            while let Some(entry) = queue.pop_front() {
+            while let Some(directory) = stack.last_mut() {
+                let Some(entry) = directory.next() else {
+                    stack.pop();
+                    continue;
+                };
                 if entry.is_leaf() {
                     if !leaf_offsets.insert(entry.offset) {
                         Err(PmtError::InvalidEntry)?;
@@ -367,10 +373,7 @@ impl<B: AsyncBackend + Sync + Send, C: DirectoryCache + Sync + Send> AsyncPmTile
                     let offset =
                         entry_offset(self.header.leaf_offset, self.header.leaf_length, &entry)?;
                     let leaf_dir = self.read_directory(offset, entry.length as usize).await?;
-                    // enqueue all entries in the leaf directory
-                    for leaf_entry in leaf_dir.entries {
-                        queue.push_back(leaf_entry);
-                    }
+                    stack.push(leaf_dir.entries.into_iter());
                 } else {
                     yield entry;
                 }
@@ -629,6 +632,8 @@ mod tests {
     #[cfg(feature = "iter")]
     use std::sync::Arc;
     use std::sync::Mutex;
+    #[cfg(all(feature = "iter", feature = "write"))]
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::task::{Context, Poll, Waker};
     use std::time::Duration;
     use std::{fs, future};
@@ -639,6 +644,8 @@ mod tests {
     use tilejson::TileJSON;
 
     use super::decode_estimate;
+    #[cfg(all(feature = "iter", feature = "write"))]
+    use super::read_bytes;
     use crate::tests::{RASTER_FILE, VECTOR_FILE};
     use crate::{
         AsyncBackend, AsyncPmTilesReader, BackendResponse, Compression, FileBackend, PmtError,
@@ -1190,6 +1197,68 @@ mod tests {
 
         let all_entries: Vec<_> = entries.try_collect().await.unwrap();
         assert_eq!(all_entries.len(), 108);
+    }
+
+    /// Counts the reads of the archive it serves.
+    #[cfg(all(feature = "iter", feature = "write"))]
+    struct CountingBackend {
+        data: Bytes,
+        reads: AtomicUsize,
+    }
+
+    #[cfg(all(feature = "iter", feature = "write"))]
+    impl AsyncBackend for CountingBackend {
+        fn read(
+            &self,
+            offset: u64,
+            length: usize,
+        ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
+            self.reads.fetch_add(1, Ordering::Relaxed);
+            future::ready(read_bytes(&self.data, offset, length))
+        }
+    }
+
+    /// Entries are listed in tile ID order, and the first one after reading only the leaf
+    /// directory that holds it.
+    #[tokio::test]
+    #[cfg(all(feature = "iter", feature = "write"))]
+    async fn entries_are_listed_depth_first() {
+        use std::io::Cursor;
+        use std::iter;
+
+        use futures_util::TryStreamExt as _;
+
+        use crate::{PmTilesWriter, TileType};
+
+        // More entries than fit in the root directory, so they go in several leaf directories
+        let n_tiles = 20_000_u64;
+        let mut out = Cursor::new(Vec::new());
+        let mut writer = PmTilesWriter::new(TileType::Png).create(&mut out).unwrap();
+        for tile_id in 0..n_tiles {
+            let coord = TileId::new(tile_id).unwrap().into();
+            writer.add_tile(coord, &tile_id.to_le_bytes()).unwrap();
+        }
+        writer.finalize().unwrap();
+
+        let backend = CountingBackend {
+            data: out.into_inner().into(),
+            reads: 0.into(),
+        };
+        let reader = Arc::new(AsyncPmTilesReader::try_from_source(backend).await.unwrap());
+        let root = &reader.root_directory.entries;
+        assert!(root.len() > 1 && root.iter().all(DirEntry::is_leaf));
+
+        let mut entries = Arc::clone(&reader).entries();
+        let first = entries.try_next().await.unwrap().unwrap();
+        // The header and root directory, then the first leaf directory
+        assert_eq!(reader.backend.reads.load(Ordering::Relaxed), 2);
+
+        let rest: Vec<_> = entries.try_collect().await.unwrap();
+        let tile_ids: Vec<_> = iter::once(first)
+            .chain(rest)
+            .map(|entry| entry.tile_id)
+            .collect();
+        assert_eq!(tile_ids, (0..n_tiles).collect::<Vec<_>>());
     }
 
     /// Opens `leaf.pmtiles` with one header field changed, and returns the entry of its
