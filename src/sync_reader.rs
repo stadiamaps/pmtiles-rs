@@ -49,13 +49,24 @@ impl SyncBackend for Bytes {
     }
 }
 
+/// Reads up to this length allocate it without checking the file's length first.
+#[cfg(any(unix, windows))]
+const MAX_UNCHECKED_READ: usize = 1 << 20;
+
 /// Reads a local file with positioned reads, so that concurrent reads need no locking.
 ///
-/// A read from past the end of the file is empty rather than an error, because the file's length
-/// is not known without another system call.
+/// A read from past the end of the file is empty rather than an error. Reads over 1 MiB are first
+/// clamped to the file's length, because the length comes from the archive, and allocating what
+/// a malformed one asks for could abort the process. Smaller reads skip that system call.
 #[cfg(any(unix, windows))]
 impl SyncBackend for File {
     fn read(&self, offset: u64, length: usize) -> PmtResult<BackendResponse> {
+        let length = if length > MAX_UNCHECKED_READ {
+            let available = self.metadata()?.len().saturating_sub(offset);
+            usize::try_from(available).map_or(length, |available| available.min(length))
+        } else {
+            length
+        };
         let mut buf = vec![0; length];
         let len = read_full_at(self, &mut buf, offset)?;
         buf.truncate(len);
@@ -289,6 +300,26 @@ mod tests {
                 .bytes
                 .is_empty()
         );
+        // A length far larger than the file is clamped before anything is allocated
+        let res = SyncBackend::read(&file, 0, usize::MAX >> 1).unwrap();
+        assert_eq!(res.bytes, data);
+    }
+
+    /// A header that claims more metadata than the file holds is an error, not an abort.
+    #[cfg(all(any(unix, windows), target_pointer_width = "64"))]
+    #[test]
+    fn rejects_metadata_longer_than_the_file() {
+        let mut data = fs::read(RASTER_FILE).unwrap();
+        // The metadata length is at bytes 32..40 of the header
+        data.splice(32..40, (1_u64 << 50).to_le_bytes());
+        let file = tempfile::NamedTempFile::new().unwrap();
+        fs::write(file.path(), &data).unwrap();
+
+        let reader = PmTilesReader::new_with_path(file.path()).unwrap();
+        assert!(matches!(
+            reader.get_metadata(),
+            Err(PmtError::UnexpectedNumberOfBytesReturned(..))
+        ));
     }
 
     #[test]
