@@ -434,11 +434,13 @@ impl<W: Write + Seek, K: Copy + Eq + Hash> WriterState<W, K> {
         let tile_id = tile_id.value();
         self.n_addressed_tiles += 1;
 
-        // If the tile is identical to the previous one and the tile_id is consecutive, increase run_length
+        // If the tile is identical to the previous one and the tile_id is consecutive, increase
+        // run_length. A full run is followed by a new entry for the same content.
         if let Some(last_entry) = self.entries.last_mut() {
             if key.is_some()
                 && self.prev_content == key
                 && tile_id == last_entry.tile_id + u64::from(last_entry.run_length)
+                && last_entry.run_length < u32::MAX
             {
                 last_entry.run_length += 1;
                 return Ok(());
@@ -642,6 +644,7 @@ mod tests {
     use std::num::NonZeroU64;
     use std::sync::Arc;
 
+    use bytes::Bytes;
     use futures_util::TryStreamExt as _;
     use rstest::rstest;
     use tempfile::NamedTempFile;
@@ -650,7 +653,7 @@ mod tests {
     use crate::tests::RASTER_FILE;
     use crate::writer::GzipCompressor;
     use crate::{
-        AsyncPmTilesReader, CallerKey, Compression, DirEntry, FileBackend, Header,
+        AsyncPmTilesReader, CallerKey, Compression, DirEntry, FileBackend, Header, PmTilesReader,
         PmTilesStreamWriter, PmTilesWriter, PmtError, TileCoord, TileId, TileType,
     };
 
@@ -1310,6 +1313,44 @@ mod tests {
             result,
             Err(PmtError::UnsupportedCompression(Compression::Unknown))
         ));
+    }
+
+    /// A run of identical tiles that reaches `u32::MAX` continues in a new entry for the same
+    /// data, instead of its length wrapping to 0, which marks a leaf directory.
+    #[test]
+    fn full_run_starts_a_new_entry() {
+        let mut out = Cursor::new(Vec::new());
+        let mut writer = PmTilesWriter::new(TileType::Png).create(&mut out).unwrap();
+        let add = |writer: &mut PmTilesStreamWriter<_>, tile_id: u64| {
+            let coord = TileId::new(tile_id).unwrap().into();
+            writer.add_tile(coord, b"tile").unwrap();
+        };
+        add(&mut writer, 0);
+        add(&mut writer, 1);
+        // Pretend the run already holds all but one of the tiles it can
+        let run_end = u64::from(u32::MAX);
+        writer.state.entries[0].run_length = u32::MAX - 1;
+        for tile_id in run_end - 1..=run_end + 1 {
+            add(&mut writer, tile_id);
+        }
+
+        let entries = &writer.state.entries;
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].run_length, u32::MAX);
+        assert_eq!(entries[1].tile_id, run_end);
+        assert_eq!(entries[1].run_length, 2);
+        assert_eq!(
+            (entries[1].offset, entries[1].length),
+            (entries[0].offset, entries[0].length)
+        );
+        assert_eq!(writer.state.n_tile_contents, 1);
+        writer.finalize().unwrap();
+
+        let reader = PmTilesReader::try_from_source(Bytes::from(out.into_inner())).unwrap();
+        for tile_id in [0, run_end - 1, run_end, run_end + 1] {
+            let tile = reader.get_tile(TileId::new(tile_id).unwrap()).unwrap();
+            assert_eq!(tile.as_deref(), Some(&b"tile"[..]), "tile {tile_id}");
+        }
     }
 
     /// When the entries do not fit in the root directory, and neither do pointers to leaf
