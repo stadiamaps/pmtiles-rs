@@ -97,9 +97,52 @@ impl Compressor for BrotliCompressor {
         f: &mut dyn FnMut(&mut dyn Write) -> io::Result<()>,
         writer: &mut dyn Write,
     ) -> PmtResult<()> {
-        let mut encoder = CompressorWriter::with_params(writer, 4096, &self.0);
-        f(&mut encoder)?;
-        Ok(())
+        let mut output = KeepError {
+            inner: writer,
+            error: None,
+        };
+        let mut encoder = CompressorWriter::with_params(&mut output, 4096, &self.0);
+        let result = f(&mut encoder);
+        // Writes the last block, ignoring any error
+        encoder.into_inner();
+        // The writer's own error, rather than the copy the encoder passed on
+        match output.error {
+            Some(err) => Err(err.into()),
+            None => Ok(result?),
+        }
+    }
+}
+
+/// Keeps the first error of the writer it wraps, because the Brotli encoder ignores errors when
+/// it writes its last block. It also retries interrupted writes, which the encoder does not.
+#[cfg(feature = "brotli")]
+struct KeepError<'a> {
+    inner: &'a mut dyn Write,
+    error: Option<io::Error>,
+}
+
+#[cfg(feature = "brotli")]
+impl KeepError<'_> {
+    /// Keeps the error of `result`, and returns a copy of it.
+    fn keep<T>(&mut self, result: io::Result<T>) -> io::Result<T> {
+        result.map_err(|err| {
+            let kind = err.kind();
+            self.error.get_or_insert(err);
+            kind.into()
+        })
+    }
+}
+
+#[cfg(feature = "brotli")]
+impl Write for KeepError<'_> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let result = self.inner.write_all(buf);
+        self.keep(result).map(|()| buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let result = self.inner.flush();
+        self.keep(result)
     }
 }
 
@@ -161,5 +204,83 @@ impl Compressor for UnsupportedCompressor {
         _writer: &mut dyn Write,
     ) -> PmtResult<()> {
         Err(PmtError::UnsupportedCompression(self.0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{self, Write};
+
+    use super::*;
+
+    /// A writer that fails every write, like one to a full disk.
+    struct FullDisk;
+
+    impl Write for FullDisk {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::StorageFull, "disk full"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// A failed write returns the writer's error with every compression, whether it happens while
+    /// compressing a long input, or in the last block, which is where a short input is written.
+    #[rstest::rstest]
+    #[case(Compression::None)]
+    #[case(Compression::Gzip)]
+    #[cfg_attr(feature = "brotli", case(Compression::Brotli))]
+    #[cfg_attr(feature = "zstd", case(Compression::Zstd))]
+    fn write_errors_are_returned(
+        #[case] compression: Compression,
+        #[values(4, 1 << 16)] len: usize,
+    ) {
+        let data = incompressible(len);
+        let compressor = Box::<dyn Compressor>::from(compression);
+        let result = compressor.compress(&mut |w| w.write_all(&data), &mut FullDisk);
+        assert!(
+            matches!(&result, Err(PmtError::Reading(err)) if err.to_string() == "disk full"),
+            "{result:?}"
+        );
+    }
+
+    /// Brotli returns the writer's own error from a write while compressing, not the copy it
+    /// passed to the encoder. Its defaults buffer even a long input, so this uses a small window.
+    #[cfg(feature = "brotli")]
+    #[test]
+    fn brotli_returns_errors_while_compressing() {
+        let params = BrotliEncoderParams {
+            quality: 1,
+            lgwin: 10,
+            ..BrotliEncoderParams::default()
+        };
+        let data = incompressible(1 << 16);
+        let mut failed = false;
+        let result = BrotliCompressor(params).compress(
+            &mut |w| {
+                let result = w.write_all(&data);
+                failed = result.is_err();
+                result
+            },
+            &mut FullDisk,
+        );
+        assert!(failed, "the write while compressing succeeded");
+        assert!(
+            matches!(&result, Err(PmtError::Reading(err)) if err.to_string() == "disk full"),
+            "{result:?}"
+        );
+    }
+
+    /// Pseudo-random bytes, which do not compress, so a long input is written before the end.
+    fn incompressible(len: usize) -> Vec<u8> {
+        let mut state = 1_u32;
+        (0..len)
+            .map(|_| {
+                state = state.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+                state.to_le_bytes()[2]
+            })
+            .collect()
     }
 }
