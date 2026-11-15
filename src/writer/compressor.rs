@@ -213,16 +213,28 @@ mod tests {
 
     use super::*;
 
-    /// A writer that fails every write, like one to a full disk.
-    struct FullDisk;
+    /// A writer that fails like one to a full disk: every flush, and every write if `writes_fail`.
+    struct FullDisk {
+        writes_fail: bool,
+    }
+
+    impl FullDisk {
+        fn error() -> io::Error {
+            io::Error::new(io::ErrorKind::StorageFull, "disk full")
+        }
+    }
 
     impl Write for FullDisk {
-        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
-            Err(io::Error::new(io::ErrorKind::StorageFull, "disk full"))
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if self.writes_fail {
+                Err(Self::error())
+            } else {
+                Ok(buf.len())
+            }
         }
 
         fn flush(&mut self) -> io::Result<()> {
-            Ok(())
+            Err(Self::error())
         }
     }
 
@@ -239,9 +251,43 @@ mod tests {
     ) {
         let data = incompressible(len);
         let compressor = Box::<dyn Compressor>::from(compression);
-        let result = compressor.compress(&mut |w| w.write_all(&data), &mut FullDisk);
+        let result = compressor.compress(
+            &mut |w| w.write_all(&data),
+            &mut FullDisk { writes_fail: true },
+        );
         assert!(
             matches!(&result, Err(PmtError::Reading(err)) if err.to_string() == "disk full"),
+            "{result:?}"
+        );
+    }
+
+    /// A failed flush returns the writer's error with every compression.
+    #[rstest::rstest]
+    #[case(Compression::None)]
+    #[case(Compression::Gzip)]
+    #[cfg_attr(feature = "brotli", case(Compression::Brotli))]
+    #[cfg_attr(feature = "zstd", case(Compression::Zstd))]
+    fn flush_errors_are_returned(#[case] compression: Compression) {
+        let compressor = Box::<dyn Compressor>::from(compression);
+        let result = compressor.compress(&mut |w| w.flush(), &mut FullDisk { writes_fail: false });
+        assert!(
+            matches!(&result, Err(PmtError::Reading(err)) if err.to_string() == "disk full"),
+            "{result:?}"
+        );
+    }
+
+    /// An error from the input is returned with every compression when the writer has none.
+    #[rstest::rstest]
+    #[case(Compression::None)]
+    #[case(Compression::Gzip)]
+    #[cfg_attr(feature = "brotli", case(Compression::Brotli))]
+    #[cfg_attr(feature = "zstd", case(Compression::Zstd))]
+    fn input_errors_are_returned(#[case] compression: Compression) {
+        let compressor = Box::<dyn Compressor>::from(compression);
+        let result =
+            compressor.compress(&mut |_| Err(io::Error::other("bad tile")), &mut Vec::new());
+        assert!(
+            matches!(&result, Err(PmtError::Reading(err)) if err.to_string() == "bad tile"),
             "{result:?}"
         );
     }
@@ -264,7 +310,7 @@ mod tests {
                 failed = result.is_err();
                 result
             },
-            &mut FullDisk,
+            &mut FullDisk { writes_fail: true },
         );
         assert!(failed, "the write while compressing succeeded");
         assert!(
