@@ -352,6 +352,7 @@ impl<W: Write + Seek> PmTilesStreamWriter<W, ContentHash> {
     /// Tiles are deduplicated by a 128-bit hash of `data` and written to output.
     /// Empty tiles are skipped, because the spec does not allow zero-length tile entries.
     /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
+    /// Each tile can be added once: [`finalize`](PmTilesStreamWriter::finalize) fails otherwise.
     ///
     /// # Errors
     ///
@@ -373,6 +374,7 @@ impl<W: Write + Seek, K: Copy + Eq + Hash> PmTilesStreamWriter<W, CallerKey<K>> 
     ///
     /// Empty tiles are skipped, because the spec does not allow zero-length tile entries.
     /// The `tile_id` generated from `z/x/y` should be increasing for best read performance.
+    /// Each tile can be added once: [`finalize`](PmTilesStreamWriter::finalize) fails otherwise.
     ///
     /// # Errors
     ///
@@ -493,6 +495,18 @@ impl<W: Write + Seek, K: Copy + Eq + Hash> WriterState<W, K> {
             // Spec does only say that leaf directories *should* be in ascending order,
             // but sorted directories are better for readers anyway.
             self.entries.sort_by_key(|entry| entry.tile_id);
+
+            // Only tiles added out of order can repeat a tile. A repeat would be counted twice,
+            // and readers would find either copy.
+            let repeat = self.entries.windows(2).find_map(|pair| match pair {
+                [prev, next] if next.tile_id < prev.tile_id + u64::from(prev.run_length) => {
+                    Some(next.tile_id)
+                }
+                _ => None,
+            });
+            if let Some(tile_id) = repeat {
+                return Err(PmtError::DuplicateTileId(tile_id));
+            }
         }
         let (root_dir, leaf_dirs) = self.optimize_directories(MAX_ROOT_DIR_BYTES, compressor)?;
         let mut leaves_bytes = 0;
@@ -585,7 +599,8 @@ impl<W: Write + Seek, D: DedupMode> PmTilesStreamWriter<W, D> {
     /// # Errors
     ///
     /// This function will return an error if
-    /// - writing to the output stream fails or
+    /// - writing to the output stream fails,
+    /// - a tile was added more than once or
     /// - if the file structure is invalid.
     pub fn finalize(mut self) -> PmtResult<()> {
         let state = &mut self.state;
@@ -966,6 +981,26 @@ mod tests {
         assert!(!writer.state.header.clustered);
 
         writer.finalize().unwrap();
+    }
+
+    /// A tile added twice is an error, whether the repeat directly follows it, falls inside a
+    /// run of identical tiles, or comes after other tiles.
+    #[rstest]
+    #[case::repeat(&[5, 5], 5)]
+    #[case::inside_a_run(&[5, 6, 7, 6], 6)]
+    #[case::out_of_order(&[5, 9, 2, 9], 9)]
+    fn rejects_duplicate_tiles(#[case] tile_ids: &[u64], #[case] repeated: u64) {
+        let mut writer = PmTilesWriter::new(TileType::Png)
+            .create(Cursor::new(Vec::new()))
+            .unwrap();
+        for &tile_id in tile_ids {
+            let coord = TileId::new(tile_id).unwrap().into();
+            writer.add_tile(coord, b"tile").unwrap();
+        }
+        assert!(matches!(
+            writer.finalize(),
+            Err(PmtError::DuplicateTileId(tile_id)) if tile_id == repeated
+        ));
     }
 
     #[rstest]
