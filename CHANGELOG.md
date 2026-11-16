@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.28.1...v0.29.0) - 2026-11-16
+
+### Fixed
+
+- [**breaking**] reject tiles added more than once ([#193](https://github.com/stadiamaps/pmtiles-rs/pull/193))
+- return write errors from Brotli compression ([#195](https://github.com/stadiamaps/pmtiles-rs/pull/195))
+- split runs of identical tiles at u32::MAX ([#194](https://github.com/stadiamaps/pmtiles-rs/pull/194))
+- clamp large sync file reads to the file's length ([#192](https://github.com/stadiamaps/pmtiles-rs/pull/192))
+
+### Other
+
+- *(deps)* bump taiki-e/install-action from 2.90.1 to 2.90.3 in the all-actions-version-updates group ([#191](https://github.com/stadiamaps/pmtiles-rs/pull/191))
+- list entries depth-first ([#196](https://github.com/stadiamaps/pmtiles-rs/pull/196))
+
 ## [0.28.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.28.0...v0.28.1) - 2026-11-13
 
 ### Added
