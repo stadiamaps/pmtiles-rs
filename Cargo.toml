@@ -60,7 +60,8 @@ features = ["__all_non_conflicting"]
 
 [dependencies]
 async-stream = { version = "0.3", optional = true }
-aws-sdk-s3 = { version = "1.49.0", optional = true }
+# The default features without `rustls`, which adds a second, legacy HTTP and TLS stack
+aws-sdk-s3 = { version = "1.79.0", optional = true, default-features = false, features = ["default-https-client", "http-1x", "rt-tokio", "sigv4a"] }
 brotli = { version = ">=8.0.2, <10.0.0", optional = true }
 zstd = { version = ">=0.13, <0.15", optional = true }
 bytes = "1.10"
