@@ -87,7 +87,7 @@ rustix = { version = "1", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8", default-features = false, features = ["async_tokio", "cargo_bench_support"] }
-rstest = "0.28.0"
+rstest = "0.29.0"
 tempfile = "3.13.0"
 tokio = { version = "1", features = ["test-util", "macros", "rt", "sync"] }
 
